@@ -361,7 +361,7 @@ static void card_pieces(GlPresent* v) {
         { 24, 48, 32, 32, 0 },
         { 60, 30, 112, 66, 6 },                                   /* the description */
         { 181, 31, 66, 58, 6 },                                   /* the prices: their words and the sums */
-        { 19, 105, 218, 70, 3 } };                                /* where it is found, who drops it (light on their panel) */
+        { 19, 105, 218, 67, 3 } };                                /* where it is found, who drops it (light on their panel) */
     const float (*part)[5] = g_card_item ? item : equip;
     int n = g_card_item ? (int)(sizeof item / sizeof *item) : (int)(sizeof equip / sizeof *equip);
     for (int i = 0; i < n; i++) {
