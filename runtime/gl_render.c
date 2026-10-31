@@ -473,7 +473,7 @@ static const char* FS_COPY =
     "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
     "float ink(vec2 uv, int light) { vec4 c = textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
-    "  return (light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.58, 0.4, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3, dark ones on parchment of 0.65 and more) */
+    "  return (light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
     "float letters(int light) {\n"   /* (9 points across the pixel at full size: a stroke thinner than the pixel drawn small is met by at least one; */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"   /* averaged, but never fainter than 3/4 of the strongest: thin strokes kept) */
