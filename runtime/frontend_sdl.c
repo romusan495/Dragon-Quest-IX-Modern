@@ -432,28 +432,28 @@ static int g_cur[4];                                              /* its box on 
 static void bestiary_cursor(const uint32_t* px, const uint8_t* ly, int lists) {
     /* the sprite's pixels joined to its gold (8 ways), a pointer's size: the
      * cursor (not the list's other sprites, a button's orange) */
-    static uint8_t in[256 * 192]; static int q[256 * 192];
+    static uint8_t mark[256 * 192]; static int q[256 * 192];
     int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
-    memset(in, 0, sizeof in);
+    memset(mark, 0, sizeof mark);
 #define GOLD(i) ((ly[i] & 7) == LAYER_OBJ && ((px[i] >> 16) & 255) > 200 && ((px[i] >> 8) & 255) > 140 && (px[i] & 255) < 110)
     for (int y = lists ? 40 : 0; y < (lists ? 176 : 192) && x1 < 0; y++)
         for (int x = 0; x < 256 && x1 < 0; x++) {
             int s0 = y * 256 + x;
-            if (in[s0] || !GOLD(s0)) continue;
+            if (mark[s0] || !GOLD(s0)) continue;
             int n = 0, h = 0, gold = 0, bx0 = x, by0 = y, bx1 = x, by1 = y;
-            in[s0] = 1; q[n++] = s0;
+            mark[s0] = 1; q[n++] = s0;
             while (h < n) {
                 int i = q[h++], cx = i % 256, cy = i / 256;
                 gold += GOLD(i);
                 if (cx < bx0) bx0 = cx; if (cx > bx1) bx1 = cx; if (cy < by0) by0 = cy; if (cy > by1) by1 = cy;
                 for (int j = -1; j <= 1; j++) for (int k = -1; k <= 1; k++) {
                     int nx = cx + k, ny = cy + j, ni = ny * 256 + nx;
-                    if (nx < 0 || ny < 0 || nx > 255 || ny > 191 || in[ni] || (ly[ni] & 7) != LAYER_OBJ) continue;
-                    in[ni] = 1; q[n++] = ni;
+                    if (nx < 0 || ny < 0 || nx > 255 || ny > 191 || mark[ni] || (ly[ni] & 7) != LAYER_OBJ) continue;
+                    mark[ni] = 1; q[n++] = ni;
                 }
             }
             if (bx1 - bx0 <= 26 && by1 - by0 <= 18 && gold >= 6) { x0 = bx0; y0 = by0; x1 = bx1; y1 = by1; }
-            else for (int t = 0; t < n; t++) in[q[t]] = 2;            /* (another sprite: passed) */
+            else for (int t = 0; t < n; t++) mark[q[t]] = 2;            /* (another sprite: passed) */
         }
 #undef GOLD
     if (x1 < 0) { g_cur[2] = 0; return; }
@@ -462,19 +462,19 @@ static void bestiary_cursor(const uint32_t* px, const uint8_t* ly, int lists) {
     int w = x1 - x0 + 1, h = y1 - y0 + 1;
     static uint8_t img[32 * S * 24 * S * 4];
     static uint32_t last; uint32_t hs = 2166136261u;
-    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) hs = (hs ^ (in[y * 256 + x] == 1 ? px[y * 256 + x] : 0)) * 16777619u;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) hs = (hs ^ (mark[y * 256 + x] == 1 ? px[y * 256 + x] : 0)) * 16777619u;
     if (hs != last || g_cur[2] != w || g_cur[3] != h) {
         last = hs;
         for (int y = 0; y < h * S; y++)
             for (int x = 0; x < w * S; x++) {
                 int sx = x0 + x / S, sy = y0 + y / S; uint8_t* o = &img[((size_t)y * w * S + x) * 4];
-                if (in[sy * 256 + sx] != 1) {                     /* round it, one pixel of the window's grey: no line through it */
-                    int near = 0;
-                    for (int j = -1; j <= 1 && !near; j++) for (int i = -1; i <= 1; i++) {
+                if (mark[sy * 256 + sx] != 1) {                     /* round it, one pixel of the window's grey: no line through it */
+                    int rim = 0;
+                    for (int j = -1; j <= 1 && !rim; j++) for (int i = -1; i <= 1; i++) {
                         int nx = sx + i, ny = sy + j;
-                        if (nx >= x0 && nx <= x1 && ny >= y0 && ny <= y1 && in[ny * 256 + nx] == 1) { near = 1; break; }
+                        if (nx >= x0 && nx <= x1 && ny >= y0 && ny <= y1 && mark[ny * 256 + nx] == 1) { rim = 1; break; }
                     }
-                    o[0] = o[1] = o[2] = near ? 24 : 0; o[3] = near ? 255 : 0; continue;
+                    o[0] = o[1] = o[2] = rim ? 24 : 0; o[3] = rim ? 255 : 0; continue;
                 }
                 uint32_t c = px[sy * 256 + sx]; o[0] = (c >> 16) & 255; o[1] = (c >> 8) & 255; o[2] = c & 255; o[3] = 255;
             }
