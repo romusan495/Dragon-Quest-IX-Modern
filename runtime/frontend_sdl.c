@@ -338,6 +338,75 @@ static void quest_pieces(GlPresent* v) {
  * the icons as they are, thin grey lines between the parts. Its parts, in its pixels: */
 enum { CS_X = 12, CS_Y = 5, CS_W = 238, CS_H = 176 };              /* the card */
 #define CARD_K 0.42f                                              /* its size where it pops up (card_page) */
+/* The monster list (Records > Defeated monsters): the monster's page on the
+ * top screen (its name's dark bar, its picture's light box, its description's
+ * brown panel), the list on the touch screen (its title's bar, the names'
+ * dark panel). In the modern style both are drawn again as two windows side
+ * by side (bestiary_pieces()) instead of the two screens. */
+static int g_bestiary;
+static int px_in(uint32_t c, int r0, int r1, int g0, int g1, int b0, int b1) {
+    int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    return r >= r0 && r <= r1 && g >= g0 && g <= g1 && b >= b0 && b <= b1;
+}
+/* the share (in 10ths) of a row's or a column's pixels in a colour range */
+static int px_share(const uint32_t* px, int x0, int y0, int dx, int dy, int n, int r0, int r1, int g0, int g1, int b0, int b1) {
+    int k = 0;
+    for (int i = 0; i < n; i++) k += px_in(px[(y0 + dy * i) * 256 + x0 + dx * i], r0, r1, g0, g1, b0, b1);
+    return k * 10 / n;
+}
+static int bestiary_pages(const uint32_t* top, const uint32_t* list) {
+    return px_share(top, 4, 13, 8, 0, 31, 80, 115, 50, 82, 25, 58) >= 7              /* the name's bar's last row, under its letters (97, 65, 40) */
+        && px_share(top, 12, 26, 0, 6, 15, 200, 245, 168, 215, 95, 175) >= 7          /* the picture's box, its left margin (235, 203, 154 to 211, 178, 105) */
+        && px_share(top, 112, 182, 4, 0, 34, 100, 140, 58, 92, 22, 58) >= 7           /* the description's panel, under its text (121, 73, 40) */
+        && px_share(list, 20, 51, 8, 0, 27, 62, 108, 46, 88, 20, 58) >= 7             /* the names' panel, over the first name (85, 69, 40) */
+        && px_share(list, 20, 30, 10, 0, 15, 120, 175, 65, 110, 0, 50) >= 6;          /* the title's bar, under its text (146, 89, 24) */
+}
+static float* bestiary_piece(GlPresent* v, int screen, float sx, float sy, float sw, float sh, int mode, float x, float y, float k) {
+    static float spare[10];
+    if (v->npiece >= GL_MAX_PIECES) return spare;
+    float* q = v->piece[v->npiece++];
+    q[4] = (float)screen; q[5] = sx; q[6] = sy; q[7] = sw; q[8] = sh; q[9] = (float)mode;
+    q[0] = x; q[1] = y; q[2] = fmaxf(sw * k, 0.75f); q[3] = fmaxf(sh * k, 0.75f);
+    return q;
+}
+/* Left, the list in one column: its title, the "all monsters" tab, the left
+ * column's eight names and under them the right column's (each with its
+ * cursor), the page and how it is sorted. Right, the monster's page as the
+ * game lays it out: its name's bar, its picture (the 3D monster in its box),
+ * its numbers and what it drops, where it lives, its description. In the
+ * screens' pixels: */
+enum { BL_ROW0 = 55, BL_ROWS_H = 113, BL_COL1_X = 0, BL_COL2_X = 119, BL_COL_W = 128 };
+static void set_rect(float* q, float x, float y, float w, float h) { q[0] = x; q[1] = y; q[2] = w; q[3] = h; }
+static void bestiary_pieces(GlPresent* v) {
+    const float M = 5, H = v->ch - 2 * M;
+    float k = (H - 10) / (15 + 13 + 2 * BL_ROWS_H + 13 + 25);     /* the list's pieces, stacked, fill its window's height */
+    float lw = BL_COL_W * k + 8, x = M + 4, y = M + 3;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, lw, H);                 /* its window */
+    bestiary_piece(v, 1, 12, 12, 124, 15, 3, x, y, k); y += 15 * k;                       /* the title (light on its bar) */
+    bestiary_piece(v, 1, 8, 34, 84, 13, 6, x, y, k); y += 13 * k + 2;                     /* "All monsters" (the list's family) */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y - 1, lw - 6, 0.75f); /* a line under them */
+    /* each column: its names (light letters), its cursor (gold, 10) */
+    bestiary_piece(v, 1, 15, BL_ROW0, 103, BL_ROWS_H, 3, x - 2 + 15 * k, y, k);   /* (up to the right column's cursor) */
+    bestiary_piece(v, 1, 0, BL_ROW0, 15, BL_ROWS_H, 10, x - 2, y, k); y += BL_ROWS_H * k;
+    bestiary_piece(v, 1, 134, BL_ROW0, 112, BL_ROWS_H, 3, x - 2 + 15 * k, y, k);
+    bestiary_piece(v, 1, 119, BL_ROW0, 15, BL_ROWS_H, 10, x - 2, y, k); y += BL_ROWS_H * k;
+    bestiary_piece(v, 1, 104, 168, 48, 13, 3, M + (lw - 48 * k) / 2, y, k);              /* the page (1/4) */
+    float sy = M + H - 25 * k - 2, sx = M + (lw - 72 * k) / 2;     /* SELECT Sort, by what */
+    bestiary_piece(v, 1, 178, 17, 27, 10, 0, sx + 2 * k, sy + 2 * k, k);                 /* (the SELECT sign as it is) */
+    bestiary_piece(v, 1, 205, 15, 30, 13, 9, sx + 29 * k, sy, k);                      /* (its word's light letters alone, 9) */
+    bestiary_piece(v, 1, 186, 28, 61, 12, 6, sx + 10 * k, sy + 13 * k, k);
+    /* the monster's page */
+    float rx = M + lw + M, rw = v->cw - rx - M, kp = fminf(rw / 256.0f, H / 192.0f);
+    float px = rx + (rw - 256 * kp) / 2, py = M + (H - 192 * kp) / 2;
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 7, 0, 0, 1), px, py, 256 * kp, 192 * kp);
+    bestiary_piece(v, 0, 2, 2, 252, 13, 3, px + 2 * kp, py + 2 * kp, kp);                 /* its name's bar: number, name, family */
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 4 * kp, py + 17 * kp, 248 * kp, 0.75f);
+    bestiary_piece(v, 0, 8, 22, 97, 99, 0, px + 8 * kp, py + 22 * kp, kp);                /* its picture, in its box */
+    bestiary_piece(v, 0, 110, 22, 136, 90, 6, px + 110 * kp, py + 22 * kp, kp);           /* its numbers, what it drops */
+    bestiary_piece(v, 0, 4, 123, 102, 50, 6, px + 4 * kp, py + 123 * kp, kp);             /* where it lives */
+    bestiary_piece(v, 0, 109, 121, 143, 62, 3, px + 109 * kp, py + 121 * kp, kp);         /* its description (light on its panel) */
+}
+
 static int g_card_item;                                            /* the card's page is an item's, not equipment's (card_page()) */
 static void card_pieces(GlPresent* v) {
     float k = g_pop_at[2], X = g_pop_at[0] - CS_X * k, Y = g_pop_at[1] - CS_Y * k;   /* (page pixels -> canvas) */
@@ -458,7 +527,16 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         int page = top_page_mode();
-        if (page == 2) {
+        if (page == 2 && g_bestiary && !second && v->npiece + 19 <= GL_MAX_PIECES) {
+            /* the monster list, modern: drawn again in two windows (bestiary_pieces()),
+             * the window's shape, no screen whole */
+            v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
+            v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
+            v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
+            v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
+            v->alpha = 1.0f; v->front = 0;
+            bestiary_pieces(v);
+        } else if (page == 2) {
             /* a menu with its 3D model on the top screen (the monster list):
              * both screens whole, side by side, the top one on the left, until it closes */
             v->cw = 512; v->ch = 192;
@@ -1982,6 +2060,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
     g_pop_win[2] = 0; g_quest_page = g_card_page = 0;
+    g_bestiary = g_winstyle == 2 && top_page_mode() == 2 && bestiary_pages(g_engine_out[a_on_top ? 0 : 1], g_engine_out[a_on_top ? 1 : 0]);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
     static int gone = 1 << 20;                                    /* ...frames since it was last seen */
     if (top_page_mode() != 1 || !mapmarks_top_page()) { sheet_far = 0; gone = 1 << 20; return; }   /* (a shop's list up before its card) */
