@@ -388,6 +388,69 @@ static int card_page(const uint32_t* px);
 enum { BM_NONE, BM_LIST, BM_MENU, BM_ALCH };
 static int g_bmode, g_bpage;                                     /* the records' monster list's screens, modern (bestiary_update()) */
 static uint64_t g_bmode_at;
+/* The book's picture (the records' monster list's or Alchimanach's top screen:
+ * a monster or a pot drawn darker on the parchment), faint grey, behind their
+ * windows (GL_LAYER_LOGO): the drawing found against the parchment's own
+ * shading round it (a blur), kept until another book's. */
+static int g_logo_on;
+static void bestiary_logo(const uint32_t* top) {
+    static uint32_t last_hash; static uint64_t at;
+    if (g_logo_on && g_frame - at < 30) return;
+    at = g_frame;
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < 256 * 192; i += 61) h = (h ^ (top[i] & 0xF0F0F0)) * 16777619u;
+    if (g_logo_on && h == last_hash) return;
+    last_hash = h;
+    enum { W = 256, H = 192, R = 12 };
+    static float L[W * H], t[W * H], b[W * H];
+    static uint8_t img[W * H * 4];
+    for (int i = 0; i < W * H; i++) { uint32_t c = top[i]; L[i] = 0.299f * ((c >> 16) & 255) + 0.587f * ((c >> 8) & 255) + 0.114f * (c & 255); }
+    for (int y = 0; y < H; y++)                                    /* a box blur, across then down */
+        for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int d = -R; d <= R; d++) { int xx = x + d; if (xx < 0 || xx >= W) continue; sum += L[y * W + xx]; n++; } t[y * W + x] = sum / n; }
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int d = -R; d <= R; d++) { int yy = y + d; if (yy < 0 || yy >= H) continue; sum += t[yy * W + x]; n++; } b[y * W + x] = sum / n; }
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            float m = (b[y * W + x] - L[y * W + x] - 5) / 14;      /* darker than the parchment round it */
+            m = m < 0 ? 0 : m > 1 ? 1 : m;
+            if (x < 14 || x > 241 || y < 10 || y > 181) m = 0;     /* (not its torn edges) */
+            float a = m * 0.13f * 255;
+            uint8_t* o = &img[(y * W + x) * 4];
+            o[0] = o[1] = o[2] = (uint8_t)(a * 150 / 255); o[3] = (uint8_t)a;   /* (premultiplied grey) */
+        }
+    gl_set_layer(GL_LAYER_LOGO, img, W, H);
+    g_logo_on = 1;
+}
+static void bestiary_logo_rect(GlPresent* v) {                    /* in the middle of the window, nearly its height */
+    if (!g_logo_on) return;
+    float h = v->ch * 0.92f, w = h * 256.0f / 192.0f, *q = v->layer[GL_LAYER_LOGO];
+    q[0] = (v->cw - w) / 2; q[1] = (v->ch - h) / 2; q[2] = w; q[3] = h;
+}
+
+/* The player's own key (or button) for one of the game's signs (SELECT, L,
+ * R) drawn as hints.c draws the "X Menu" one, into layer id at the canvas
+ * rect x, y (its height h; its width follows the key's name). */
+static void bestiary_key(GlPresent* v, int id, int action, float x, float y, float h) {
+    static char shown[GL_LAYERS][96];
+    static uint8_t img[GL_LAYERS][64 * 8 * 9 * 8 * 4];
+    int pad = g_hint_pad < 0 ? g_pad != NULL : g_hint_pad && g_pad;
+    int style = HINT_KEYBOARD, face = HINT_OTHER, b = pad ? g_ctl_pad[action] : CTL_NONE;
+    char lab[64] = "", key[96];
+    if (b != CTL_NONE) {
+        style = g_ctl_pad_style == CTL_STYLE_PLAYSTATION ? HINT_PLAYSTATION : g_ctl_pad_style == CTL_STYLE_XBOX ? HINT_XBOX :
+                g_ctl_pad_style == CTL_STYLE_NINTENDO ? HINT_NINTENDO : HINT_GENERIC;
+        face = b == SDL_CONTROLLER_BUTTON_B ? HINT_RIGHT : b == SDL_CONTROLLER_BUTTON_A ? HINT_BOTTOM : b == SDL_CONTROLLER_BUTTON_Y ? HINT_TOP :
+               b == SDL_CONTROLLER_BUTTON_X ? HINT_LEFT : HINT_OTHER;
+        if (face == HINT_OTHER) controls_pad_name(b, lab, sizeof lab);
+    } else controls_key_label(g_ctl_key[action][g_ctl_key[action][0] ? 0 : 1], lab, sizeof lab);
+    int cols = style == HINT_KEYBOARD ? (int)lroundf(hint_key_aspect(lab) * 9) : 9, w = cols * 8, hh = 9 * 8;
+    if (style != HINT_KEYBOARD) w = hh = 72;
+    snprintf(key, sizeof key, "%d %d %s", style, face, lab);
+    if (strcmp(key, shown[id])) { snprintf(shown[id], sizeof shown[id], "%s", key); memset(img[id], 0, (size_t)w * hh * 4); hint_draw(img[id], w, hh, style, face, lab); gl_set_layer(id, img[id], w, hh); }
+    float* q = v->layer[id];
+    q[0] = x; q[1] = y; q[3] = h; q[2] = h * (float)w / (float)hh;
+}
+
 extern uint32_t g_engine_out[2][256 * 192];
 static void bestiary_update(int a_on_top) {
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
@@ -395,9 +458,10 @@ static void bestiary_update(int a_on_top) {
     if (g_winstyle == 2 && top_page_mode() == 2) {
         if (monster_list(list)) { m = BM_LIST; g_bpage = monster_page(top); }
         else if (alchemy_list(list)) { m = BM_ALCH; g_bpage = card_page(top); }   /* (a recipe's item's card, g_card_item) */
-        else if (parchment_share(top) >= 9 || dark_screen(list)) m = BM_MENU;
-        if (m) g_bmode_at = g_frame;
-        else if (g_bmode && g_frame - g_bmode_at < 20) m = g_bmode;   /* (between two of them: as it was) */
+        else m = BM_MENU;                                         /* (the records' menus, their fades: never the two screens) */
+        if (m != BM_MENU) g_bmode_at = g_frame;
+        else if ((g_bmode == BM_LIST || g_bmode == BM_ALCH) && g_frame - g_bmode_at < 8) m = g_bmode;   /* (a list's page turned: as it was a moment) */
+        if (m == BM_MENU && parchment_share(top) >= 9 && !dark_screen(top)) bestiary_logo(top);   /* the book's picture, kept for its other screens */
     }
     g_bmode = m;
 }
@@ -435,9 +499,10 @@ static void bestiary_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 11, 170, 10, 12, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);   /* (inside the names' panel's edges) */
     bestiary_piece(v, 1, 235, 170, 10, 12, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k);
     float sy = M + H - 25 * k - 2, sx = M + (lw - 72 * k) / 2;     /* SELECT Sort, by what */
-    bestiary_piece(v, 1, 180, 18, 25, 9, 0, sx + 4 * k, sy + 3 * k, k);                  /* (the SELECT sign as it is, inside its plate's edge) */
+    bestiary_key(v, GL_LAYER_KEY0, CA_SELECT, sx + 2 * k, sy - 1 * k, 15 * k);          /* SELECT: the player's key, drawn like the X Menu sign's */
     bestiary_piece(v, 1, 206, 15, 30, 13, 12, sx + 30 * k, sy, k);                       /* (light letters alone, 12) */
     bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);                /* (inside the plate's edges) */
+    bestiary_logo_rect(v);
     if (!g_bpage) return;                                         /* (a family none of whose monsters were defeated: no page) */
     /* the monster: its page's parts where the game has them, in the rest of the window */
     float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kp = fminf(rw / 256.0f, (H - 4) / 192.0f);
@@ -472,11 +537,18 @@ static void alchemy_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 104, 155, 48, 10, 3, M + (lw - 48 * k) / 2, y, k);              /* the page and its arrows (above the panel's edge) */
     bestiary_piece(v, 1, 11, 155, 10, 10, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);
     bestiary_piece(v, 1, 235, 155, 10, 10, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k); y += 12 * k + 2;
-    bestiary_piece(v, 1, 8, 171, 106, 17, 0, M + (lw - 106 * k) / 2, y, k);              /* "L R Hide recipe", the game's button */
+    {   /* "L R Hide recipe": the player's L and R keys, then its light letters */
+        float bx = M + (lw - 100 * k) / 2;
+        bestiary_key(v, GL_LAYER_KEY1, CA_L, bx, y - 1 * k, 15 * k);
+        bestiary_key(v, GL_LAYER_KEY2, CA_R, v->layer[GL_LAYER_KEY1][0] + v->layer[GL_LAYER_KEY1][2] + 2 * k, y - 1 * k, 15 * k);
+        float tx = v->layer[GL_LAYER_KEY2][0] + v->layer[GL_LAYER_KEY2][2] + 3 * k;
+        bestiary_piece(v, 1, 38, 173, 74, 12, 12, tx, y + 1 * k, k);
+    }
     float sy = M + H - 25 * k - 2, sx = M + (lw - 72 * k) / 2;
-    bestiary_piece(v, 1, 180, 18, 25, 9, 0, sx + 4 * k, sy + 3 * k, k);
+    bestiary_key(v, GL_LAYER_KEY0, CA_SELECT, sx + 2 * k, sy - 1 * k, 15 * k);
     bestiary_piece(v, 1, 206, 15, 30, 13, 12, sx + 30 * k, sy, k);
     bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);
+    bestiary_logo_rect(v);
     if (!g_bpage) return;
     float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kp = fminf(rw / 240.0f, (H - 4) / 176.0f);
     float px = rx + (rw - 240 * kp) / 2 - 10 * kp, py = M + (H - 176 * kp) / 2 - 6 * kp;
@@ -503,6 +575,7 @@ static void bestiary_menu_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 8 * k, y + 37 * k, 240 * k, 0.75f);   /* under its title */
     bestiary_piece(v, 1, 0, 0, 256, 192, 12, x, y, k);
     bestiary_piece(v, 1, 0, 0, 256, 192, 10, x, y, k);
+    bestiary_logo_rect(v);
 }
 
 /* (g_card_item: the card's page is an item's, not equipment's (card_page())) */
@@ -625,7 +698,8 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         int page = top_page_mode();
-        if (page == 2 && g_bmode && !second && v->npiece + 30 <= GL_MAX_PIECES) {
+        int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
+        if (page == 2 && bmode && !second && v->npiece + 30 <= GL_MAX_PIECES) {
             /* the monster list, modern: drawn again in two windows (bestiary_pieces()),
              * the window's shape, no screen whole */
             v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
@@ -633,7 +707,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
             v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
             v->alpha = 1.0f; v->front = 0;
-            if (g_bmode == BM_LIST) bestiary_pieces(v); else if (g_bmode == BM_ALCH) alchemy_pieces(v); else bestiary_menu_pieces(v);
+            if (bmode == BM_LIST) bestiary_pieces(v); else if (bmode == BM_ALCH) alchemy_pieces(v); else bestiary_menu_pieces(v);
         } else if (page == 2) {
             /* a menu with its 3D model on the top screen (the monster list):
              * both screens whole, side by side, the top one on the left, until it closes */

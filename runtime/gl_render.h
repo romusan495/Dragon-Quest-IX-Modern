@@ -9,6 +9,8 @@
 enum { GL_LAYER_HINT,                                 /* a button's sign over the game's (hints.c) */
        GL_LAYER_STAMP,                                /* a quest sheet's Complete! stamp, drawn again (frontend_sdl.c quest_stamp) */
        GL_LAYER_HDBAR,                                /* how far textures-hd is, and its "done" message (frontend_sdl.c hdbar_update) */
+       GL_LAYER_LOGO,                                 /* the records' book's picture, faint, behind the monster list's or the Alchimanach's window (drawn over its first piece) */
+       GL_LAYER_KEY0, GL_LAYER_KEY1, GL_LAYER_KEY2,   /* the player's keys or buttons for the game's SELECT, L, R signs there */
        GL_LAYERS };
 
 int gl_render_init(int scale);                        /* 0 on failure (use the software path) */

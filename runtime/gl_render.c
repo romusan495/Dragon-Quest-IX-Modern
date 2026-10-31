@@ -475,12 +475,17 @@ static const char* FS_COPY =
     "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
     "float ink(vec2 uv, int light) { vec4 c = textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
-    "  vec3 r = c.rgb / max(c.a, 0.001); float sat = max(r.r, max(r.g, r.b)) - min(r.r, min(r.g, r.b));\n"
-    "  return (light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.34, 0.2, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
+    "  vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (relative: a parchment, however dark, is as coloured) */
+    "  return (light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
     "float letters(int light) {\n"   /* (9 points across the pixel at full size: a stroke thinner than the pixel drawn small is met by at least one; */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"   /* averaged, but never fainter than 3/4 of the strongest: thin strokes kept) */
     "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 uv = v_uv + dx * float(i) + dy * float(j); float a = ink(uv, light) * (light != 0 ? 1.0 : 1.0 - red(uv)); t += a; m = max(m, a); }\n"
+    "  return max(t / 9.0, m * 0.75); }\n"
+    "float yellows() {\n"   /* (bright yellow letters: not the parchment, duller and bluer) */
+    "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = textureLod(u_src, v_uv + dx * float(i) + dy * float(j), 0.0); vec3 r = c.rgb / max(c.a, 0.001);\n"
+    "    float a = smoothstep(0.8, 0.9, r.r) * smoothstep(0.6, 0.72, r.g) * smoothstep(0.35, 0.22, r.b) * c.a; t += a; m = max(m, a); }\n"
     "  return max(t / 9.0, m * 0.75); }\n"
     "void main() {\n"
     "  if (u_mode == 2 || u_mode == 7) {\n"
@@ -497,8 +502,8 @@ static const char* FS_COPY =
     "  float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  if (u_mode == 11) { vec4 c = texture(u_src, v_uv); o_color = vec4(c.rgb * c.a, c.a); return; }\n"
     "  if (u_mode == 10) {\n"
-    "    float g = goldness(c), near = 0.0;\n"
-    "    for (int i = 0; i < 8; i++) { vec2 o = vec2(i < 3 ? -1.0 : i < 5 ? 0.0 : 1.0, i == 0 || i == 3 || i == 5 ? -1.0 : i == 1 || i == 6 ? 0.0 : 1.0); near = max(near, goldness(texture(u_src, v_uv + o * u_ds * 1.2))); }\n"
+    "    float g = goldness(c) * smoothstep(0.78, 0.9, c.r / max(c.a, 0.001)), near = 0.0;\n"   /* (bright: the cursor's gold, not a parchment's dark edge) */
+    "    for (int i = 0; i < 8; i++) { vec2 o = vec2(i < 3 ? -1.0 : i < 5 ? 0.0 : 1.0, i == 0 || i == 3 || i == 5 ? -1.0 : i == 1 || i == 6 ? 0.0 : 1.0); vec4 n = texture(u_src, v_uv + o * u_ds * 1.2); near = max(near, goldness(n) * smoothstep(0.78, 0.9, n.r / max(n.a, 0.001))); }\n"
     "    float a = max(g, near * smoothstep(0.2, 0.1, L)) * c.a; o_color = vec4(c.rgb / max(c.a, 0.001) * a, a); return;\n"
     "  }\n"
     "  if (u_mode == 8 || u_mode == 9) {\n"   /* (the word cream, a star gold, the others dark brown; the plates brown, the edges darker) */
@@ -512,7 +517,8 @@ static const char* FS_COPY =
     "  }\n"
     "  if (u_mode == 1) { float t = smoothstep(0.52, 0.32, L) * c.a;\n"
     "    o_color = vec4(vec3(0.93) * t, t); return; }\n"
-    "  if (u_mode == 3 || u_mode == 6 || u_mode == 12) { float t = letters(u_mode == 6 ? 0 : u_mode == 12 ? 2 : 1); o_color = vec4(vec3(0.93) * t, t); return; }\n"
+    "  if (u_mode == 3 || u_mode == 6 || u_mode == 12) { float t = letters(u_mode == 6 ? 0 : u_mode == 12 ? 2 : 1), y = u_mode == 6 ? 0.0 : yellows();\n"   /* (the game's yellow letters, a chosen line: gold) */
+    "    float a = max(t, y); vec3 col = mix(vec3(0.93), vec3(0.98, 0.78, 0.16), y / max(a, 0.001)); o_color = vec4(col * a, a); return; }\n"
     "  o_color = c;\n"
     "}\n";
 
@@ -2180,7 +2186,7 @@ void gl_hold(void) {
 
 /* Widescreen battle HUD: parts of a screen (the party's panels, the commands)
  * drawn over the picture just shown, each where the layout puts it. */
-static void draw_pieces(const GlPresent* v, GLuint src) {
+static void draw_pieces(const GlPresent* v, GLuint src, int from, int to) {
     float W = (float)(256 + 2 * g_wside);
     p_glUseProgram(prog_copy);
     p_glActiveTexture(GL_TEXTURE0); p_glBindSampler(0, 0);
@@ -2201,7 +2207,7 @@ static void draw_pieces(const GlPresent* v, GLuint src) {
     int restyled = 0;
     for (int i = 0; i < v->npiece && i < GL_MAX_PIECES; i++) restyled |= v->piece[i][9] > 0.5f;
     if (g_cut || g_cut_top || g_split || restyled) { p_glEnable(GL_BLEND); p_glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD); p_glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA); }   /* premultiplied (gl_compose) */
-    for (int i = 0; i < v->npiece && i < GL_MAX_PIECES; i++) {
+    for (int i = from; i < to && i < v->npiece && i < GL_MAX_PIECES; i++) {
         const float* q = v->piece[i];
         if (q[2] <= 0 || q[3] <= 0) continue;
         int alone3d = q[4] > 3.5f;                                /* 4: the 3D alone (the monster list's monster, without its box) */
@@ -2357,11 +2363,18 @@ void gl_present(const GlPresent* v) {
     p_glUniform4f(p_glGetUniformLocation(P, "u_uv"), 0, 0, 1, 1);
     p_glBindVertexArray(vao_quad);
     p_glDrawArrays(GL_TRIANGLES, 0, 6);
-    if (v->npiece) draw_pieces(v, final_tex);
+    if (v->npiece) {
+        const float* lg = v->layer[GL_LAYER_LOGO];
+        if (overlay_on[2 + GL_LAYER_LOGO] && lg[2] > 0 && lg[3] > 0) {   /* the logo over the first piece (the window), under the rest */
+            draw_pieces(v, final_tex, 0, 1);
+            draw_overlay(v, lg, overlay_tex[2 + GL_LAYER_LOGO]);
+            draw_pieces(v, final_tex, 1, v->npiece);
+        } else draw_pieces(v, final_tex, 0, v->npiece);
+    }
     if (overlay_on[0] && v->overlay[2] > 0 && v->overlay[3] > 0) draw_overlay(v, v->overlay, overlay_tex[0]);
     if (overlay_on[1] && v->icons[2] > 0 && v->icons[3] > 0) draw_overlay(v, v->icons, overlay_tex[1]);
     for (int i = 0; i < GL_LAYERS; i++)                           /* the layers, in their order (under the in-game menu) */
-        if (overlay_on[2 + i] && v->layer[i][2] > 0 && v->layer[i][3] > 0) draw_overlay(v, v->layer[i], overlay_tex[2 + i]);
+        if (i != GL_LAYER_LOGO && overlay_on[2 + i] && v->layer[i][2] > 0 && v->layer[i][3] > 0) draw_overlay(v, v->layer[i], overlay_tex[2 + i]);
     if (menu_on && !v->again) draw_menu(v);
 }
 
