@@ -485,7 +485,7 @@ static const char* FS_COPY =
     "float yellows() {\n"   /* (bright yellow letters: not the parchment, duller and bluer) */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
     "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = textureLod(u_src, v_uv + dx * float(i) + dy * float(j), 0.0); vec3 r = c.rgb / max(c.a, 0.001);\n"
-    "    float a = smoothstep(0.8, 0.9, r.r) * smoothstep(0.6, 0.72, r.g) * smoothstep(0.35, 0.22, r.b) * c.a; t += a; m = max(m, a); }\n"
+    "    float a = max(smoothstep(0.8, 0.9, r.r) * smoothstep(0.6, 0.72, r.g) * smoothstep(0.35, 0.22, r.b), smoothstep(0.55, 0.68, r.g) * smoothstep(0.25, 0.4, r.g - max(r.r, r.b))) * c.a; t += a; m = max(m, a); }\n"   /* (and the green of a line the stylus holds: gold too) */
     "  return max(t / 9.0, m * 0.75); }\n"
     "void main() {\n"
     "  if (u_mode == 2 || u_mode == 7) {\n"

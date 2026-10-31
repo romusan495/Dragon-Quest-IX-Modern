@@ -404,22 +404,89 @@ static void bestiary_logo(const uint32_t* top) {
     enum { W = 256, H = 192, R = 12 };
     static float L[W * H], t[W * H], b[W * H];
     static uint8_t img[W * H * 4];
-    for (int i = 0; i < W * H; i++) { uint32_t c = top[i]; L[i] = 0.299f * ((c >> 16) & 255) + 0.587f * ((c >> 8) & 255) + 0.114f * (c & 255); }
+    for (int i = 0; i < W * H; i++) { uint32_t c = top[i]; t[i] = 0.299f * ((c >> 16) & 255) + 0.587f * ((c >> 8) & 255) + 0.114f * (c & 255); }
+    for (int y = 0; y < H; y++)                                    /* (the parchment's grain smoothed first: a clean drawing) */
+        for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) { int xx = x + i, yy = y + j; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; sum += t[yy * W + xx]; n++; } L[y * W + x] = sum / n; }
     for (int y = 0; y < H; y++)                                    /* a box blur, across then down */
         for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int d = -R; d <= R; d++) { int xx = x + d; if (xx < 0 || xx >= W) continue; sum += L[y * W + xx]; n++; } t[y * W + x] = sum / n; }
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int d = -R; d <= R; d++) { int yy = y + d; if (yy < 0 || yy >= H) continue; sum += t[yy * W + x]; n++; } b[y * W + x] = sum / n; }
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) {
-            float m = (b[y * W + x] - L[y * W + x] - 5) / 14;      /* darker than the parchment round it */
+            float m = (b[y * W + x] - L[y * W + x] - 7) / 10;      /* darker than the parchment round it */
             m = m < 0 ? 0 : m > 1 ? 1 : m;
-            if (x < 14 || x > 241 || y < 10 || y > 181) m = 0;     /* (not its torn edges) */
+            m = m * m * (3 - 2 * m);
+            float ex = x < 128 ? x : 255 - x, ey = y < 96 ? y : 191 - y, e = fminf(ex - 18, ey - 14) / 10;   /* (fading out before the torn, shaded edges) */
+            m *= e < 0 ? 0 : e > 1 ? 1 : e;
             float a = m * 0.13f * 255;
             uint8_t* o = &img[(y * W + x) * 4];
             o[0] = o[1] = o[2] = (uint8_t)(a * 150 / 255); o[3] = (uint8_t)a;   /* (premultiplied grey) */
         }
     gl_set_layer(GL_LAYER_LOGO, img, W, H);
     g_logo_on = 1;
+}
+/* The game's cursor on the touch screen (the gold pointer, a sprite): its
+ * pixels as they are, copied whole (its dark outline and all), drawn over the
+ * window where its place is shown (bestiary_cursor_at()). */
+static int g_cur[4];                                              /* its box on the touch screen (x, y, w, h; w 0: none) */
+static void bestiary_cursor(const uint32_t* px, const uint8_t* ly, int lists) {
+    /* the sprite's pixels joined to its gold (8 ways), a pointer's size: the
+     * cursor (not the list's other sprites, a button's orange) */
+    static uint8_t in[256 * 192]; static int q[256 * 192];
+    int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
+    memset(in, 0, sizeof in);
+#define GOLD(i) ((ly[i] & 7) == LAYER_OBJ && ((px[i] >> 16) & 255) > 200 && ((px[i] >> 8) & 255) > 140 && (px[i] & 255) < 110)
+    for (int y = lists ? 40 : 0; y < (lists ? 176 : 192) && x1 < 0; y++)
+        for (int x = 0; x < 256 && x1 < 0; x++) {
+            int s0 = y * 256 + x;
+            if (in[s0] || !GOLD(s0)) continue;
+            int n = 0, h = 0, gold = 0, bx0 = x, by0 = y, bx1 = x, by1 = y;
+            in[s0] = 1; q[n++] = s0;
+            while (h < n) {
+                int i = q[h++], cx = i % 256, cy = i / 256;
+                gold += GOLD(i);
+                if (cx < bx0) bx0 = cx; if (cx > bx1) bx1 = cx; if (cy < by0) by0 = cy; if (cy > by1) by1 = cy;
+                for (int j = -1; j <= 1; j++) for (int k = -1; k <= 1; k++) {
+                    int nx = cx + k, ny = cy + j, ni = ny * 256 + nx;
+                    if (nx < 0 || ny < 0 || nx > 255 || ny > 191 || in[ni] || (ly[ni] & 7) != LAYER_OBJ) continue;
+                    in[ni] = 1; q[n++] = ni;
+                }
+            }
+            if (bx1 - bx0 <= 26 && by1 - by0 <= 18 && gold >= 6) { x0 = bx0; y0 = by0; x1 = bx1; y1 = by1; }
+            else for (int t = 0; t < n; t++) in[q[t]] = 2;            /* (another sprite: passed) */
+        }
+#undef GOLD
+    if (x1 < 0) { g_cur[2] = 0; return; }
+    x0 = x0 > 1 ? x0 - 1 : 0; y0 = y0 > 1 ? y0 - 1 : 0; x1 = x1 < 254 ? x1 + 1 : 255; y1 = y1 < 190 ? y1 + 1 : 191;
+    enum { S = 8 };
+    int w = x1 - x0 + 1, h = y1 - y0 + 1;
+    static uint8_t img[32 * S * 24 * S * 4];
+    static uint32_t last; uint32_t hs = 2166136261u;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) hs = (hs ^ (in[y * 256 + x] == 1 ? px[y * 256 + x] : 0)) * 16777619u;
+    if (hs != last || g_cur[2] != w || g_cur[3] != h) {
+        last = hs;
+        for (int y = 0; y < h * S; y++)
+            for (int x = 0; x < w * S; x++) {
+                int sx = x0 + x / S, sy = y0 + y / S; uint8_t* o = &img[((size_t)y * w * S + x) * 4];
+                if (in[sy * 256 + sx] != 1) {                     /* round it, one pixel of the window's grey: no line through it */
+                    int near = 0;
+                    for (int j = -1; j <= 1 && !near; j++) for (int i = -1; i <= 1; i++) {
+                        int nx = sx + i, ny = sy + j;
+                        if (nx >= x0 && nx <= x1 && ny >= y0 && ny <= y1 && in[ny * 256 + nx] == 1) { near = 1; break; }
+                    }
+                    o[0] = o[1] = o[2] = near ? 24 : 0; o[3] = near ? 255 : 0; continue;
+                }
+                uint32_t c = px[sy * 256 + sx]; o[0] = (c >> 16) & 255; o[1] = (c >> 8) & 255; o[2] = c & 255; o[3] = 255;
+            }
+        gl_set_layer(GL_LAYER_CURSOR, img, w * S, h * S);
+    }
+    g_cur[0] = x0; g_cur[1] = y0; g_cur[2] = w; g_cur[3] = h;
+}
+/* the cursor where its place (x0, y0 on the touch screen) is drawn at k from canvas x, y */
+static void bestiary_cursor_at(GlPresent* v, float sx0, float sy0, float x, float y, float k) {
+    if (!g_cur[2]) return;
+    float* q = v->layer[GL_LAYER_CURSOR];
+    q[0] = x + ((float)g_cur[0] - sx0) * k; q[1] = y + ((float)g_cur[1] - sy0) * k; q[2] = (float)g_cur[2] * k; q[3] = (float)g_cur[3] * k;
 }
 static void bestiary_logo_rect(GlPresent* v) {                    /* in the middle of the window, nearly its height */
     if (!g_logo_on) return;
@@ -462,6 +529,7 @@ static void bestiary_update(int a_on_top) {
         if (m != BM_MENU) g_bmode_at = g_frame;
         else if ((g_bmode == BM_LIST || g_bmode == BM_ALCH) && g_frame - g_bmode_at < 8) m = g_bmode;   /* (a list's page turned: as it was a moment) */
         if (m == BM_MENU && parchment_share(top) >= 9 && !dark_screen(top)) bestiary_logo(top);   /* the book's picture, kept for its other screens */
+        bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], m != BM_MENU);
     }
     g_bmode = m;
 }
@@ -487,20 +555,22 @@ static void bestiary_pieces(GlPresent* v) {
     float lw = BL_COL_W * k + 8, x = M + 4, y = M + 3;
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);      /* one window, the whole picture */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);   /* a line between the list and the monster */
-    bestiary_piece(v, 1, 9, 12, 127, 15, 3, x - 3 * k, y, k); y += 15 * k;               /* the title (light on its bar) */
-    bestiary_piece(v, 1, 8, 34, 84, 13, 6, x, y, k); y += 13 * k + 2;                     /* "All monsters" (the list's family) */
+    bestiary_piece(v, 1, 9, 12, 127, 15, 12, x - 3 * k, y, k); y += 15 * k;              /* the title (light on its bar; 12: not the bar's pattern) */
+    bestiary_piece(v, 1, 8, 34, 84, 11, 6, x, y, k); y += 13 * k + 2;   /* "All monsters" (the list's family; not the tab's line under it) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y - 1, lw - 6, 0.75f); /* a line under them */
-    /* each column: its names (light letters), its cursor (gold, 10) */
+    /* each column: its names (light letters), the game's cursor by its row */
     bestiary_piece(v, 1, 15, BL_ROW0, 103, BL_ROWS_H, 3, x - 2 + 15 * k, y, k);   /* (up to the right column's cursor) */
-    bestiary_piece(v, 1, 0, BL_ROW0, 15, BL_ROWS_H, 10, x - 2, y, k); y += BL_ROWS_H * k;
+    if (g_cur[2] && g_cur[0] < BL_COL2_X - 20) bestiary_cursor_at(v, 0, BL_ROW0, x - 2, y, k);   /* the game's cursor, where its row is */
+    y += BL_ROWS_H * k;
     bestiary_piece(v, 1, 134, BL_ROW0, 112, BL_ROWS_H, 3, x - 2 + 15 * k, y, k);
-    bestiary_piece(v, 1, 119, BL_ROW0, 15, BL_ROWS_H, 10, x - 2, y, k); y += BL_ROWS_H * k;
+    if (g_cur[2] && g_cur[0] >= BL_COL2_X - 20) bestiary_cursor_at(v, BL_COL2_X, BL_ROW0, x - 2, y, k);
+    y += BL_ROWS_H * k;
     bestiary_piece(v, 1, 104, 168, 48, 13, 3, M + (lw - 48 * k) / 2, y, k);              /* the page (1/4), its arrows on each side (a click turns it) */
     bestiary_piece(v, 1, 11, 170, 10, 12, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);   /* (inside the names' panel's edges) */
     bestiary_piece(v, 1, 235, 170, 10, 12, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k);
     float sy = M + H - 25 * k - 2, sx = M + (lw - 72 * k) / 2;     /* SELECT Sort, by what */
     bestiary_key(v, GL_LAYER_KEY0, CA_SELECT, sx + 2 * k, sy - 1 * k, 15 * k);          /* SELECT: the player's key, drawn like the X Menu sign's */
-    bestiary_piece(v, 1, 206, 15, 30, 13, 12, sx + 30 * k, sy, k);                       /* (light letters alone, 12) */
+    bestiary_piece(v, 1, 206, 19, 32, 8, 12, sx + 30 * k, sy + 4 * k, k);   /* (light letters alone, 12; not the plate's edge under them) */
     bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);                /* (inside the plate's edges) */
     bestiary_logo_rect(v);
     if (!g_bpage) return;                                         /* (a family none of whose monsters were defeated: no page) */
@@ -528,12 +598,14 @@ static void alchemy_pieces(GlPresent* v) {
     float k = (H - 10) / (12 + 4 + 2 * AL_ROWS_H + 12 + 17 + 22), lw = 122 * k + 8, x = M + 4, y = M + 3;
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);
-    bestiary_piece(v, 1, 9, 11, 72, 12, 3, x - 3 * k, y, k); y += 12 * k + 2;            /* "Alchimanach" */
+    bestiary_piece(v, 1, 9, 11, 72, 12, 12, x - 3 * k, y, k); y += 12 * k + 2;           /* "Alchimanach" (12: not its bar's pattern) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
     bestiary_piece(v, 1, 20, AL_ROW0, 104, AL_ROWS_H, 3, x - 2 + 17 * k, y, k);
-    bestiary_piece(v, 1, 3, AL_ROW0, 17, AL_ROWS_H, 10, x - 2, y, k); y += AL_ROWS_H * k;
+    if (g_cur[2] && g_cur[0] < 100) bestiary_cursor_at(v, 3, AL_ROW0, x - 2, y, k);
+    y += AL_ROWS_H * k;
     bestiary_piece(v, 1, 140, AL_ROW0, 106, AL_ROWS_H, 3, x - 2 + 17 * k, y, k);
-    bestiary_piece(v, 1, 123, AL_ROW0, 17, AL_ROWS_H, 10, x - 2, y, k); y += AL_ROWS_H * k;
+    if (g_cur[2] && g_cur[0] >= 100) bestiary_cursor_at(v, 123, AL_ROW0, x - 2, y, k);
+    y += AL_ROWS_H * k;
     bestiary_piece(v, 1, 104, 155, 48, 10, 3, M + (lw - 48 * k) / 2, y, k);              /* the page and its arrows (above the panel's edge) */
     bestiary_piece(v, 1, 11, 155, 10, 10, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);
     bestiary_piece(v, 1, 235, 155, 10, 10, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k); y += 12 * k + 2;
@@ -542,11 +614,11 @@ static void alchemy_pieces(GlPresent* v) {
         bestiary_key(v, GL_LAYER_KEY1, CA_L, bx, y - 1 * k, 15 * k);
         bestiary_key(v, GL_LAYER_KEY2, CA_R, v->layer[GL_LAYER_KEY1][0] + v->layer[GL_LAYER_KEY1][2] + 2 * k, y - 1 * k, 15 * k);
         float tx = v->layer[GL_LAYER_KEY2][0] + v->layer[GL_LAYER_KEY2][2] + 3 * k;
-        bestiary_piece(v, 1, 38, 173, 74, 12, 12, tx, y + 1 * k, k);
+        bestiary_piece(v, 1, 36, 174, 72, 11, 12, tx, y + 2 * k, k);   /* (its first letter whole, not its plate's edges) */
     }
     float sy = M + H - 25 * k - 2, sx = M + (lw - 72 * k) / 2;
     bestiary_key(v, GL_LAYER_KEY0, CA_SELECT, sx + 2 * k, sy - 1 * k, 15 * k);
-    bestiary_piece(v, 1, 206, 15, 30, 13, 12, sx + 30 * k, sy, k);
+    bestiary_piece(v, 1, 206, 19, 32, 8, 12, sx + 30 * k, sy + 4 * k, k);   /* (not its plate's edge under it) */
     bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);
     bestiary_logo_rect(v);
     if (!g_bpage) return;
@@ -574,7 +646,7 @@ static void bestiary_menu_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 8 * k, y + 37 * k, 240 * k, 0.75f);   /* under its title */
     bestiary_piece(v, 1, 0, 0, 256, 192, 12, x, y, k);
-    bestiary_piece(v, 1, 0, 0, 256, 192, 10, x, y, k);
+    bestiary_cursor_at(v, 0, 0, x, y, k);                         /* the game's cursor, as it is */
     bestiary_logo_rect(v);
 }
 

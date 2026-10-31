@@ -11,6 +11,7 @@ enum { GL_LAYER_HINT,                                 /* a button's sign over th
        GL_LAYER_HDBAR,                                /* how far textures-hd is, and its "done" message (frontend_sdl.c hdbar_update) */
        GL_LAYER_LOGO,                                 /* the records' book's picture, faint, behind the monster list's or the Alchimanach's window (drawn over its first piece) */
        GL_LAYER_KEY0, GL_LAYER_KEY1, GL_LAYER_KEY2,   /* the player's keys or buttons for the game's SELECT, L, R signs there */
+       GL_LAYER_CURSOR,                               /* ...and the game's cursor there, as the game draws it (its sprite's pixels) */
        GL_LAYERS };
 
 int gl_render_init(int scale);                        /* 0 on failure (use the software path) */
