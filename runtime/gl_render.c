@@ -471,21 +471,29 @@ static const char* FS_COPY =
      * word's cream letters alone, made light; 10 a gold cursor alone (its
      * dark edge with it), nothing else; 11 the picture premultiplied (the 3D
      * alone: see-through where it has nothing); 12 as 3, but only grey or white
-     * letters (not a light parchment) */
+     * letters (not a light parchment); 13 as 3, and dim grey letters (a list's
+     * ??? not known yet) kept grey; 14 as 12, and those grey letters; 15 as 6,
+     * the dark letters made grey (an ingredient short) */
     "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
     "float ink(vec2 uv, int light) { vec4 c = textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (relative: a parchment, however dark, is as coloured) */
-    "  return (light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
+    "  return (light == 3 ? smoothstep(0.355, 0.325, L) : light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
     "float letters(int light) {\n"   /* (9 points across the pixel at full size: a stroke thinner than the pixel drawn small is met by at least one; */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"   /* averaged, but never fainter than 3/4 of the strongest: thin strokes kept) */
-    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 uv = v_uv + dx * float(i) + dy * float(j); float a = ink(uv, light) * (light != 0 ? 1.0 : 1.0 - red(uv)); t += a; m = max(m, a); }\n"
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 uv = v_uv + dx * float(i) + dy * float(j); float a = ink(uv, light) * (light != 0 && light != 3 ? 1.0 : 1.0 - red(uv)); t += a; m = max(m, a); }\n"
     "  return max(t / 9.0, m * 0.75); }\n"
     "float yellows() {\n"   /* (bright yellow letters: not the parchment, duller and bluer) */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
     "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = textureLod(u_src, v_uv + dx * float(i) + dy * float(j), 0.0); vec3 r = c.rgb / max(c.a, 0.001);\n"
     "    float a = max(smoothstep(0.8, 0.9, r.r) * smoothstep(0.6, 0.72, r.g) * smoothstep(0.35, 0.22, r.b), smoothstep(0.55, 0.68, r.g) * smoothstep(0.25, 0.4, r.g - max(r.r, r.b))) * c.a; t += a; m = max(m, a); }\n"   /* (and the green of a line the stylus holds: gold too) */
+    "  return max(t / 9.0, m * 0.75); }\n"
+    "float greys() {\n"   /* (dim grey letters (121, 121, 121: a list's ??? not known yet): shown grey, their dots and all) */
+    "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = textureLod(u_src, v_uv + dx * float(i) + dy * float(j), 0.0); vec3 r = c.rgb / max(c.a, 0.001);\n"
+    "    float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02), L = dot(r, vec3(0.299, 0.587, 0.114));\n"
+    "    float a = smoothstep(0.40, 0.44, L) * smoothstep(0.58, 0.54, L) * smoothstep(0.12, 0.06, sat) * c.a; t += a; m = max(m, a); }\n"
     "  return max(t / 9.0, m * 0.75); }\n"
     "void main() {\n"
     "  if (u_mode == 2 || u_mode == 7) {\n"
@@ -517,8 +525,8 @@ static const char* FS_COPY =
     "  }\n"
     "  if (u_mode == 1) { float t = smoothstep(0.52, 0.32, L) * c.a;\n"
     "    o_color = vec4(vec3(0.93) * t, t); return; }\n"
-    "  if (u_mode == 3 || u_mode == 6 || u_mode == 12) { float t = letters(u_mode == 6 ? 0 : u_mode == 12 ? 2 : 1), y = u_mode == 6 ? 0.0 : yellows();\n"   /* (the game's yellow letters, a chosen line: gold) */
-    "    float a = max(t, y); vec3 col = mix(vec3(0.93), vec3(0.98, 0.78, 0.16), y / max(a, 0.001)); o_color = vec4(col * a, a); return; }\n"
+    "  if (u_mode == 3 || u_mode == 6 || (u_mode >= 12 && u_mode <= 15)) { float t = letters(u_mode == 6 ? 0 : u_mode == 15 ? 3 : u_mode == 12 || u_mode == 14 ? 2 : 1), y = u_mode == 6 || u_mode == 15 ? 0.0 : yellows();\n"   /* (the game's yellow letters, a chosen line: gold) */
+    "    float g = u_mode == 13 || u_mode == 14 ? greys() : 0.0, a = max(max(t, y), g); vec3 col = mix(g > t ? vec3(0.6) : u_mode == 15 ? vec3(0.7) : vec3(0.93), vec3(0.98, 0.78, 0.16), y / max(a, 0.001)); o_color = vec4(col * a, a); return; }\n"
     "  o_color = c;\n"
     "}\n";
 

@@ -12,6 +12,7 @@ enum { GL_LAYER_HINT,                                 /* a button's sign over th
        GL_LAYER_LOGO,                                 /* the records' book's picture, faint, behind the monster list's or the Alchimanach's window (drawn over its first piece) */
        GL_LAYER_KEY0, GL_LAYER_KEY1, GL_LAYER_KEY2,   /* the player's keys or buttons for the game's SELECT, L, R signs there */
        GL_LAYER_CURSOR,                               /* ...and the game's cursor there, as the game draws it (its sprite's pixels) */
+       GL_LAYER_ICON,                                 /* ...and an item's picture alone (its sprite's pixels, off its box) */
        GL_LAYERS };
 
 int gl_render_init(int scale);                        /* 0 on failure (use the software path) */
@@ -32,7 +33,7 @@ const Renderer3D* gl_renderer3d(void);
 void gl_compose(int a_on_top, int lcd_on);           /* at VBlank: 2D + 3D -> both screens */
 /* How to show the screens: canvas (DS pixels) placed in the window at
  * (ox, oy) with sc window pixels per DS pixel. */
-#define GL_MAX_PIECES 32                             /* (a GlPresent's pieces at most) */
+#define GL_MAX_PIECES 48                             /* (a GlPresent's pieces at most) */
 typedef struct {
     int win_w, win_h;
     float ox, oy, sc, cw, ch;
