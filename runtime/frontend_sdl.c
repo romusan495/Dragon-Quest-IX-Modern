@@ -348,7 +348,7 @@ static void card_pieces(GlPresent* v) {
         { 37, 11, 102, 11, 3 },                                   /* the name (light on its bar, inside its edge: not its light top row) */
         { 175, 9, 25, 15, 9 }, { 200, 9, 48, 15, 8 },             /* the rarity: its word, its stars (off their brown plates) */
         { 24, 48, 32, 32, 0 },                                    /* the icon, big */
-        { 60, 30, 114, 66, 6 },                                   /* the description */
+        { 60, 30, 112, 66, 6 },                                   /* the description */
         { 19, 105, 155, 70, 3 },                                  /* the stats (light on their panel) */
         { 184, 33, 62, 15, 6 }, { 186, 50, 54, 124, 6 } };        /* "Equips:" and the jobs' signs (those who can't: faint) */
     /* an item that isn't worn (a herb, a chimaera wing): the prices on the right
@@ -359,7 +359,7 @@ static void card_pieces(GlPresent* v) {
         { 16, 27, 228, 1, 4 }, { 16, 101, 228, 1, 4 }, { 179, 30, 1, 69, 4 },   /* the lines: under the name, over where it is found, before the prices */
         { 16, 8, 17, 17, 0 }, { 37, 11, 102, 11, 3 }, { 175, 9, 25, 15, 9 }, { 200, 9, 48, 15, 8 },
         { 24, 48, 32, 32, 0 },
-        { 60, 30, 114, 66, 6 },                                   /* the description */
+        { 60, 30, 112, 66, 6 },                                   /* the description */
         { 181, 31, 66, 58, 6 },                                   /* the prices: their words and the sums */
         { 19, 105, 218, 70, 3 } };                                /* where it is found, who drops it (light on their panel) */
     const float (*part)[5] = g_card_item ? item : equip;
