@@ -403,7 +403,7 @@ static void bestiary_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 4 * kp, py + 17 * kp, 248 * kp, 0.75f);
     bestiary_piece(v, 0, 8, 22, 97, 99, 0, px + 8 * kp, py + 22 * kp, kp);                /* its picture, in its box */
     bestiary_piece(v, 0, 110, 22, 136, 90, 6, px + 110 * kp, py + 22 * kp, kp);           /* its numbers, what it drops */
-    bestiary_piece(v, 0, 4, 123, 102, 50, 6, px + 4 * kp, py + 123 * kp, kp);             /* where it lives */
+    bestiary_piece(v, 0, 6, 123, 100, 44, 6, px + 6 * kp, py + 123 * kp, kp);             /* where it lives */
     bestiary_piece(v, 0, 109, 121, 143, 62, 3, px + 109 * kp, py + 121 * kp, kp);         /* its description (light on its panel) */
 }
 
