@@ -27,6 +27,7 @@ uint16_t g_keys_down;          /* bit set = pressed, KEYINPUT order (bits 0-9) +
 int g_touch_down, g_touch_x, g_touch_y;
 /* set by the frontend (keyboard / mouse / gamepad) */
 uint16_t g_fe_keys;
+void (*g_list_keys)(uint16_t* keys);   /* the frontend's lists shown in one column: Up, Down across both (frontend_sdl.c) */
 int g_fe_touch, g_fe_tx, g_fe_ty;
 int g_fe_stick_x, g_fe_stick_y;
 int g_fe_rstick_x;
@@ -244,6 +245,7 @@ void input_update(void) {
     g_keys_down |= bootskip_keys();                     /* Modern > Start: START skips the opening movie */
     farm_input(&g_keys_down, &g_touch_down);            /* Modern > Farm gold: the farm presses the buttons */
     if (!session_requested()) battle_victory_input(&g_keys_down);   /* Modern > Battle speed: the victory's messages */
+    if (g_list_keys && !session_requested()) g_list_keys(&g_keys_down);
     if (session_running()) {                            /* lockstep: what was pressed `delay` frames ago, on every PC */
         uint32_t v = session_frame_input(g_frame, session_pack(g_keys_down, g_touch_down, g_touch_x, g_touch_y));
         session_unpack(v, &g_keys_down, &g_touch_down, &g_touch_x, &g_touch_y);

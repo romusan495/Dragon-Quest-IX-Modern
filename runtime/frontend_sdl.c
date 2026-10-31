@@ -428,6 +428,7 @@ static void bestiary_logo(const uint32_t* top) {
 /* The game's cursor on the touch screen (the gold pointer, a sprite): its
  * pixels as they are, copied whole (its dark outline and all), drawn over the
  * window where its place is shown (bestiary_cursor_at()). */
+static int g_list_swap;                                           /* the cursor on its way to the other column: drawn there already (list_keys()) */
 static int g_cur[4];                                              /* its box on the touch screen (x, y, w, h; w 0: none) */
 static void bestiary_cursor(const uint32_t* px, const uint8_t* ly, int lists) {
     /* the sprite's pixels joined to its gold (8 ways), a pointer's size: the
@@ -519,7 +520,9 @@ static void bestiary_key(GlPresent* v, int id, int action, float x, float y, flo
 }
 
 extern uint32_t g_engine_out[2][256 * 192];
+static void list_keys(uint16_t* keys);
 static void bestiary_update(int a_on_top) {
+    g_list_keys = list_keys;
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
     int m = BM_NONE;
     if (g_winstyle == 2 && top_page_mode() == 2) {
@@ -560,10 +563,11 @@ static void bestiary_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y - 1, lw - 6, 0.75f); /* a line under them */
     /* each column: its names (light letters), the game's cursor by its row */
     bestiary_piece(v, 1, 15, BL_ROW0, 103, BL_ROWS_H, 3, x - 2 + 15 * k, y, k);   /* (up to the right column's cursor) */
-    if (g_cur[2] && g_cur[0] < BL_COL2_X - 20) bestiary_cursor_at(v, 0, BL_ROW0, x - 2, y, k);   /* the game's cursor, where its row is */
+    int cr = g_cur[0] >= BL_COL2_X - 20, cd = cr ^ g_list_swap;   /* the game's cursor's column, the one it is drawn by */
+    if (g_cur[2] && !cd) bestiary_cursor_at(v, cr ? BL_COL2_X : 0, BL_ROW0, x - 2, y, k);   /* the game's cursor, where its row is */
     y += BL_ROWS_H * k;
     bestiary_piece(v, 1, 134, BL_ROW0, 112, BL_ROWS_H, 3, x - 2 + 15 * k, y, k);
-    if (g_cur[2] && g_cur[0] >= BL_COL2_X - 20) bestiary_cursor_at(v, BL_COL2_X, BL_ROW0, x - 2, y, k);
+    if (g_cur[2] && cd) bestiary_cursor_at(v, cr ? BL_COL2_X : 0, BL_ROW0, x - 2, y, k);
     y += BL_ROWS_H * k;
     bestiary_piece(v, 1, 104, 168, 48, 13, 3, M + (lw - 48 * k) / 2, y, k);              /* the page (1/4), its arrows on each side (a click turns it) */
     bestiary_piece(v, 1, 11, 170, 10, 12, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);   /* (inside the names' panel's edges) */
@@ -593,6 +597,33 @@ static void bestiary_pieces(GlPresent* v) {
  * ingredients' light ones). In the screens' pixels: */
 enum { AL_ROW0 = 48, AL_ROWS_H = 104 };
 static int g_card_item;
+/* The lists shown in one column (the monsters', the Alchimanach's): the game
+ * keeps Up and Down in one of its two columns, round and round (Down on its
+ * last row: its first). Here Down on the left column's last row goes on to
+ * the right one's first, and Down on the right one's last back to the left
+ * one's first (Up the other way): after the game's own Down (or Up), Right
+ * (or Left), which keeps the row. Never Left on the left column nor Right on
+ * the right one: those turn the page. */
+static void list_keys(uint16_t* keys) {
+    enum { K_RIGHT = 1 << 4, K_LEFT = 1 << 5, K_UP = 1 << 6, K_DOWN = 1 << 7 };
+    static uint16_t was; static int side, wait, hold;
+    uint16_t now = *keys, pressed = now & ~was;
+    was = now;
+    static int col0, after;                                       /* (the column it left; frames since the press) */
+    int col = g_cur[0] >= (g_bmode == BM_LIST ? BL_COL2_X - 20 : 100);
+    if (after && (col != col0 || ++after > 40 || !g_cur[2])) after = 0;   /* (moved: drawn where it is) */
+    g_list_swap = side != 0 || after != 0;
+    if (hold) { hold--; *keys |= (uint16_t)side; if (!hold) { side = 0; after = 1; } return; }
+    if (side) { if (now & (K_UP | K_DOWN)) return; if (--wait <= 0) hold = 4; return; }   /* (once Up or Down is let go) */
+    if ((g_bmode != BM_LIST && g_bmode != BM_ALCH) || !g_cur[2] || !(pressed & (K_UP | K_DOWN)) || (now & (K_LEFT | K_RIGHT))) return;
+    float row0 = g_bmode == BM_LIST ? BL_ROW0 : AL_ROW0, rh = (g_bmode == BM_LIST ? BL_ROWS_H : AL_ROWS_H) / 8.0f;
+    int right = g_cur[0] >= (g_bmode == BM_LIST ? BL_COL2_X - 20 : 100);
+    int row = (int)floorf((g_cur[1] + g_cur[3] / 2.0f - row0) / rh);
+    col0 = right;
+    if ((pressed & K_DOWN) && row >= 7) side = right ? K_LEFT : K_RIGHT;
+    else if ((pressed & K_UP) && row <= 0) side = right ? K_LEFT : K_RIGHT;
+    wait = 20;                                                    /* (the game takes no other button for a moment after a move) */
+}
 static void alchemy_pieces(GlPresent* v) {
     const float M = 5, H = v->ch - 2 * M;
     float k = (H - 10) / (12 + 4 + 2 * AL_ROWS_H + 12 + 17 + 22), lw = 122 * k + 8, x = M + 4, y = M + 3;
@@ -601,10 +632,11 @@ static void alchemy_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 9, 11, 72, 12, 12, x - 3 * k, y, k); y += 12 * k + 2;           /* "Alchimanach" (12: not its bar's pattern) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
     bestiary_piece(v, 1, 20, AL_ROW0, 104, AL_ROWS_H, 3, x - 2 + 17 * k, y, k);
-    if (g_cur[2] && g_cur[0] < 100) bestiary_cursor_at(v, 3, AL_ROW0, x - 2, y, k);
+    int cr = g_cur[0] >= 100, cd = cr ^ g_list_swap;
+    if (g_cur[2] && !cd) bestiary_cursor_at(v, cr ? 123 : 3, AL_ROW0, x - 2, y, k);
     y += AL_ROWS_H * k;
     bestiary_piece(v, 1, 140, AL_ROW0, 106, AL_ROWS_H, 3, x - 2 + 17 * k, y, k);
-    if (g_cur[2] && g_cur[0] >= 100) bestiary_cursor_at(v, 123, AL_ROW0, x - 2, y, k);
+    if (g_cur[2] && cd) bestiary_cursor_at(v, cr ? 123 : 3, AL_ROW0, x - 2, y, k);
     y += AL_ROWS_H * k;
     bestiary_piece(v, 1, 104, 155, 48, 10, 3, M + (lw - 48 * k) / 2, y, k);              /* the page and its arrows (above the panel's edge) */
     bestiary_piece(v, 1, 11, 155, 10, 10, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);
