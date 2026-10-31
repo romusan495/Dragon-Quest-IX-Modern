@@ -338,9 +338,10 @@ static void quest_pieces(GlPresent* v) {
  * the icons as they are, thin grey lines between the parts. Its parts, in its pixels: */
 enum { CS_X = 12, CS_Y = 5, CS_W = 238, CS_H = 176 };              /* the card */
 #define CARD_K 0.42f                                              /* its size where it pops up (card_page) */
+static int g_card_item;                                            /* the card's page is an item's, not equipment's (card_page()) */
 static void card_pieces(GlPresent* v) {
     float k = g_pop_at[2], X = g_pop_at[0] - CS_X * k, Y = g_pop_at[1] - CS_Y * k;   /* (page pixels -> canvas) */
-    static const float part[][5] = {                              /* x, y, w, h on the page; restyled (FS_COPY's u_mode) */
+    static const float equip[][5] = {                             /* x, y, w, h on the page; restyled (FS_COPY's u_mode) */
         { CS_X, CS_Y, CS_W, CS_H, 7 },                            /* the window (solid: it may lie over the field's menus) */
         { 16, 27, 228, 1, 4 }, { 16, 101, 165, 1, 4 }, { 181, 30, 1, 146, 4 },   /* the lines: under the name, over the stats (up to the jobs' line), before the jobs */
         { 16, 8, 17, 17, 0 },                                     /* the kind's sign */
@@ -350,7 +351,20 @@ static void card_pieces(GlPresent* v) {
         { 60, 30, 114, 66, 6 },                                   /* the description */
         { 19, 105, 155, 70, 3 },                                  /* the stats (light on their panel) */
         { 184, 33, 62, 15, 6 }, { 186, 50, 54, 124, 6 } };        /* "Equips:" and the jobs' signs (those who can't: faint) */
-    for (int i = 0; i < (int)(sizeof part / sizeof *part); i++) {
+    /* an item that isn't worn (a herb, a chimaera wing): the prices on the right
+     * of the description, and under both, across the page, where it is found
+     * and who drops it */
+    static const float item[][5] = {
+        { CS_X, CS_Y, CS_W, CS_H, 7 },
+        { 16, 27, 228, 1, 4 }, { 16, 101, 228, 1, 4 }, { 179, 30, 1, 69, 4 },   /* the lines: under the name, over where it is found, before the prices */
+        { 16, 8, 17, 17, 0 }, { 37, 11, 102, 11, 3 }, { 175, 9, 25, 15, 9 }, { 200, 9, 48, 15, 8 },
+        { 24, 48, 32, 32, 0 },
+        { 60, 30, 114, 66, 6 },                                   /* the description */
+        { 181, 31, 66, 58, 6 },                                   /* the prices: their words and the sums */
+        { 19, 105, 218, 70, 3 } };                                /* where it is found, who drops it (light on their panel) */
+    const float (*part)[5] = g_card_item ? item : equip;
+    int n = g_card_item ? (int)(sizeof item / sizeof *item) : (int)(sizeof equip / sizeof *equip);
+    for (int i = 0; i < n; i++) {
         const float* p = part[i];
         float* q = v->piece[v->npiece++];
         q[4] = 0; q[5] = p[0]; q[6] = p[1]; q[7] = p[2]; q[8] = p[3]; q[9] = p[4];
@@ -1782,7 +1796,18 @@ static int card_page(const uint32_t* px) {
         page += dr > 170 && dg > 140 && db > 60 && db < 130 && dr > db + 70;                       /* the parchment (203, 170, 89) */
         n++;
     }
-    return bar * 4 > n * 3 && page * 4 > n * 3;
+    if (bar * 4 <= n * 3 || page * 4 <= n * 3) return 0;
+    /* an item's (not worn): under the prices, the brown panel of where it is found
+     * reaches the right side, where equipment has its light "Equips:" panel */
+    int brown = 0;
+    static const int at[4][2] = { { 212, 120 }, { 230, 110 }, { 200, 150 }, { 225, 165 } };
+    for (int i = 0; i < 4; i++) {
+        uint32_t c = px[at[i][1] * 256 + at[i][0]];
+        int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+        brown += r > 95 && r < 150 && g > 55 && g < 105 && b > 20 && b < 65 && r > b + 50;
+    }
+    g_card_item = brown >= 3;
+    return 1;
 }
 
 /* The character's creation (the character's 3D on the top screen: before the
