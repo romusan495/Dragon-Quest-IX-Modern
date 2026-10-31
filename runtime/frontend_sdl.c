@@ -343,7 +343,6 @@ enum { CS_X = 12, CS_Y = 5, CS_W = 238, CS_H = 176 };              /* the card *
  * brown panel), the list on the touch screen (its title's bar, the names'
  * dark panel). In the modern style both are drawn again as two windows side
  * by side (bestiary_pieces()) instead of the two screens. */
-static int g_bestiary;
 static int px_in(uint32_t c, int r0, int r1, int g0, int g1, int b0, int b1) {
     int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
     return r >= r0 && r <= r1 && g >= g0 && g <= g1 && b >= b0 && b <= b1;
@@ -354,12 +353,46 @@ static int px_share(const uint32_t* px, int x0, int y0, int dx, int dy, int n, i
     for (int i = 0; i < n; i++) k += px_in(px[(y0 + dy * i) * 256 + x0 + dx * i], r0, r1, g0, g1, b0, b1);
     return k * 10 / n;
 }
-static int bestiary_pages(const uint32_t* top, const uint32_t* list) {
+static int monster_page(const uint32_t* top) {                  /* the monster's page (the top screen) */
     return px_share(top, 4, 13, 8, 0, 31, 80, 115, 50, 82, 25, 58) >= 7              /* the name's bar's last row, under its letters (97, 65, 40) */
         && px_share(top, 12, 26, 0, 6, 15, 200, 245, 168, 215, 95, 175) >= 7          /* the picture's box, its left margin (235, 203, 154 to 211, 178, 105) */
-        && px_share(top, 112, 182, 4, 0, 34, 100, 140, 58, 92, 22, 58) >= 7           /* the description's panel, under its text (121, 73, 40) */
-        && px_share(list, 20, 51, 8, 0, 27, 62, 108, 46, 88, 20, 58) >= 7             /* the names' panel, over the first name (85, 69, 40) */
-        && px_share(list, 20, 30, 10, 0, 15, 120, 175, 65, 110, 0, 50) >= 6;          /* the title's bar, under its text (146, 89, 24) */
+        && px_share(top, 112, 182, 4, 0, 34, 100, 140, 58, 92, 22, 58) >= 7;          /* the description's panel, under its text (121, 73, 40) */
+}
+static int monster_list(const uint32_t* list) {                 /* the list (the touch screen) */
+    return px_share(list, 20, 51, 8, 0, 27, 62, 108, 46, 88, 20, 58) >= 7             /* the names' panel, over the first name (85, 69, 40) */
+        && px_share(list, 20, 30, 10, 0, 15, 120, 175, 65, 110, 0, 50) >= 6           /* the title's bar, under its text (146, 89, 24) */
+        && px_share(list, 3, 70, 0, 8, 12, 150, 245, 110, 215, 40, 160) >= 7;         /* parchment left of the names' panel (the families' grid: its panel reaches the edge) */
+}
+/* (in 10ths) a screen's pixels of the parchment's hue, however bright (a fade):
+ * the records' menus' pages (a big monster or a pot drawn on parchment) */
+static int parchment_share(const uint32_t* px) {
+    int k = 0, n = 0;
+    for (int y = 8; y < 192; y += 16)
+        for (int x = 8; x < 256; x += 16, n++) {
+            uint32_t c = px[y * 256 + x]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+            k += r >= g && g >= b && r > 30 && (r - b) * 10 > r * 3;
+        }
+    return k * 10 / n;
+}
+static int dark_screen(const uint32_t* px) {                    /* (fading in or out) */
+    int sum = 0;
+    for (int i = 0; i < 256 * 192; i += 97) { uint32_t c = px[i]; sum += ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255); }
+    return sum / (3 * (256 * 192 / 97 + 1)) < 24;
+}
+enum { BM_NONE, BM_LIST, BM_MENU };
+static int g_bmode, g_bpage;                                     /* the records' monster list's screens, modern (bestiary_update()) */
+static uint64_t g_bmode_at;
+extern uint32_t g_engine_out[2][256 * 192];
+static void bestiary_update(int a_on_top) {
+    const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
+    int m = BM_NONE;
+    if (g_winstyle == 2 && top_page_mode() == 2) {
+        if (monster_list(list)) { m = BM_LIST; g_bpage = monster_page(top); }
+        else if (parchment_share(top) >= 9 || dark_screen(list)) m = BM_MENU;
+        if (m) g_bmode_at = g_frame;
+        else if (g_bmode && g_frame - g_bmode_at < 20) m = g_bmode;   /* (between two of them: as it was) */
+    }
+    g_bmode = m;
 }
 static float* bestiary_piece(GlPresent* v, int screen, float sx, float sy, float sw, float sh, int mode, float x, float y, float k) {
     static float spare[10];
@@ -379,10 +412,11 @@ enum { BL_ROW0 = 55, BL_ROWS_H = 113, BL_COL1_X = 0, BL_COL2_X = 119, BL_COL_W =
 static void set_rect(float* q, float x, float y, float w, float h) { q[0] = x; q[1] = y; q[2] = w; q[3] = h; }
 static void bestiary_pieces(GlPresent* v) {
     const float M = 5, H = v->ch - 2 * M;
-    float k = (H - 10) / (15 + 13 + 2 * BL_ROWS_H + 13 + 25);     /* the list's pieces, stacked, fill its window's height */
+    float k = (H - 10) / (15 + 13 + 2 * BL_ROWS_H + 13 + 25);     /* the list's pieces, stacked, fill the window's height */
     float lw = BL_COL_W * k + 8, x = M + 4, y = M + 3;
-    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, lw, H);                 /* its window */
-    bestiary_piece(v, 1, 12, 12, 124, 15, 3, x, y, k); y += 15 * k;                       /* the title (light on its bar) */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);      /* one window, the whole picture */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);   /* a line between the list and the monster */
+    bestiary_piece(v, 1, 9, 12, 127, 15, 3, x - 3 * k, y, k); y += 15 * k;               /* the title (light on its bar) */
     bestiary_piece(v, 1, 8, 34, 84, 13, 6, x, y, k); y += 13 * k + 2;                     /* "All monsters" (the list's family) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y - 1, lw - 6, 0.75f); /* a line under them */
     /* each column: its names (light letters), its cursor (gold, 10) */
@@ -390,21 +424,36 @@ static void bestiary_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 0, BL_ROW0, 15, BL_ROWS_H, 10, x - 2, y, k); y += BL_ROWS_H * k;
     bestiary_piece(v, 1, 134, BL_ROW0, 112, BL_ROWS_H, 3, x - 2 + 15 * k, y, k);
     bestiary_piece(v, 1, 119, BL_ROW0, 15, BL_ROWS_H, 10, x - 2, y, k); y += BL_ROWS_H * k;
-    bestiary_piece(v, 1, 104, 168, 48, 13, 3, M + (lw - 48 * k) / 2, y, k);              /* the page (1/4) */
+    bestiary_piece(v, 1, 104, 168, 48, 13, 3, M + (lw - 48 * k) / 2, y, k);              /* the page (1/4), its arrows on each side (a click turns it) */
+    bestiary_piece(v, 1, 11, 170, 10, 12, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);   /* (inside the names' panel's edges) */
+    bestiary_piece(v, 1, 235, 170, 10, 12, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k);
     float sy = M + H - 25 * k - 2, sx = M + (lw - 72 * k) / 2;     /* SELECT Sort, by what */
-    bestiary_piece(v, 1, 178, 17, 27, 10, 0, sx + 2 * k, sy + 2 * k, k);                 /* (the SELECT sign as it is) */
-    bestiary_piece(v, 1, 205, 15, 30, 13, 9, sx + 29 * k, sy, k);                      /* (its word's light letters alone, 9) */
-    bestiary_piece(v, 1, 186, 28, 61, 12, 6, sx + 10 * k, sy + 13 * k, k);
-    /* the monster's page */
-    float rx = M + lw + M, rw = v->cw - rx - M, kp = fminf(rw / 256.0f, H / 192.0f);
+    bestiary_piece(v, 1, 180, 18, 25, 9, 0, sx + 4 * k, sy + 3 * k, k);                  /* (the SELECT sign as it is, inside its plate's edge) */
+    bestiary_piece(v, 1, 206, 15, 30, 13, 12, sx + 30 * k, sy, k);                       /* (light letters alone, 12) */
+    bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);                /* (inside the plate's edges) */
+    if (!g_bpage) return;                                         /* (a family none of whose monsters were defeated: no page) */
+    /* the monster: its page's parts where the game has them, in the rest of the window */
+    float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kp = fminf(rw / 256.0f, (H - 4) / 192.0f);
     float px = rx + (rw - 256 * kp) / 2, py = M + (H - 192 * kp) / 2;
-    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 7, 0, 0, 1), px, py, 256 * kp, 192 * kp);
-    bestiary_piece(v, 0, 2, 2, 252, 13, 3, px + 2 * kp, py + 2 * kp, kp);                 /* its name's bar: number, name, family */
+    bestiary_piece(v, 0, 2, 3, 252, 11, 3, px + 2 * kp, py + 3 * kp, kp);                 /* its name's bar: number, name, family (inside its gold edges) */
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 4 * kp, py + 17 * kp, 248 * kp, 0.75f);
-    bestiary_piece(v, 0, 8, 22, 97, 99, 0, px + 8 * kp, py + 22 * kp, kp);                /* its picture, in its box */
-    bestiary_piece(v, 0, 110, 22, 136, 90, 6, px + 110 * kp, py + 22 * kp, kp);           /* its numbers, what it drops */
+    float mk = kp * 1.3f;                                        /* the 3D monster alone (its box left out), a little bigger */
+    bestiary_piece(v, 4, 10, 24, 93, 88, 11, px + 56 * kp - 46.5f * mk, py + 68 * kp - 44 * mk, mk);
+    bestiary_piece(v, 0, 110, 22, 132, 90, 6, px + 110 * kp, py + 22 * kp, kp);           /* its numbers, what it drops */
     bestiary_piece(v, 0, 6, 123, 100, 44, 6, px + 6 * kp, py + 123 * kp, kp);             /* where it lives */
     bestiary_piece(v, 0, 109, 121, 143, 62, 3, px + 109 * kp, py + 121 * kp, kp);         /* its description (light on its panel) */
+}
+/* The records' menus over the monster list (how to show it, its families):
+ * one window, the touch screen's light letters and its gold cursor alone
+ * (the parchment, its bars and panels left out), a line under its title.
+ * Fading in or out: the window alone, not the two screens a moment. */
+static void bestiary_menu_pieces(GlPresent* v) {
+    const float M = 5, H = v->ch - 2 * M;
+    float k = fminf((v->cw - 2 * M - 8) / 256.0f, (H - 8) / 192.0f), x = (v->cw - 256 * k) / 2, y = M + (H - 192 * k) / 2;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 8 * k, y + 37 * k, 240 * k, 0.75f);   /* under its title */
+    bestiary_piece(v, 1, 0, 0, 256, 192, 12, x, y, k);
+    bestiary_piece(v, 1, 0, 0, 256, 192, 10, x, y, k);
 }
 
 static int g_card_item;                                            /* the card's page is an item's, not equipment's (card_page()) */
@@ -527,7 +576,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         int page = top_page_mode();
-        if (page == 2 && g_bestiary && !second && v->npiece + 19 <= GL_MAX_PIECES) {
+        if (page == 2 && g_bmode && !second && v->npiece + 21 <= GL_MAX_PIECES) {
             /* the monster list, modern: drawn again in two windows (bestiary_pieces()),
              * the window's shape, no screen whole */
             v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
@@ -535,7 +584,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
             v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
             v->alpha = 1.0f; v->front = 0;
-            bestiary_pieces(v);
+            if (g_bmode == BM_LIST) bestiary_pieces(v); else bestiary_menu_pieces(v);
         } else if (page == 2) {
             /* a menu with its 3D model on the top screen (the monster list):
              * both screens whole, side by side, the top one on the left, until it closes */
@@ -1341,15 +1390,16 @@ static int to_touch_in(SDL_Window* win, int wx, int wy, int* tx, int* ty, int cl
         lx = ((float)wx + 0.5f - v.ox) / v.sc; ly = ((float)wy + 0.5f - v.oy) / v.sc;
     } else { canvas_layout(&v, 1, 1); SDL_RenderWindowToLogical(g_ren, wx, wy, &lx, &ly); }
     int bottom_pieces = 0;
+#define TOUCH_PIECE(q) ((((int)((q)[4] + 0.5f)) & 1) && (int)((q)[9] + 0.5f) != 2 && (int)((q)[9] + 0.5f) != 4 && (int)((q)[9] + 0.5f) != 7)   /* a piece of the touch screen's picture (not a window, a line) */
     for (int i = 0; i < v.npiece; i++) bottom_pieces |= v.piece[i][4] > 0.5f;
     if (bottom_pieces) {                                          /* the battle HUD's panels, the character's creation: back to where they are on the touch screen */
         static int last;                                          /* the panel last touched: a drag off it stays on its edge */
         int hit = -1;
         for (int i = v.npiece - 1; i >= 0 && hit < 0; i--) {
             const float* q = v.piece[i];
-            if (q[4] > 0.5f && lx >= q[0] && lx < q[0] + q[2] && ly >= q[1] && ly < q[1] + q[3]) hit = i;   /* (not a piece of the top screen) */
+            if (TOUCH_PIECE(q) && lx >= q[0] && lx < q[0] + q[2] && ly >= q[1] && ly < q[1] + q[3]) hit = i;   /* (not a piece of the top screen, nor a window behind the pieces) */
         }
-        if (hit < 0 && !(clamp && last < v.npiece)) return 0;   /* the rest of the commands screen isn't shown */
+        if (hit < 0 && !(clamp && last < v.npiece && TOUCH_PIECE(v.piece[last]))) return 0;   /* the rest of the commands screen isn't shown */
         if (hit >= 0) last = hit;
         const float* q = v.piece[last];
         float px = fminf(fmaxf(lx, q[0]), q[0] + q[2] - 0.01f), py = fminf(fmaxf(ly, q[1]), q[1] + q[3] - 0.01f);
@@ -2060,7 +2110,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
     g_pop_win[2] = 0; g_quest_page = g_card_page = 0;
-    g_bestiary = g_winstyle == 2 && top_page_mode() == 2 && bestiary_pages(g_engine_out[a_on_top ? 0 : 1], g_engine_out[a_on_top ? 1 : 0]);
+    bestiary_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
     static int gone = 1 << 20;                                    /* ...frames since it was last seen */
     if (top_page_mode() != 1 || !mapmarks_top_page()) { sheet_far = 0; gone = 1 << 20; return; }   /* (a shop's list up before its card) */

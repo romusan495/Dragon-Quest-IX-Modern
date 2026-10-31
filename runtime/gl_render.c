@@ -469,11 +469,14 @@ static const char* FS_COPY =
      * panels' grey (24, 24, 24); 8 an item's rarity stars off their brown
      * plate: the ones it has gold, the others grey, the rest nothing; 9 its
      * word's cream letters alone, made light; 10 a gold cursor alone (its
-     * dark edge with it), nothing else */
+     * dark edge with it), nothing else; 11 the picture premultiplied (the 3D
+     * alone: see-through where it has nothing); 12 as 3, but only grey or white
+     * letters (not a light parchment) */
     "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
     "float ink(vec2 uv, int light) { vec4 c = textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
-    "  return (light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
+    "  vec3 r = c.rgb / max(c.a, 0.001); float sat = max(r.r, max(r.g, r.b)) - min(r.r, min(r.g, r.b));\n"
+    "  return (light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.34, 0.2, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
     "float letters(int light) {\n"   /* (9 points across the pixel at full size: a stroke thinner than the pixel drawn small is met by at least one; */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"   /* averaged, but never fainter than 3/4 of the strongest: thin strokes kept) */
@@ -492,10 +495,11 @@ static const char* FS_COPY =
     "  }\n"
     "  vec4 c = texture(u_src, v_uv);\n"
     "  float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
+    "  if (u_mode == 11) { vec4 c = texture(u_src, v_uv); o_color = vec4(c.rgb * c.a, c.a); return; }\n"
     "  if (u_mode == 10) {\n"
     "    float g = goldness(c), near = 0.0;\n"
     "    for (int i = 0; i < 8; i++) { vec2 o = vec2(i < 3 ? -1.0 : i < 5 ? 0.0 : 1.0, i == 0 || i == 3 || i == 5 ? -1.0 : i == 1 || i == 6 ? 0.0 : 1.0); near = max(near, goldness(texture(u_src, v_uv + o * u_ds * 1.2))); }\n"
-    "    float a = max(g, near * smoothstep(0.4, 0.2, L)) * c.a; o_color = vec4(c.rgb / max(c.a, 0.001) * a, a); return;\n"
+    "    float a = max(g, near * smoothstep(0.2, 0.1, L)) * c.a; o_color = vec4(c.rgb / max(c.a, 0.001) * a, a); return;\n"
     "  }\n"
     "  if (u_mode == 8 || u_mode == 9) {\n"   /* (the word cream, a star gold, the others dark brown; the plates brown, the edges darker) */
     "    vec3 r = c.rgb / max(c.a, 0.001);\n"
@@ -508,7 +512,7 @@ static const char* FS_COPY =
     "  }\n"
     "  if (u_mode == 1) { float t = smoothstep(0.52, 0.32, L) * c.a;\n"
     "    o_color = vec4(vec3(0.93) * t, t); return; }\n"
-    "  if (u_mode == 3 || u_mode == 6) { float t = letters(u_mode == 3 ? 1 : 0); o_color = vec4(vec3(0.93) * t, t); return; }\n"
+    "  if (u_mode == 3 || u_mode == 6 || u_mode == 12) { float t = letters(u_mode == 6 ? 0 : u_mode == 12 ? 2 : 1); o_color = vec4(vec3(0.93) * t, t); return; }\n"
     "  o_color = c;\n"
     "}\n";
 
@@ -2200,14 +2204,18 @@ static void draw_pieces(const GlPresent* v, GLuint src) {
     for (int i = 0; i < v->npiece && i < GL_MAX_PIECES; i++) {
         const float* q = v->piece[i];
         if (q[2] <= 0 || q[3] <= 0) continue;
-        p_glBindTexture(GL_TEXTURE_2D, q[4] > 1.5f && texs[1] ? texs[1] : src);   /* 2, 3: the 3D screen's 2D alone */
+        int alone3d = q[4] > 3.5f;                                /* 4: the 3D alone (the monster list's monster, without its box) */
+        if (alone3d && !(g_fb_shown >= 0 && g_fb[g_fb_shown].valid)) continue;
+        p_glBindTexture(GL_TEXTURE_2D, alone3d ? g_fb[g_fb_shown].post : q[4] > 1.5f && texs[1] ? texs[1] : src);   /* 2, 3: the 3D screen's 2D alone */
+        if (alone3d) { p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); }
         /* canvas (DS pixels, y down) -> window pixels -> NDC (y up); the rect's origin is its bottom left */
         float x0 = v->ox + q[0] * v->sc, y1 = v->oy + (q[1] + q[3]) * v->sc;
         p_glUniform4f(loc_rect, x0 / (float)v->win_w * 2 - 1, 1 - y1 / (float)v->win_h * 2,
                       q[2] * v->sc / (float)v->win_w * 2, q[3] * v->sc / (float)v->win_h * 2);
         /* the screen in the composed picture: the top one in the upper half, the DS's 256 columns after the sides */
         float vtop = ((int)(q[4] + 0.5f) & 1) ? 0.5f : 1.0f;
-        p_glUniform4f(loc_uv, ((float)g_wside + q[5]) / W, vtop - (q[6] + q[8]) / 384.0f, q[7] / W, q[8] / 384.0f);
+        if (alone3d) p_glUniform4f(loc_uv, ((float)g_wside + q[5]) / W, 1.0f - (q[6] + q[8]) / 192.0f, q[7] / W, q[8] / 192.0f);   /* (one screen, the 3D's own rows) */
+        else p_glUniform4f(loc_uv, ((float)g_wside + q[5]) / W, vtop - (q[6] + q[8]) / 384.0f, q[7] / W, q[8] / 384.0f);
         int mode = (int)(q[9] + 0.5f);
         p_glUniform1i(loc_mode, mode);
         if (mode == 2 || mode == 7) {
