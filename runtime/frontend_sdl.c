@@ -388,6 +388,7 @@ static int card_page(const uint32_t* px);
 enum { BM_NONE, BM_LIST, BM_MENU, BM_ALCH };
 static int g_bmode, g_bpage;                                     /* the records' monster list's screens, modern (bestiary_update()) */
 static int g_bhold;                                               /* (the top screen not told a menu's page a moment: kept modern) */
+static uint64_t g_page2_at;                                       /* (the last frame the top screen was told a menu's page) */
 static uint64_t g_bmode_at;
 /* The book's picture, grey in the window's background: drawn from the top
  * screen's parchment when a records' menu shows it (still for a moment:
@@ -565,12 +566,11 @@ static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
     int m = BM_NONE, page = top_page_mode();
-    static uint64_t page_at;                                      /* (the last frame the top screen was a menu's page) */
-    if (page == 2) page_at = g_frame;
+    if (page == 2) g_page2_at = g_frame;
     /* a frame or two where the top screen isn't told a menu's page (its 3D
      * late a frame, on a slower PC): the records' screen as it was, not the
      * game's screens a moment, while the touch screen is still the book's */
-    g_bhold = page != 2 && g_bmode && g_winstyle == 2 && g_frame - page_at <= 10 && parchment_share(list) >= 6;
+    g_bhold = page != 2 && g_bmode && g_winstyle == 2 && g_frame - g_page2_at <= 10 && parchment_share(list) >= 6;
     if (g_bhold) return;
     if (g_winstyle == 2 && page == 2) {
         if (monster_list(list)) { m = BM_LIST; g_bpage = monster_page(top); }
@@ -879,7 +879,8 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         int page = top_page_mode();
-        if (page != 2 && g_bhold) page = 2;
+        if (page == 2) g_page2_at = g_frame;
+        else if (g_bhold || (g_bmode && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
         if (page == 2 && bmode && !second && v->npiece + 40 <= GL_MAX_PIECES) {
             /* the monster list, modern: drawn again in two windows (bestiary_pieces()),
