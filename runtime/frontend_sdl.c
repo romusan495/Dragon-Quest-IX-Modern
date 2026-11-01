@@ -417,27 +417,61 @@ static int logo_make(const uint32_t* top) {                       /* 1: the top 
     for (int i = 0; i < 2; i++) if (g_logo_have[i] && g_logo_of[i] == h) { logo_show(i); return 1; }
     if (g_logo_have[2] && g_logo_of[2] == h) { logo_show(2); return 1; }
     if (still < 6) return 0;                                      /* (moving: not yet) */
-    enum { W = LOGO_W, H = LOGO_H, R = 12 };
+    /* The drawing, whole: how much darker each spot is than the parchment's
+     * own brightness there (its brightest round it, blurred: the paper, not
+     * the drawing's own shading), a clean silhouette (eyes, bands, steam);
+     * only the drawing's parts (near the biggest), not the paper's stains. */
+    enum { W = LOGO_W, H = LOGO_H, R = 15 };
     uint8_t* img = g_logo_img[2];
-    static float L[W * H], t[W * H], b[W * H];
+    static float L[W * H], t[W * H], b[W * H], m[W * H];
+    static int lab[W * H], q[W * H], area[W * H / 2 + 2], sx[W * H / 2 + 2], sy[W * H / 2 + 2];
     for (int i = 0; i < W * H; i++) { uint32_t c = top[i]; t[i] = 0.299f * ((c >> 16) & 255) + 0.587f * ((c >> 8) & 255) + 0.114f * (c & 255); }
-    for (int y = 0; y < H; y++)                                    /* (the parchment's grain smoothed first: a clean drawing) */
+    for (int y = 0; y < H; y++)                                    /* (the parchment's grain smoothed) */
         for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) { int xx = x + i, yy = y + j; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; sum += t[yy * W + xx]; n++; } L[y * W + x] = sum / n; }
-    for (int y = 0; y < H; y++)                                    /* a box blur, across then down */
-        for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int d = -R; d <= R; d++) { int xx = x + d; if (xx < 0 || xx >= W) continue; sum += L[y * W + xx]; n++; } t[y * W + x] = sum / n; }
+    for (int y = 0; y < H; y++)                                    /* the paper: the brightest round (across, then down) */
+        for (int x = 0; x < W; x++) { float v = 0; for (int d = -R; d <= R; d++) { int xx = x + d; if (xx >= 0 && xx < W && L[y * W + xx] > v) v = L[y * W + xx]; } t[y * W + x] = v; }
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) { float v = 0; for (int d = -R; d <= R; d++) { int yy = y + d; if (yy >= 0 && yy < H && t[yy * W + x] > v) v = t[yy * W + x]; } b[y * W + x] = v; }
+    for (int y = 0; y < H; y++)                                    /* ...blurred */
+        for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int d = -R; d <= R; d++) { int xx = x + d; if (xx < 0 || xx >= W) continue; sum += b[y * W + xx]; n++; } t[y * W + x] = sum / n; }
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) { float sum = 0; int n = 0; for (int d = -R; d <= R; d++) { int yy = y + d; if (yy < 0 || yy >= H) continue; sum += t[yy * W + x]; n++; } b[y * W + x] = sum / n; }
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) {
-            float m = (b[y * W + x] - L[y * W + x] - 7) / 10;      /* darker than the parchment round it */
-            m = m < 0 ? 0 : m > 1 ? 1 : m;
-            m = m * m * (3 - 2 * m);
-            float ex = x < 128 ? x : 255 - x, ey = y < 96 ? y : 191 - y, e = fminf(ex - 18, ey - 14) / 10;   /* (fading out before the torn, shaded edges) */
-            m *= e < 0 ? 0 : e > 1 ? 1 : e;
-            float a = m * 0.13f * 255;
-            uint8_t* o = &img[(y * W + x) * 4];
-            o[0] = o[1] = o[2] = (uint8_t)(a * 150 / 255); o[3] = (uint8_t)a;   /* (premultiplied grey) */
+            float v = (b[y * W + x] - L[y * W + x] - 18) / 12;    /* darker than the paper */
+            v = v < 0 ? 0 : v > 1 ? 1 : v; v = v * v * (3 - 2 * v);
+            float ex = x < 128 ? x : 255 - x, ey = y < 96 ? y : 191 - y, e = fminf(ex - 10, ey - 6) / 8;   /* (not the torn, shaded edges) */
+            m[y * W + x] = v * (e < 0 ? 0 : e > 1 ? 1 : e);
         }
+    int nl = 0, big = 0;                                          /* its parts (more than a third dark), the biggest */
+    memset(lab, 0, sizeof lab);
+    for (int s0 = 0; s0 < W * H; s0++) {
+        if (lab[s0] || m[s0] <= 0.3f || nl >= W * H / 2) continue;
+        int id = ++nl, n = 0, h0 = 0; long ax = 0, ay = 0;
+        lab[s0] = id; q[n++] = s0;
+        while (h0 < n) {
+            int i = q[h0++], x = i % W, y = i / W; ax += x; ay += y;
+            const int nb[4] = { x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1 };
+            for (int k = 0; k < 4; k++) if (nb[k] >= 0 && !lab[nb[k]] && m[nb[k]] > 0.3f) { lab[nb[k]] = id; q[n++] = nb[k]; }
+        }
+        area[id] = n; sx[id] = (int)(ax / n); sy[id] = (int)(ay / n);
+        if (!big || n > area[big]) big = id;
+    }
+    int bx0 = W, by0 = H, bx1 = -1, by1 = -1;
+    for (int i = 0; i < W * H; i++) if (big && lab[i] == big) { int x = i % W, y = i / W; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+    bx0 -= 12; by0 -= 12; bx1 += 12; by1 += 12;
+    for (int i = 0; i < W * H; i++) {                             /* kept: near a part whose middle is by the biggest */
+        float a = 0;
+        int x = i % W, y = i / W;
+        for (int j = -2; j <= 2 && a == 0; j++) for (int k = -2; k <= 2; k++) {
+            int xx = x + k, yy = y + j; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+            int l = lab[yy * W + xx];
+            if (l && area[l] >= 8 && sx[l] >= bx0 && sx[l] <= bx1 && sy[l] >= by0 && sy[l] <= by1) { a = 1; break; }
+        }
+        a *= m[i] * 0.11f * 255;
+        uint8_t* o = &img[i * 4];
+        o[0] = o[1] = o[2] = (uint8_t)(a * 150 / 255); o[3] = (uint8_t)a;   /* (premultiplied grey) */
+    }
     g_logo_of[2] = h; g_logo_have[2] = 1;
     if (g_logo_shown == 2) g_logo_shown = -1;
     logo_show(2);
