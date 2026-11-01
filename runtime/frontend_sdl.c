@@ -594,6 +594,57 @@ static void bestiary_key(GlPresent* v, int id, int action, float x, float y, flo
 
 extern uint32_t g_engine_out[2][256 * 192];
 static void list_keys(uint16_t* keys, int* touch, int* tx, int* ty);
+/* A touch screen of windows on the parchment that isn't the records' (Al
+ * Embic's menus): its windows found by their dark panel (and the game's grey
+ * line round them), each as rectangles (a row's span: a name plate over a
+ * dialogue is two), their letters kept inside them only (not the paper's
+ * light stains), their frames drawn again whole (the game's has no line
+ * where a plate meets its dialogue). In the touch screen's pixels. */
+enum { NPANEL = 16 };
+static int g_panel[NPANEL][4], g_npanel;                          /* x0, y0, x1, y1 (inclusive) */
+static void find_panels(const uint32_t* px) {
+    enum { W = 256, H = 192 };
+    static uint8_t in[W * H]; static int lab[W * H], q[W * H];
+    g_npanel = 0;
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            uint32_t c = px[y * W + x]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+            int L = (299 * r + 587 * g + 114 * b) / 1000;
+            int grey = abs(r - g) < 10 && abs(g - b) < 10 && r > 105 && r < 160;   /* (the game's line round a window: 130, 130, 130) */
+            in[y * W + x] = x >= 3 && x <= 252 && y >= 3 && y <= 188 && ((L < 118 && r > g && g >= b) || grey);
+        }
+    memset(lab, 0, sizeof lab);
+    int nl = 0;
+    for (int s0 = 0; s0 < W * H && g_npanel < NPANEL; s0++) {
+        if (!in[s0] || lab[s0]) continue;
+        int n = 0, h = 0, x0 = W, y0 = H, x1 = -1, y1 = -1; nl++;
+        lab[s0] = nl; q[n++] = s0;
+        while (h < n) {
+            int i = q[h++], x = i % W, y = i / W;
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            const int nb[4] = { x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1 };
+            for (int k = 0; k < 4; k++) if (nb[k] >= 0 && in[nb[k]] && !lab[nb[k]]) { lab[nb[k]] = nl; q[n++] = nb[k]; }
+        }
+        if (x1 - x0 < 24 || y1 - y0 < 10 || n * 2 < (x1 - x0 + 1) * (y1 - y0 + 1)) continue;   /* (a stain, a thin edge: not a window) */
+        int a0 = -1, b0 = -1, ys = y0, gap = 0, last = y0;         /* rows of the same span: one rectangle */
+        for (int y = y0; y <= y1 + 1 && g_npanel < NPANEL; y++) {
+            int a = W, b = -1;
+            if (y <= y1)                                          /* (its runs of 8 and more: not a sprite's edge, the paper's dark torn edge) */
+                for (int x = x0, run = 0; x <= x1 + 1; x++) {
+                    if (x <= x1 && lab[y * W + x] == nl) { run++; continue; }
+                    if (run >= 20 || (run >= 8 && x - run < 242 && x - 1 > 13)) { if (x - run < a) a = x - run; b = x - 1; }   /* (the torn edge: within 10 of the side) */
+                    run = 0;
+                }
+            /* the same window part while its rows stay within its span (a row of
+             * letters has shorter runs) and don't stop for more than a row */
+            if (b < 0) gap++; else gap = 0;
+            int same = a0 >= 0 && (b < 0 ? gap <= 1 && y <= y1 : a >= a0 - 3 && b <= b0 + 3);
+            if (!same && a0 >= 0 && last - ys >= 5) { int* r = g_panel[g_npanel++]; r[0] = a0; r[1] = ys; r[2] = b0; r[3] = last; }
+            if (!same) { a0 = b >= 0 ? a : -1; b0 = b; ys = y; }
+            if (b >= 0) last = y;
+        }
+    }
+}
 static int g_menu_bar;                                            /* the records' menus: their title bar across the touch screen's top */
 static int g_list_ghost;                                          /* a list's screen a moment, its names gone (leaving for the menu): the window alone */
 static void bestiary_update(int a_on_top) {
@@ -624,7 +675,8 @@ static void bestiary_update(int a_on_top) {
         else logo_show(1);                                        /* Al Embic's menus (the pot): the Alchimanach's */
         bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], m != BM_MENU);
         g_menu_bar = px_share(list, 16, 14, 12, 0, 19, 95, 205, 45, 135, 0, 80) >= 5;   /* (its letters across half of it) */
-        g_list_ghost = m == BM_MENU && px_share(list, 180, 23, 3, 0, 8, 0, 100, 0, 110, 10, 160) >= 5;   /* (SELECT's plate, black and blue: a list's screen going, its names gone) */
+        g_list_ghost = m == BM_MENU && px_share(list, 180, 23, 3, 0, 8, 0, 100, 0, 110, 10, 160) >= 5;
+        if (m == BM_MENU && !g_menu_bar) find_panels(list); else g_npanel = 0;
     }
     g_bmode = m;
 }
@@ -788,7 +840,30 @@ static void bestiary_menu_pieces(GlPresent* v) {
     if (g_list_ghost) { bestiary_logo_rect(v); return; }
     if (g_menu_bar)                                               /* (the records' title bar: not Al Embic's menus) */
         set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 8 * k, y + 37 * k, 240 * k, 0.75f);   /* under its title */
-    bestiary_piece(v, 1, 0, 0, 256, 192, 12, x, y, k);
+    if (!g_menu_bar && g_npanel) {                                /* Al Embic's: each window's letters, its frame drawn whole */
+        for (int i = 0; i < g_npanel; i++) {
+            const int* r = g_panel[i];
+            bestiary_piece(v, 1, r[0] + 2, r[1] + 2, r[2] - r[0] - 3, r[3] - r[1] - 3, 12, x + (r[0] + 2) * k, y + (r[1] + 2) * k, k);
+        }
+        for (int i = 0; i < g_npanel; i++) {
+            const int* r = g_panel[i];
+            set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + r[0] * k, y + r[1] * k, 0.75f, (r[3] - r[1] + 1) * k);   /* its sides */
+            set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + (r[2] + 1) * k - 0.75f, y + r[1] * k, 0.75f, (r[3] - r[1] + 1) * k);
+            for (int e = 0; e < 2; e++) {                         /* its top and bottom, but where another of the same window joins it */
+                int ey = e ? r[3] + 1 : r[1], a = r[0], b = r[2] + 1;
+                int cut0 = b, cut1 = a;                           /* (the part the joining one covers) */
+                for (int j = 0; j < g_npanel; j++) {
+                    const int* o = g_panel[j];
+                    if (j == i || (e ? abs(o[1] - ey) > 1 : abs(o[3] + 1 - ey) > 1)) continue;
+                    int c0 = o[0] > a ? o[0] : a, c1 = o[2] + 1 < b ? o[2] + 1 : b;
+                    if (c1 > c0) { if (c0 < cut0) cut0 = c0; if (c1 > cut1) cut1 = c1; }
+                }
+                if (cut1 <= cut0) { set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + a * k, y + ey * k - (e ? 0.75f : 0), (b - a) * k, 0.75f); continue; }
+                if (cut0 > a) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + a * k, y + ey * k - (e ? 0.75f : 0), (cut0 - a) * k, 0.75f);
+                if (b > cut1) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + cut1 * k, y + ey * k - (e ? 0.75f : 0), (b - cut1) * k, 0.75f);
+            }
+        }
+    } else bestiary_piece(v, 1, 0, 0, 256, 192, 12, x, y, k);
     bestiary_cursor_at(v, 0, 0, x, y, k);                         /* the game's cursor, as it is */
     bestiary_logo_rect(v);
 }

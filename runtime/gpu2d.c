@@ -1035,6 +1035,20 @@ static void compose_line(Engine* e, int eng, int y, uint32_t disp, uint32_t* lin
                 if (lay[p] < 0) continue;
                 for (int q = a + 1; q < b; q++) { bgl[lay[p]].col[q] = bgl[lay[p]].col[p]; bgl[lay[p]].win[q] = WIN_PANEL; }
             }
+            /* two windows one above the other, a row or two apart (Yes/No over
+             * a dialogue): the rows between their lines aren't either's panel
+             * (a dark strip, a backdrop pixel at its corner): left out, the
+             * two windows apart */
+            for (int x = 0; x < 256; x++) {
+                if (kind[x] != WIN_PANEL || lay[x] < 0) continue;
+                int up = 0, dn = 0;
+                for (int f = 0; f < 4; f++) {
+                    if (!(winl & (1 << f))) continue;
+                    int fx = (x + bx[f]) & (int)(wl[f].w - 1);
+                    for (int k = 1; k <= 2; k++) { up |= win_line(&wl[f], fx, by[f] - k); dn |= win_line(&wl[f], fx, by[f] + k); }
+                }
+                if (up && dn) { bgl[lay[x]].col[x] = 0; bgl[lay[x]].win[x] = 0; kind[x] = 0; lay[x] = -1; }
+            }
         }
     }
     int obj_on = (disp >> 12) & 1;
