@@ -404,10 +404,43 @@ static void logo_show(int i) {
     if (i != g_logo_shown) { gl_set_layer(GL_LAYER_LOGO, g_logo_img[i], LOGO_W, LOGO_H); g_logo_shown = i; }
     g_logo_on = 1;
 }
+/* (kept in book-pictures.dat beside settings.ini: a book's picture at
+ * once, the next times (Al Embic's pot before the Alchimanach is opened)) */
+static const char* LOGO_FILE = "book-pictures.dat";
+static void logo_save(void) {
+    FILE* f = fopen(LOGO_FILE, "wb");
+    if (!f) return;
+    static uint8_t a[LOGO_W * LOGO_H];
+    fwrite("DQXBP1", 1, 6, f);
+    for (int b = 0; b < 2; b++) {
+        fputc(g_logo_have[b], f); fwrite(&g_logo_of[b], 4, 1, f);
+        if (!g_logo_have[b]) continue;
+        for (int i = 0; i < LOGO_W * LOGO_H; i++) a[i] = g_logo_img[b][i * 4 + 3];
+        fwrite(a, 1, sizeof a, f);
+    }
+    fclose(f);
+}
+static void logo_load(void) {
+    static int done; if (done) return; done = 1;
+    FILE* f = fopen(LOGO_FILE, "rb");
+    if (!f) return;
+    char m[6]; static uint8_t a[LOGO_W * LOGO_H];
+    if (fread(m, 1, 6, f) == 6 && !memcmp(m, "DQXBP1", 6))
+        for (int b = 0; b < 2; b++) {
+            int have = fgetc(f); uint32_t h;
+            if (have < 0 || fread(&h, 4, 1, f) != 1) break;
+            if (have != 1) continue;                              /* (none for that book yet) */
+            if (fread(a, 1, sizeof a, f) != sizeof a) break;
+            for (int i = 0; i < LOGO_W * LOGO_H; i++) { uint8_t* o = &g_logo_img[b][i * 4]; o[3] = a[i]; o[0] = o[1] = o[2] = (uint8_t)(a[i] * 150 / 255); }
+            g_logo_of[b] = h; g_logo_have[b] = 1;
+        }
+    fclose(f);
+}
 static void logo_tell(int book) {                                /* the picture just drawn was this book's */
     if (!g_logo_have[2]) return;
     memcpy(g_logo_img[book], g_logo_img[2], sizeof g_logo_img[2]); g_logo_of[book] = g_logo_of[2]; g_logo_have[book] = 1;
     g_logo_have[2] = 0; if (g_logo_shown == 2 || g_logo_shown == book) g_logo_shown = -1;
+    logo_save();
 }
 static int logo_make(const uint32_t* top) {                       /* 1: the top screen's picture is in slot 2 (or a book's) */
     static uint32_t prev; static int still;
@@ -649,6 +682,7 @@ static int g_menu_bar;                                            /* the records
 static int g_list_ghost;                                          /* a list's screen a moment, its names gone (leaving for the menu): the window alone */
 static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
+    logo_load();
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
     int m = BM_NONE, page = top_page_mode();
     if (page == 2) g_page2_at = g_frame;
@@ -841,19 +875,22 @@ static void bestiary_menu_pieces(GlPresent* v) {
     if (g_menu_bar)                                               /* (the records' title bar: not Al Embic's menus) */
         set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 8 * k, y + 37 * k, 240 * k, 0.75f);   /* under its title */
     if (!g_menu_bar && g_npanel) {                                /* Al Embic's: each window's letters, its frame drawn whole */
+        int fr[NPANEL][4], lo = 256, hi = -1;                     /* the frames, lined up: edges near the outermost on it */
         for (int i = 0; i < g_npanel; i++) {
             const int* r = g_panel[i];
             bestiary_piece(v, 1, r[0] + 2, r[1] + 2, r[2] - r[0] - 3, r[3] - r[1] - 3, 12, x + (r[0] + 2) * k, y + (r[1] + 2) * k, k);
+            memcpy(fr[i], r, sizeof fr[i]); if (r[0] < lo) lo = r[0]; if (r[2] > hi) hi = r[2];
         }
+        for (int i = 0; i < g_npanel; i++) { if (fr[i][0] - lo <= 8) fr[i][0] = lo; if (hi - fr[i][2] <= 8) fr[i][2] = hi; }
         for (int i = 0; i < g_npanel; i++) {
-            const int* r = g_panel[i];
+            const int* r = fr[i];
             set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + r[0] * k, y + r[1] * k, 0.75f, (r[3] - r[1] + 1) * k);   /* its sides */
             set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + (r[2] + 1) * k - 0.75f, y + r[1] * k, 0.75f, (r[3] - r[1] + 1) * k);
             for (int e = 0; e < 2; e++) {                         /* its top and bottom, but where another of the same window joins it */
                 int ey = e ? r[3] + 1 : r[1], a = r[0], b = r[2] + 1;
                 int cut0 = b, cut1 = a;                           /* (the part the joining one covers) */
                 for (int j = 0; j < g_npanel; j++) {
-                    const int* o = g_panel[j];
+                    const int* o = fr[j];
                     if (j == i || (e ? abs(o[1] - ey) > 1 : abs(o[3] + 1 - ey) > 1)) continue;
                     int c0 = o[0] > a ? o[0] : a, c1 = o[2] + 1 < b ? o[2] + 1 : b;
                     if (c1 > c0) { if (c0 < cut0) cut0 = c0; if (c1 > cut1) cut1 = c1; }
