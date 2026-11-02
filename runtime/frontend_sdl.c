@@ -905,6 +905,25 @@ static void bestiary_menu_pieces(GlPresent* v) {
     bestiary_logo_rect(v);
 }
 
+/* A title given (an accolade): the top screen's red curtain, the title on
+ * its gold plate and why it was given in a window under it (the dialogue on
+ * the touch screen says it again). In the modern style the plate alone, as
+ * the game shows it while it comes (not the curtain), at the top in the
+ * middle. In the page's pixels: */
+enum { AC_X = 9, AC_Y = 24, AC_W = 238, AC_H = 160,                /* the plate and the window, together */
+       AC_PX = 24, AC_PW = 208, AC_PH = 56 };                      /* the plate (its dark outer edge) */
+static int g_accolade_page, g_accolade_small;
+static int accolade_page(const uint32_t* px) {
+    return px_share(px, 2, 4, 0, 8, 12, 100, 255, 0, 30, 0, 30) >= 8          /* the curtain at the left edge (203, 0, 0 to 121, 0, 0) */
+        && px_share(px, 128, 4, 0, 0, 1, 100, 255, 0, 30, 0, 30) >= 10        /* ...and above the plate */
+        && px_share(px, 25, 30, 0, 6, 8, 180, 255, 140, 255, 0, 170) >= 6      /* the plate's gold edge (227, 186, 48; its shine passing: 251, 243, 146) */
+        && px_share(px, 9, 110, 0, 8, 8, 115, 145, 115, 145, 115, 145) >= 7;   /* the window's grey line */
+}
+static void accolade_plate(GlPresent* v) {                        /* the plate alone, at the top in the middle, as while it comes */
+    float k = fminf(1.0f, v->cw * 0.55f / AC_PW);
+    bestiary_piece(v, 0, AC_PX, AC_Y, AC_PW, AC_PH, 0, (v->cw - AC_PW * k) / 2, 6, k);
+}
+
 /* (g_card_item: the card's page is an item's, not equipment's (card_page())) */
 static void card_pieces(GlPresent* v) {
     float k = g_pop_at[2], X = g_pop_at[0] - CS_X * k, Y = g_pop_at[1] - CS_Y * k;   /* (page pixels -> canvas) */
@@ -997,6 +1016,10 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         } else if (g_minimap) v->alpha = 1.0f;                   /* battles: solid */
         if (g_small_hide && !pop) small[2] = small[3] = 0;
         if (g_peek && !pop) { small[0] = (v->cw - 256) / 2; small[1] = 0; small[2] = 256; small[3] = 192; v->alpha = 1.0f; }   /* the other screen, whole */
+        else if (g_accolade_small && small == v->top && !second && top_page_mode() != 1 && v->npiece < GL_MAX_PIECES) {   /* a title given, the top screen small (not its page: pop_update()): its gold plate instead */
+            small[0] = small[1] = small[2] = small[3] = 0;
+            accolade_plate(v);
+        }
         if (g_cc_n && !second && v->npiece + 2 * g_cc_n <= GL_MAX_PIECES) {
             /* the character's creation: its windows on the touch screen (the
              * choices, the name's keyboard and the name above it) pop up over
@@ -1076,6 +1099,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             small[0] = small[1] = small[2] = small[3] = 0;
             if (g_pop_win[2] && g_quest_page && v->npiece + 6 <= GL_MAX_PIECES) quest_pieces(v);
             else if (g_pop_win[2] && g_card_page && v->npiece + 13 <= GL_MAX_PIECES) card_pieces(v);
+            else if (g_pop_win[2] && g_accolade_page && v->npiece < GL_MAX_PIECES) accolade_plate(v);
             else if (g_pop_win[2] && v->npiece < GL_MAX_PIECES) {
                 float* q = v->piece[v->npiece++], w = (float)g_pop_win[2], h = (float)g_pop_win[3];
                 q[4] = 0; q[5] = (float)g_pop_win[0]; q[6] = (float)g_pop_win[1]; q[7] = w; q[8] = h;
@@ -2564,10 +2588,11 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
  * around them, and what touches the edge (the sky, the torn border), go. */
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
-    g_pop_win[2] = 0; g_quest_page = g_card_page = 0;
+    g_pop_win[2] = 0; g_quest_page = g_card_page = g_accolade_page = 0;
     bestiary_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
     static int gone = 1 << 20;                                    /* ...frames since it was last seen */
+    g_accolade_small = g_winstyle == 2 && accolade_page(g_engine_out[a_on_top ? 0 : 1]);   /* (the top screen small in its corner: the plate instead) */
     if (top_page_mode() != 1 || !mapmarks_top_page()) { sheet_far = 0; gone = 1 << 20; return; }   /* (a shop's list up before its card) */
     enum { N = 256 * 192 };
     int quest = g_winstyle == 2 && !g_shop && quest_page(g_engine_out[a_on_top ? 0 : 1]);
@@ -2586,6 +2611,11 @@ static void pop_update(int a_on_top) {
         return;
     }
     sheet_far = 0;
+    if (g_winstyle == 2 && !g_shop && accolade_page(g_engine_out[a_on_top ? 0 : 1])) {   /* a title given: its gold plate alone (accolade_plate()) */
+        g_accolade_page = 1;
+        g_pop_win[0] = AC_X; g_pop_win[1] = AC_Y; g_pop_win[2] = AC_W; g_pop_win[3] = AC_H;
+        return;
+    }
     if (g_winstyle == 2 && !g_shop && card_page(g_engine_out[a_on_top ? 0 : 1])) {   /* an item's card: redrawn whole (card_pieces()) */
         g_card_page = 1;
         g_pop_win[0] = CS_X; g_pop_win[1] = CS_Y; g_pop_win[2] = CS_W; g_pop_win[3] = CS_H;
@@ -2855,7 +2885,7 @@ static void present_gl(void) {
     pop_update((pow >> 15) & 1);
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
-    gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page);
+    gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
     gl_set_split(g_shop);
     g_win_outline = g_hud_win[2] != 0;                           /* (the next frames: the experience and level-up windows outlined) */
     g_dlg_outline = (pow >> 15) & 1;                             /* battles (the 3D on the top screen): the text box too */
