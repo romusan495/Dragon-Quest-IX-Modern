@@ -1356,9 +1356,25 @@ void gl_render_set_scale(int scale) {
     if (scale < 1) scale = 1;
     if (g_ready && scale > max_scale()) scale = max_scale();
     if (!g_ready || scale == g_scale) return;
+    /* the 3D on screen kept, scaled to the new buffers (as resize_fbs()):
+     * the next frames, before the game draws its 3D again, are composed with
+     * it, not without any (the 2D's backdrop at full brightness through a
+     * fade, the layout of a screen without 3D a moment) */
+    int keep = g_fb_shown >= 0 && g_fb[g_fb_shown].valid ? g_fb_shown : -1, ow = g_fb3_w, oh = g_fb_h;
+    GLuint old_fbo = 0, old_tex = 0;
+    if (keep >= 0) { old_fbo = g_fb[keep].post_fbo; old_tex = g_fb[keep].post; g_fb[keep].post_fbo = g_fb[keep].post = 0; }
     free_fbs();
     g_scale = scale;
     make_fbs();
+    if (keep >= 0) {
+        p_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_fb[0].post_fbo);
+        p_glClearColor(0, 0, 0, 0); p_glClear(GL_COLOR_BUFFER_BIT);
+        p_glBindFramebuffer(GL_READ_FRAMEBUFFER, old_fbo);
+        p_glBlitFramebuffer(0, 0, ow, oh, 0, 0, g_fb3_w, g_fb_h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        p_glDeleteTextures(1, &old_tex); p_glDeleteFramebuffers(1, &old_fbo);
+        g_fb[0].valid = 1; g_fb_shown = g_fb_latest = 0;
+    }
     fprintf(stderr, "3D at %dx\n", g_scale);
 }
 
