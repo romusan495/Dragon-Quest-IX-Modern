@@ -868,9 +868,11 @@ void volume_window_refresh(void) { if (g_vol) { SetScrollPos(GetDlgItem(g_vol, I
 #define ID_CTL_STATUS 4106
 static HWND g_ctlw;
 static int g_ctl_req = -1, g_ctl_req_what;
+static char g_ctl_prompt[160];                              /* the game waits for a key or button (controls_window_prompt) */
 static void ctl_status(HWND h) {                            /* which controller is connected (checked every second) */
     char st[160]; wchar_t ws[160], cur[160];
-    if (g_ctl_pad_label[0]) snprintf(st, sizeof st, T("Controller: %s"), g_ctl_pad_label);
+    if (g_ctl_prompt[0]) snprintf(st, sizeof st, "%s", g_ctl_prompt);
+    else if (g_ctl_pad_label[0]) snprintf(st, sizeof st, T("Controller: %s"), g_ctl_pad_label);
     else snprintf(st, sizeof st, "%s", T("No controller connected"));
     MultiByteToWideChar(CP_UTF8, 0, st, -1, ws, 160); ws[159] = 0;
     GetDlgItemTextW(h, ID_CTL_STATUS, cur, 160);
@@ -935,7 +937,9 @@ static INT_PTR CALLBACK ctl_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 controls_defaults(); controls_save(); ctl_fill(h);
             }
             return TRUE;
-        case IDOK: case IDCANCEL: DestroyWindow(h); g_ctlw = NULL; return TRUE;
+        case IDCANCEL: if (g_ctl_prompt[0]) { g_ctl_req = -2; return TRUE; }   /* Esc while the game waits: that wait is cancelled */
+        /* fall through */
+        case IDOK: DestroyWindow(h); g_ctlw = NULL; return TRUE;
         }
         break;
     }
@@ -957,7 +961,7 @@ void controls_window_open(SDL_Window* win) {
     *p++ = 0; *p++ = 0;
     p = put_str(p, TW(L"Controls"));
     *p++ = 9; p = put_str(p, L"Segoe UI");
-    p = put_item(p, 0, 8, 6, 384, 18, 0xFFFF, 0x82, TW(L"Pick an action, then change one of its keys or its controller button. A key or button that "
+    p = put_item(p, 0, 8, 6, 384, 18, 0xFFFF, 0x82, TW(L"Double-click an action, then press a key or a controller button for it. A key or button that "
                  "another action has moves over to it (they swap). Esc and Alt+Enter, and the sticks, stay as they are."));
     p = put_item(p, 0, 8, 28, 170, 9, 0xFFFF, 0x82, TW(L"Action"));
     p = put_item(p, 0, 180, 28, 56, 9, 0xFFFF, 0x82, TW(L"Key"));                 /* over the list's tab stops */
@@ -974,11 +978,16 @@ void controls_window_open(SDL_Window* win) {
     g_ctlw = CreateDialogIndirectParamW(GetModuleHandleW(NULL), d, info.info.win.window, ctl_proc, 0);
 }
 int controls_window_request(int* action, int* what) {
+    if (g_ctl_req == -2) { g_ctl_req = -1; return 2; }
     if (g_ctl_req < 0) return 0;
     *action = g_ctl_req; *what = g_ctl_req_what; g_ctl_req = -1;
     return 1;
 }
 void controls_window_refresh(void) { if (g_ctlw) { ctl_fill(g_ctlw); SetForegroundWindow(g_ctlw); } }
+void controls_window_prompt(const char* text) {
+    snprintf(g_ctl_prompt, sizeof g_ctl_prompt, "%s", text ? text : "");
+    if (g_ctlw) ctl_status(g_ctlw);
+}
 
 int session_window_action(void) { int a = g_ses_action; g_ses_action = 0; return a; }
 
@@ -1007,6 +1016,7 @@ void volume_window_refresh(void) {}
 void controls_window_open(SDL_Window* win) { (void)win; }
 int controls_window_request(int* action, int* what) { (void)action; (void)what; return 0; }
 void controls_window_refresh(void) {}
+void controls_window_prompt(const char* text) { (void)text; }
 void session_window_update(const SessionWindow* w) { (void)w; }
 int session_window_action(void) { return 0; }
 void session_window_close(void) {}
