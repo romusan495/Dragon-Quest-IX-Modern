@@ -1973,7 +1973,10 @@ static void draw_text(int eng, int top, float W, float wside) {
     p_glEnable(GL_BLEND);
     p_glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
     p_glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);   /* (solid where the letters are: the HUD's see-through panels) */
+    p_glEnable(GL_SCISSOR_TEST);                                  /* kept to its screen: a letter past its edge (the menu's party card sliding */
+    p_glScissor(0, top ? g_fb_h : 0, g_fb3_w, g_fb_h);            /* out of the top screen) not over the other one (its mask: the edge row's) */
     p_glDrawArrays(GL_TRIANGLES, 0, nv);
+    p_glDisable(GL_SCISSOR_TEST);
     p_glDisable(GL_BLEND);
     p_glActiveTexture(GL_TEXTURE0);
     p_glUseProgram(prog_comp);
