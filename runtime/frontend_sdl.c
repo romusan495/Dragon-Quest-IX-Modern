@@ -913,6 +913,7 @@ static void bestiary_menu_pieces(GlPresent* v) {
 enum { AC_X = 9, AC_Y = 24, AC_W = 238, AC_H = 160,                /* the plate and the window, together */
        AC_PX = 24, AC_PW = 208, AC_PH = 56 };                      /* the plate (its dark outer edge) */
 static int g_accolade_page, g_accolade_small;
+static int g_pop_modern;                                          /* the popped up page is one modern window (pop_update()) */
 static int accolade_page(const uint32_t* px) {
     return px_share(px, 2, 4, 0, 8, 12, 100, 255, 0, 30, 0, 30) >= 8          /* the curtain at the left edge (203, 0, 0 to 121, 0, 0) */
         && px_share(px, 128, 4, 0, 0, 1, 100, 255, 0, 30, 0, 30) >= 10        /* ...and above the plate */
@@ -1106,7 +1107,17 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             if (g_pop_win[2] && g_quest_page && v->npiece + 6 <= GL_MAX_PIECES) quest_pieces(v);
             else if (g_pop_win[2] && g_card_page && v->npiece + 13 <= GL_MAX_PIECES) card_pieces(v);
             else if (g_pop_win[2] && g_accolade_page && v->npiece < GL_MAX_PIECES) accolade_plate(v);
-            else if (g_pop_win[2] && v->npiece < GL_MAX_PIECES) {
+            else if (g_pop_win[2] && g_pop_modern && v->npiece + 6 <= GL_MAX_PIECES) {
+                /* one modern window: see-through, a thin grey line, its insides
+                 * without their panel (like the windows over the field) */
+                float k = g_pop_at[2], x = g_pop_at[0], y = g_pop_at[1], w = (float)g_pop_win[2] * k, h = (float)g_pop_win[3] * k, t = 0.75f;
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, w, h);
+                bestiary_piece(v, 0, g_pop_win[0] + 2, g_pop_win[1] + 2, g_pop_win[2] - 4, g_pop_win[3] - 4, 17, x + 2 * k, y + 2 * k, k);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, w, t);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y + h - t, w, t);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, t, h);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x + w - t, y, t, h);
+            } else if (g_pop_win[2] && v->npiece < GL_MAX_PIECES) {
                 float* q = v->piece[v->npiece++], w = (float)g_pop_win[2], h = (float)g_pop_win[3];
                 q[4] = 0; q[5] = (float)g_pop_win[0]; q[6] = (float)g_pop_win[1]; q[7] = w; q[8] = h;
                 q[2] = w * g_pop_at[2]; q[3] = h * g_pop_at[2]; q[0] = g_pop_at[0]; q[1] = g_pop_at[1];
@@ -2289,7 +2300,8 @@ static void pop_place(void) {
     int side = 0, field = gl_wide_shown(&side) == 1 && g_comp_has3d, d[4], dlg = field && gl_dialog_box(d);
     for (int y = 0; y < 192; y++)
         for (int x = 0, row = 0; x < 256; x++) {
-            row += field && ((g_comp_info[(y * 256 + x) * 4] & 3) != 1 || (dlg && x >= d[0] && x < d[2] && y >= d[1] && y < d[3]));   /* (the dialogue window is 3D) */
+            row += !field ? 0 : dlg && x >= d[0] - 2 && x < d[2] + 2 && y >= d[1] - 2 && y < d[3] + 2 ? 40   /* (the dialogue window is 3D; never over it: it is read with the page) */
+                 : (g_comp_info[(y * 256 + x) * 4] & 3) != 1;
             g_pop_sum[y + 1][x + 1] = g_pop_sum[y][x + 1] + row;
         }
     float k0 = fminf(1.0f, fminf(0.8f * cw / w, 0.8f * 192.0f / h));
@@ -2594,7 +2606,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
  * around them, and what touches the edge (the sky, the torn border), go. */
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
-    g_pop_win[2] = 0; g_quest_page = g_card_page = g_accolade_page = 0;
+    g_pop_win[2] = 0; g_quest_page = g_card_page = g_accolade_page = g_pop_modern = 0;
     bestiary_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
     static int gone = 1 << 20;                                    /* ...frames since it was last seen */
@@ -2682,6 +2694,17 @@ static void pop_update(int a_on_top) {
     if (kept * (g_shop ? 400 : 50) < N) return;                   /* (nothing much left: not a page with windows) */
     for (int i = 0; i < N; i++) px[i] = (px[i] & 0xFFFFFF) | (bg[i] ? 1u << 24 : 0);
     g_pop_win[0] = x0; g_pop_win[1] = y0; g_pop_win[2] = x1 - x0 + 1; g_pop_win[3] = y1 - y0 + 1;
+    /* one window of the modern style (its light line at its edge, its dark
+     * panel inside): drawn as the others over the field, see-through with a
+     * thin grey line (canvas_layout_for()) */
+    {
+        int my = (y0 + y1) / 2, mx = (x0 + x1) / 2;
+#define GREYISH(c, lo, hi) (abs((int)(((c) >> 16) & 255) - (int)(((c) >> 8) & 255)) < 8 && abs((int)(((c) >> 8) & 255) - (int)((c) & 255)) < 8 && (int)((c) & 255) >= lo && (int)((c) & 255) <= hi)
+        g_pop_modern = g_winstyle == 2 && !g_shop && x1 - x0 > 40 && y1 - y0 > 30
+            && GREYISH(px[my * 256 + x0], 180, 255) && GREYISH(px[y0 * 256 + mx], 180, 255)        /* (its line, then a darker grey, then the panel (40, 40, 40)) */
+            && GREYISH(px[my * 256 + x0 + 3], 25, 60) && GREYISH(px[(y1 - 3) * 256 + mx], 25, 60);
+#undef GREYISH
+    }
     if (!g_shop) pop_place();
 }
 

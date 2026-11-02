@@ -510,6 +510,8 @@ static const char* FS_COPY =
     "  vec4 c = texture(u_src, v_uv);\n"
     "  float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  if (u_mode == 11) { vec4 c = texture(u_src, v_uv); o_color = vec4(c.rgb * c.a, c.a); return; }\n"
+    "  if (u_mode == 17) { vec3 r = c.rgb / max(c.a, 0.001); float d = max(abs(r.r - 0.157), max(abs(r.g - 0.157), abs(r.b - 0.157)));\n"   /* (the picture without its window's dark panel (40, 40, 40): see-through there) */
+    "    float a = smoothstep(0.03, 0.07, d) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 10) {\n"
     "    float g = goldness(c) * smoothstep(0.78, 0.9, c.r / max(c.a, 0.001)), near = 0.0;\n"   /* (bright: the cursor's gold, not a parchment's dark edge) */
     "    for (int i = 0; i < 8; i++) { vec2 o = vec2(i < 3 ? -1.0 : i < 5 ? 0.0 : 1.0, i == 0 || i == 3 || i == 5 ? -1.0 : i == 1 || i == 6 ? 0.0 : 1.0); vec4 n = texture(u_src, v_uv + o * u_ds * 1.2); near = max(near, goldness(n) * smoothstep(0.78, 0.9, n.r / max(n.a, 0.001))); }\n"
