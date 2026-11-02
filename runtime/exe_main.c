@@ -17,6 +17,15 @@
 
 int dqix_main(int argc, char** argv);
 
+#ifdef _WIN32
+/* Laptops with two graphics chips (Intel + NVIDIA or AMD): the drivers start
+ * an OpenGL program on the slow built-in one unless the .exe itself asks for
+ * the fast one with these exported values (the NVIDIA panel's choice alone
+ * didn't move it: 3D at 40 FPS on Intel graphics). */
+__declspec(dllexport) DWORD NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+#endif
+
 static void to_own_folder(const char* argv0) {
     char dir[1024];
 #ifdef _WIN32

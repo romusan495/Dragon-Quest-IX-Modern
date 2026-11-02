@@ -79,3 +79,5 @@ typedef struct { double render_ms, upload_ms; int uploads, polys; long upload_te
 extern GlStats g_gl_stats;
 const char* gl_renderer_name(void);
 int gl_render_scale(void);
+double gl_gpu_ms(void);                               /* GPU time spent drawing so far, in ms (only grows; -1: not measurable) */
+void gl_gpu_time(int begin);                          /* 1: time the GPU work from here (compose, present), 0: up to here */
