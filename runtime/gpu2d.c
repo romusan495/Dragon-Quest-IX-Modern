@@ -121,8 +121,10 @@ static int tint_slot(uint16_t c) {
  * only the straight parts of its white line (colour 10), in grey, carried on
  * to where they meet: the rounded corner's steps left out, the corner square. */
 #define WIN_LINE_COL 0x4210                                         /* the line's grey (128) */
-/* (in battles, the commands screen too: the party's cards and their menus, see compose_line) */
-static int modern_windows(int eng) { return g_winstyle == 2 && (!g_dlg_outline || eng == 1); }
+/* (in battles too: the commands screen, the party's cards and their menus (see
+ * compose_line), and the text box over the 3D, square with its grey line like
+ * the experience window, its panel reaching the line) */
+static int modern_windows(int eng) { (void)eng; return g_winstyle == 2; }
 static uint16_t map_ent(uint32_t mapbase, uint32_t w, uint32_t h, int tx, int ty) {
     tx &= (int)(w >> 3) - 1; ty &= (int)(h >> 3) - 1;
     uint32_t sb = (tx >> 5) + (ty >> 5) * (w >> 8);
