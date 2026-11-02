@@ -479,8 +479,11 @@ it = Riportare tutti i tasti e i pulsanti come all'origine?
 en = Controls
 it = Comandi
 
-en = Pick an action, then change one of its keys or its controller button. A key or button that another action has moves over to it (they swap). Esc and Alt+Enter, and the sticks, stay as they are.
-it = Scegli un'azione, poi cambia uno dei suoi tasti o il pulsante del controller. Un tasto o pulsante già usato da un'altra azione passa a questa (si scambiano). Esc, Alt+Invio e le levette restano come sono.
+en = Double-click an action, then press a key or a controller button for it. A key or button that another action has moves over to it (they swap). Esc and Alt+Enter, and the sticks, stay as they are.
+it = Fai doppio clic su un'azione, poi premi un tasto o un pulsante del controller. Un tasto o pulsante già usato da un'altra azione passa a questa (si scambiano). Esc, Alt+Invio e le levette restano come sono.
+
+en = Press a key or a controller button for: %s (Esc cancels)
+it = Premi un tasto o un pulsante del controller per: %s (Esc annulla)
 
 en = Action
 it = Azione
