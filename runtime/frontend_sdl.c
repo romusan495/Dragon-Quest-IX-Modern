@@ -1084,8 +1084,14 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             q = v->piece[v->npiece++];
             q[4] = 3; q[5] = 0; q[6] = L2; q[7] = 256; q[8] = 192 - L2;
             q[0] = x; q[1] = 192 - (192 - L2) * k; q[2] = 256 * k; q[3] = (192 - L2) * k;
-            q = v->piece[v->npiece++];                            /* the window */
-            q[9] = 2; q[0] = x + 8 * k; q[1] = (L + gap) * k; q[2] = 240 * k; q[3] = dh * k;
+            {   /* the window: its panel, its line as thin as the list's (one of the list's pixels), no dark edge round it */
+                float wx = x + 8 * k, wy = (L + gap) * k, ww = 240 * k, wh = dh * k, t = fmaxf(k, 0.75f);
+                q = v->piece[v->npiece++]; q[9] = 16; q[0] = wx; q[1] = wy; q[2] = ww; q[3] = wh;
+                q = v->piece[v->npiece++]; q[9] = 4; q[0] = wx; q[1] = wy; q[2] = ww; q[3] = t;
+                q = v->piece[v->npiece++]; q[9] = 4; q[0] = wx; q[1] = wy + wh - t; q[2] = ww; q[3] = t;
+                q = v->piece[v->npiece++]; q[9] = 4; q[0] = wx; q[1] = wy; q[2] = t; q[3] = wh;
+                q = v->piece[v->npiece++]; q[9] = 4; q[0] = wx + ww - t; q[1] = wy; q[2] = t; q[3] = wh;
+            }
             if (g_pop_win[2]) {
                 q = v->piece[v->npiece++];                        /* its text */
                 q[4] = 0; q[5] = SHOP_TX; q[6] = SHOP_TY; q[7] = SHOP_TW; q[8] = SHOP_TH; q[9] = 1;   /* (the item's icon at its left: mapmarks_shop()) */
@@ -1866,7 +1872,7 @@ static int to_touch_in(SDL_Window* win, int wx, int wy, int* tx, int* ty, int cl
         lx = ((float)wx + 0.5f - v.ox) / v.sc; ly = ((float)wy + 0.5f - v.oy) / v.sc;
     } else { canvas_layout(&v, 1, 1); SDL_RenderWindowToLogical(g_ren, wx, wy, &lx, &ly); }
     int bottom_pieces = 0;
-#define TOUCH_PIECE(q) ((((int)((q)[4] + 0.5f)) & 1) && (int)((q)[9] + 0.5f) != 2 && (int)((q)[9] + 0.5f) != 4 && (int)((q)[9] + 0.5f) != 7)   /* a piece of the touch screen's picture (not a window, a line) */
+#define TOUCH_PIECE(q) ((((int)((q)[4] + 0.5f)) & 1) && (int)((q)[9] + 0.5f) != 2 && (int)((q)[9] + 0.5f) != 4 && (int)((q)[9] + 0.5f) != 7 && (int)((q)[9] + 0.5f) != 16)   /* a piece of the touch screen's picture (not a window, a line) */
     for (int i = 0; i < v.npiece; i++) bottom_pieces |= v.piece[i][4] > 0.5f;
     if (bottom_pieces) {                                          /* the battle HUD's panels, the character's creation: back to where they are on the touch screen */
         static int last;                                          /* the panel last touched: a drag off it stays on its edge */
@@ -2593,7 +2599,10 @@ static void pop_update(int a_on_top) {
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
     static int gone = 1 << 20;                                    /* ...frames since it was last seen */
     g_accolade_small = g_winstyle == 2 && accolade_page(g_engine_out[a_on_top ? 0 : 1]);   /* (the top screen small in its corner: the plate instead) */
-    if (top_page_mode() != 1 || !mapmarks_top_page()) { sheet_far = 0; gone = 1 << 20; return; }   /* (a shop's list up before its card) */
+    static int after_shop;                                        /* a shop's list left, its item's card still on the top screen */
+    if (g_shop) after_shop = 1;
+    if (top_page_mode() != 1 || !mapmarks_top_page()) { sheet_far = 0; gone = 1 << 20; after_shop = 0; return; }   /* (a shop's list up before its card) */
+    if (after_shop && !g_shop) return;                            /* (that card, going: not popped up, nor cut while it fades) */
     enum { N = 256 * 192 };
     int quest = g_winstyle == 2 && !g_shop && quest_page(g_engine_out[a_on_top ? 0 : 1]);
     gone = quest ? 0 : gone + 1;

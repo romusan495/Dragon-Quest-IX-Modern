@@ -501,6 +501,7 @@ static const char* FS_COPY =
     "    o_color = d < 0.6 ? vec4(vec3(0.08), 0.8) : d < 1.6 ? vec4(vec3(0.5), 1.0) : u_mode == 7 ? vec4(vec3(0.094), 1.0) : vec4(0.0, 0.0, 0.0, 0.55); return;\n"
     "  }\n"
     "  if (u_mode == 4) { o_color = vec4(vec3(0.5), 1.0); return; }\n"
+    "  if (u_mode == 16) { o_color = vec4(0.0, 0.0, 0.0, 0.55); return; }\n"   /* (a window's panel alone: its line drawn apart, as thin as the game's around it) */
     "  if (u_mode == 5) {\n"
     "    float m = 0.0;\n"
     "    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) m += red(v_uv + vec2(i, j) * 0.6 * u_ds);\n"
