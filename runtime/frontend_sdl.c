@@ -493,16 +493,16 @@ static int logo_make(const uint32_t* top) {                       /* 1: the top 
     /* kept: the biggest part, and the parts near what is kept (within 10
      * pixels, step by step: the halo, the steam's swirls), not by the
      * paper's edges (its torn, shaded borders' stains) */
-    static uint8_t keep[W * H + 1], near[W * H], tmp[W * H];
+    static uint8_t keep[W * H + 1], nearby[W * H], tmp[W * H];
     memset(keep, 0, (size_t)nl + 1);
     if (big) keep[big] = 1;
     for (int it = 0, more = 1; it < 8 && more; it++) {
         more = 0;
         for (int i = 0; i < W * H; i++) tmp[i] = lab[i] && keep[lab[i]];
         for (int y = 0; y < H; y++)
-            for (int x = 0; x < W; x++) { int v = 0; for (int d = -10; d <= 10 && !v; d++) { int xx = x + d; if (xx >= 0 && xx < W) v = tmp[y * W + xx]; } near[y * W + x] = (uint8_t)v; }
+            for (int x = 0; x < W; x++) { int v = 0; for (int d = -10; d <= 10 && !v; d++) { int xx = x + d; if (xx >= 0 && xx < W) v = tmp[y * W + xx]; } nearby[y * W + x] = (uint8_t)v; }
         for (int y = 0; y < H; y++)
-            for (int x = 0; x < W; x++) { int v = 0; for (int d = -10; d <= 10 && !v; d++) { int yy = y + d; if (yy >= 0 && yy < H) v = near[yy * W + x]; } tmp[y * W + x] = (uint8_t)v; }
+            for (int x = 0; x < W; x++) { int v = 0; for (int d = -10; d <= 10 && !v; d++) { int yy = y + d; if (yy >= 0 && yy < H) v = nearby[yy * W + x]; } tmp[y * W + x] = (uint8_t)v; }
         for (int i = 0; i < W * H; i++) {
             int l = lab[i];
             if (!l || keep[l] || !tmp[i] || area[l] < 8 || sx[l] < 28 || sx[l] > 227 || sy[l] < 12 || sy[l] > 180) continue;
