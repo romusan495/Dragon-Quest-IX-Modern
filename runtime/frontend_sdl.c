@@ -411,7 +411,7 @@ static void logo_save(void) {
     FILE* f = fopen(LOGO_FILE, "wb");
     if (!f) return;
     static uint8_t a[LOGO_W * LOGO_H];
-    fwrite("DQXBP1", 1, 6, f);
+    fwrite("DQXBP2", 1, 6, f);
     for (int b = 0; b < 2; b++) {
         fputc(g_logo_have[b], f); fwrite(&g_logo_of[b], 4, 1, f);
         if (!g_logo_have[b]) continue;
@@ -425,7 +425,7 @@ static void logo_load(void) {
     FILE* f = fopen(LOGO_FILE, "rb");
     if (!f) return;
     char m[6]; static uint8_t a[LOGO_W * LOGO_H];
-    if (fread(m, 1, 6, f) == 6 && !memcmp(m, "DQXBP1", 6))
+    if (fread(m, 1, 6, f) == 6 && !memcmp(m, "DQXBP2", 6))
         for (int b = 0; b < 2; b++) {
             int have = fgetc(f); uint32_t h;
             if (have < 0 || fread(&h, 4, 1, f) != 1) break;
@@ -490,16 +490,32 @@ static int logo_make(const uint32_t* top) {                       /* 1: the top 
         area[id] = n; sx[id] = (int)(ax / n); sy[id] = (int)(ay / n);
         if (!big || n > area[big]) big = id;
     }
-    int bx0 = W, by0 = H, bx1 = -1, by1 = -1;
-    for (int i = 0; i < W * H; i++) if (big && lab[i] == big) { int x = i % W, y = i / W; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
-    bx0 -= 12; by0 -= 12; bx1 += 12; by1 += 12;
-    for (int i = 0; i < W * H; i++) {                             /* kept: near a part whose middle is by the biggest */
+    /* kept: the biggest part, and the parts near what is kept (within 10
+     * pixels, step by step: the halo, the steam's swirls), not by the
+     * paper's edges (its torn, shaded borders' stains) */
+    static uint8_t keep[W * H + 1], near[W * H], tmp[W * H];
+    memset(keep, 0, (size_t)nl + 1);
+    if (big) keep[big] = 1;
+    for (int it = 0, more = 1; it < 8 && more; it++) {
+        more = 0;
+        for (int i = 0; i < W * H; i++) tmp[i] = lab[i] && keep[lab[i]];
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) { int v = 0; for (int d = -10; d <= 10 && !v; d++) { int xx = x + d; if (xx >= 0 && xx < W) v = tmp[y * W + xx]; } near[y * W + x] = (uint8_t)v; }
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) { int v = 0; for (int d = -10; d <= 10 && !v; d++) { int yy = y + d; if (yy >= 0 && yy < H) v = near[yy * W + x]; } tmp[y * W + x] = (uint8_t)v; }
+        for (int i = 0; i < W * H; i++) {
+            int l = lab[i];
+            if (!l || keep[l] || !tmp[i] || area[l] < 8 || sx[l] < 28 || sx[l] > 227 || sy[l] < 12 || sy[l] > 180) continue;
+            keep[l] = 1; more = 1;
+        }
+    }
+    for (int i = 0; i < W * H; i++) {
         float a = 0;
         int x = i % W, y = i / W;
         for (int j = -2; j <= 2 && a == 0; j++) for (int k = -2; k <= 2; k++) {
             int xx = x + k, yy = y + j; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
             int l = lab[yy * W + xx];
-            if (l && area[l] >= 8 && sx[l] >= bx0 && sx[l] <= bx1 && sy[l] >= by0 && sy[l] <= by1) { a = 1; break; }
+            if (l && keep[l]) { a = 1; break; }
         }
         a *= m[i] * 0.11f * 255;
         uint8_t* o = &img[i * 4];
@@ -635,16 +651,25 @@ static void list_keys(uint16_t* keys, int* touch, int* tx, int* ty);
  * where a plate meets its dialogue). In the touch screen's pixels. */
 enum { NPANEL = 16 };
 static int g_panel[NPANEL][4], g_npanel;                          /* x0, y0, x1, y1 (inclusive) */
-static void find_panels(const uint32_t* px) {
+static void find_panels(const uint32_t* px, const uint8_t* ly) {
     enum { W = 256, H = 192 };
     static uint8_t in[W * H]; static int lab[W * H], q[W * H];
+    {   /* (only while its brightness holds a moment: not while it fades in or out) */
+        static float prev = -1; static int still;
+        long sum = 0;
+        for (int i = 0; i < W * H; i += 7) { uint32_t c = px[i]; sum += ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255); }
+        float mean = (float)sum / (3.0f * (W * H / 7 + 1));
+        still = fabsf(mean - prev) < 0.6f ? still + 1 : 0; prev = mean;
+        if (still < 2) return;                                    /* (the windows as they were) */
+    }
     g_npanel = 0;
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) {
             uint32_t c = px[y * W + x]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
             int L = (299 * r + 587 * g + 114 * b) / 1000;
             int grey = abs(r - g) < 10 && abs(g - b) < 10 && r > 105 && r < 160;   /* (the game's line round a window: 130, 130, 130) */
-            in[y * W + x] = x >= 3 && x <= 252 && y >= 3 && y <= 188 && ((L < 118 && r > g && g >= b) || grey);
+            in[y * W + x] = x >= 3 && x <= 252 && y >= 3 && y <= 188 && !(g_cur[2] && x >= g_cur[0] && x < g_cur[0] + g_cur[2] && y >= g_cur[1] && y < g_cur[1] + g_cur[3] && (ly[y * W + x] & 7) == LAYER_OBJ)
+                && ((L < 118 && r > g && g >= b) || grey);           /* (not the cursor's sprite over a window's edge) */
         }
     memset(lab, 0, sizeof lab);
     int nl = 0;
@@ -671,14 +696,16 @@ static void find_panels(const uint32_t* px) {
             /* the same window part while its rows stay within its span (a row of
              * letters has shorter runs) and don't stop for more than a row */
             if (b < 0) gap++; else gap = 0;
-            int same = a0 >= 0 && (b < 0 ? gap <= 1 && y <= y1 : a >= a0 - 3 && b <= b0 + 3);
+            /* (rows without a run: its side lines alone, a row the cursor or a
+             * highlight breaks: still the same, the component joins them) */
+            int same = a0 >= 0 && (b < 0 ? y <= y1 : a >= a0 - 3 && b <= b0 + 3);
             if (!same && a0 >= 0 && last - ys >= 5) { int* r = g_panel[g_npanel++]; r[0] = a0; r[1] = ys; r[2] = b0; r[3] = last; }
             if (!same) { a0 = b >= 0 ? a : -1; b0 = b; ys = y; }
             if (b >= 0) last = y;
         }
     }
 }
-static int g_menu_bar;                                            /* the records' menus: their title bar across the touch screen's top */
+static int g_menu_bar = -1;                                       /* the records' menus (the book on the top screen) 1, Al Embic's 0, not told yet -1 */
 static int g_list_ghost;                                          /* a list's screen a moment, its names gone (leaving for the menu): the window alone */
 static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
@@ -708,9 +735,22 @@ static void bestiary_update(int a_on_top) {
         else if (parchment_share(top) >= 9) logo_make(top);       /* a records' menu: its book's picture */
         else logo_show(1);                                        /* Al Embic's menus (the pot): the Alchimanach's */
         bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], m != BM_MENU);
-        g_menu_bar = px_share(list, 16, 14, 12, 0, 19, 95, 205, 45, 135, 0, 80) >= 5;   /* (its letters across half of it) */
+        {   /* the records' (the book's parchment on the top screen), not Al Embic's
+             * (his room there): told once the top screen isn't dark, a few
+             * frames alike before it changes (not on and off while it fades in) */
+            static int seen = -1, n;
+            if (m == BM_MENU && g_bmode != BM_MENU) g_menu_bar = -1;      /* (just come: not told yet) */
+            if (!dark_screen(top)) {
+                int rec = parchment_share(top) >= 9;
+                if (g_menu_bar < 0) { g_menu_bar = rec; n = 0; }
+                else if (rec == g_menu_bar) n = 0;
+                else if (rec == seen) { if (++n >= 3) { g_menu_bar = rec; n = 0; } }
+                else { seen = rec; n = 1; }
+            }
+        }
         g_list_ghost = m == BM_MENU && px_share(list, 180, 23, 3, 0, 8, 0, 100, 0, 110, 10, 160) >= 5;
-        if (m == BM_MENU && !g_menu_bar) find_panels(list); else g_npanel = 0;
+        if (m == BM_MENU && g_menu_bar == 0 && !dark_screen(list)) find_panels(list, g_engine_layer[a_on_top ? 1 : 0]);
+        else if (!(m == BM_MENU && g_menu_bar == 0)) g_npanel = 0;  /* (fading: the windows as they were) */
     }
     g_bmode = m;
 }
@@ -872,9 +912,10 @@ static void bestiary_menu_pieces(GlPresent* v) {
     float k = fminf((v->cw - 2 * M - 8) / 256.0f, (H - 8) / 192.0f), x = (v->cw - 256 * k) / 2, y = M + (H - 192 * k) / 2;
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);
     if (g_list_ghost) { bestiary_logo_rect(v); return; }
+    if (g_menu_bar < 0) { bestiary_logo_rect(v); return; }        /* (not told yet, fading in: the window alone) */
     if (g_menu_bar)                                               /* (the records' title bar: not Al Embic's menus) */
         set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 8 * k, y + 37 * k, 240 * k, 0.75f);   /* under its title */
-    if (!g_menu_bar && g_npanel) {                                /* Al Embic's: each window's letters, its frame drawn whole */
+    if (g_menu_bar == 0 && g_npanel) {                            /* Al Embic's: each window's letters, its frame drawn whole */
         int fr[NPANEL][4], lo = 256, hi = -1;                     /* the frames, lined up: edges near the outermost on it */
         for (int i = 0; i < g_npanel; i++) {
             const int* r = g_panel[i];
@@ -900,8 +941,8 @@ static void bestiary_menu_pieces(GlPresent* v) {
                 if (b > cut1) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + cut1 * k, y + ey * k - (e ? 0.75f : 0), (b - cut1) * k, 0.75f);
             }
         }
-    } else bestiary_piece(v, 1, 0, 0, 256, 192, 12, x, y, k);
-    bestiary_cursor_at(v, 0, 0, x, y, k);                         /* the game's cursor, as it is */
+    } else if (g_menu_bar == 1) bestiary_piece(v, 1, 0, 0, 256, 192, 12, x, y, k);
+    if (g_menu_bar == 1 || g_npanel) bestiary_cursor_at(v, 0, 0, x, y, k);   /* the game's cursor, as it is */
     bestiary_logo_rect(v);
 }
 
