@@ -3537,7 +3537,7 @@ static void capture_done(const char* what) {
 }
 static void capture_key(SDL_Scancode k, Uint16 mod) {
     if (k == SDL_SCANCODE_ESCAPE) { capture_done(NULL); return; }
-    if (g_cap_what == 2) return;                                 /* a controller button is wanted */
+    if (g_cap_what == 2) g_cap_what = 0;                         /* a key, though a button was asked: its key */
     int is_mod = k == SDL_SCANCODE_LCTRL || k == SDL_SCANCODE_RCTRL || k == SDL_SCANCODE_LALT || k == SDL_SCANCODE_RALT ||
                  k == SDL_SCANCODE_LSHIFT || k == SDL_SCANCODE_RSHIFT;
     int key = (int)k;
@@ -3546,20 +3546,39 @@ static void capture_key(SDL_Scancode k, Uint16 mod) {
     char n[64]; controls_key_name(key, n, sizeof n);
     capture_done(n);
 }
-static void capture_pad(int pad) {
-    if (g_cap_what != 2) return;
+static void capture_pad(int pad) {                             /* a button, whichever was asked */
     controls_set_pad(g_cap_action, pad);
     char n[64]; controls_pad_name(pad, n, sizeof n);
     capture_done(n);
 }
 static void capture_wait(void) {                                /* the game waits meanwhile */
+    /* The Controls window has the focus (its button was just clicked): the game
+     * window is brought forward for the keys (Windows only lets it if forced),
+     * and the controller is heard even if it stays behind - SDL otherwise drops
+     * a controller's presses while no game window has the focus (an Xbox
+     * controller "did nothing"). */
+    SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
     SDL_RaiseWindow(g_win);
+    SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "0");
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (!g_pad) {                                               /* not opened yet (plugged in late): now */
+        for (int i = 0; i < SDL_NumJoysticks() && !g_pad; i++) if (SDL_IsGameController(i)) g_pad = SDL_GameControllerOpen(i);
+        if (g_pad) controls_pad_detect(g_pad);
+    }
     while (g_cap_action >= 0) {
-        snprintf(g_notice, sizeof g_notice, g_cap_what == 2 ? "Press a controller button for: %s (Esc cancels)" : "Press a key for: %s (Esc cancels)", g_ctl[g_cap_action].name);
+        char ask[160];
+        snprintf(ask, sizeof ask, T("Press a key or a controller button for: %s (Esc cancels)"), T(g_ctl[g_cap_action].name));
+        snprintf(g_notice, sizeof g_notice, "%s", ask);
+        controls_window_prompt(ask);
         g_notice_until = SDL_GetPerformanceCounter() + g_perf_freq;
         update_title(g_last_fps);
         handle_events(); present(); SDL_Delay(15);
+        int ca, cw, r = g_cap_action >= 0 ? controls_window_request(&ca, &cw) : 0;
+        if (r == 2) capture_done(NULL);
+        else if (r == 1 && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; }   /* another action picked meanwhile */
     }
+    controls_window_prompt(NULL);
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "0");
     g_next_frame = SDL_GetPerformanceCounter();
     g_pad_resync = 1;
 }
@@ -3697,7 +3716,7 @@ void frontend_frame(void) {
                 if (held_for >= 60) { held_for = 0; restart_with(NULL); }
             } else if (held_for) { if (held_for < 60) notice("Reset cancelled"); held_for = 0; }
             int ca, cw;                                           /* Game > Controls asked for a new key */
-            if (controls_window_request(&ca, &cw) && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; capture_wait(); }
+            if (controls_window_request(&ca, &cw) == 1 && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; capture_wait(); }
         }
         int mx, my;
         Uint32 mb = SDL_GetMouseState(&mx, &my);
