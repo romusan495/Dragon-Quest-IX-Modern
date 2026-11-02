@@ -115,6 +115,58 @@ static int load_gl(void) {
     return 1;
 }
 
+/* GPU time: how long the graphics card itself spends drawing (timer
+ * queries, whose answers are read some frames later so nothing waits for
+ * them). 3D resolution Auto keeps to what the card manages with it
+ * (gl_gpu_ms). Optional: without them (an old driver), no measure. */
+#define GPUQ 16
+#define GL_TIME_ELAPSED_ 0x88BF
+#define GL_QUERY_RESULT_ 0x8866
+#define GL_QUERY_RESULT_AVAILABLE_ 0x8867
+static void (APIENTRY* p_glGenQueries)(GLsizei, GLuint*);
+static void (APIENTRY* p_glBeginQuery)(GLenum, GLuint);
+static void (APIENTRY* p_glEndQuery)(GLenum);
+static void (APIENTRY* p_glGetQueryObjectiv)(GLuint, GLenum, GLint*);
+static void (APIENTRY* p_glGetQueryObjectui64v)(GLuint, GLenum, unsigned long long*);
+static GLuint g_gpuq[GPUQ];
+static unsigned g_gpuq_head, g_gpuq_tail;                       /* queries started / read */
+static int g_gpuq_on, g_gpuq_open;                              /* timing works; a span is being timed (spans don't nest) */
+static double g_gpu_ms;                                         /* all the GPU time measured so far */
+static void gpu_time_init(void) {
+    *(void**)&p_glGenQueries = SDL_GL_GetProcAddress("glGenQueries");
+    *(void**)&p_glBeginQuery = SDL_GL_GetProcAddress("glBeginQuery");
+    *(void**)&p_glEndQuery = SDL_GL_GetProcAddress("glEndQuery");
+    *(void**)&p_glGetQueryObjectiv = SDL_GL_GetProcAddress("glGetQueryObjectiv");
+    *(void**)&p_glGetQueryObjectui64v = SDL_GL_GetProcAddress("glGetQueryObjectui64v");
+    if (!p_glGenQueries || !p_glBeginQuery || !p_glEndQuery || !p_glGetQueryObjectiv || !p_glGetQueryObjectui64v || getenv("DQIX_NO_GPU_TIME")) return;
+    p_glGenQueries(GPUQ, g_gpuq);
+    g_gpuq_on = 1;
+}
+static void gpu_time_collect(void) {
+    while (g_gpuq_tail != g_gpuq_head - (unsigned)g_gpuq_open) {    /* (not the one still open) */
+        GLuint q = g_gpuq[g_gpuq_tail % GPUQ]; GLint ready = 0;
+        p_glGetQueryObjectiv(q, GL_QUERY_RESULT_AVAILABLE_, &ready);
+        if (!ready) break;
+        unsigned long long ns = 0; p_glGetQueryObjectui64v(q, GL_QUERY_RESULT_, &ns);
+        g_gpu_ms += (double)ns / 1e6;
+        g_gpuq_tail++;
+    }
+}
+static int gpu_time_begin(void) {
+    if (!g_gpuq_on || g_gpuq_open) return 0;
+    gpu_time_collect();
+    if (g_gpuq_head - g_gpuq_tail >= GPUQ) return 0;            /* all still out: this span goes unmeasured */
+    p_glBeginQuery(GL_TIME_ELAPSED_, g_gpuq[g_gpuq_head % GPUQ]);
+    g_gpuq_head++; g_gpuq_open = 1;
+    return 1;
+}
+static void gpu_time_end(void) {
+    if (!g_gpuq_open) return;
+    p_glEndQuery(GL_TIME_ELAPSED_); g_gpuq_open = 0;
+}
+double gl_gpu_ms(void) { if (!g_gpuq_on) return -1; if (!g_gpuq_open) gpu_time_collect(); return g_gpu_ms; }
+void gl_gpu_time(int begin) { if (begin) gpu_time_begin(); else gpu_time_end(); }
+
 #define VTX_FLOATS 18                    /* floats per vertex sent to the GPU */
 
 /* ---------------------------------------------------------------- shaders */
@@ -1286,6 +1338,7 @@ int gl_render_max_scale(void) { return g_ready ? max_scale() : GL_MAX_SCALE; }
 int gl_render_init(int scale) {
     if (!load_gl()) return 0;
     g_scale = scale < 1 ? 1 : scale > max_scale() ? max_scale() : scale;
+    gpu_time_init();
     prog_poly = program(VS_POLY, FS_POLY, 1);
     prog_post = program(VS_QUAD, FS_POST, 0);
     prog_comp = program(VS_QUAD, FS_COMP, 0);
@@ -1446,7 +1499,9 @@ float gl_3d_centre_w(void) { return g_centre_w; }
 static void gl_render_(const Frame3D* f);
 static void gl_render(const Frame3D* f) {
     double t0 = perf_ms();
+    int timed = gpu_time_begin();                                 /* (inside the frontend's own span: already counted) */
     gl_render_(f);
+    if (timed) gpu_time_end();
     g_gl_stats.render_ms += perf_ms() - t0;
     g_gl_stats.polys += f->n;
 }

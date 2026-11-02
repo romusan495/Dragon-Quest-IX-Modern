@@ -144,6 +144,8 @@ extern int g_dlg_outline;       /* ...and the 3D screen's (the text box in battl
 void gpu_cards_hide(int eng, int y0, int y1);   /* gpu2d.c: the battle cards' boxes on those rows left out */
 extern int g_comp_win_px[2];    /* gpu2d.c: last frame, pixels of a window's panel per engine */
 static int g_paused, g_turbo;   /* Game > Pause, Game > Fast forward (latched) */
+static int g_gpu_cap = GL_MAX_SCALE;                          /* 3D resolution Auto: the most this graphics card draws fast enough (gpu_budget) */
+static float g_gpu_load = -1;                                     /* ...the share of the time its GPU was busy, the last second (-1: not measured) */
 static int g_battle_speed = 1;  /* Modern > Battle speed: 1 to 4 times as fast (not in a session) */
 static int g_battle_turn_only;  /* ...only while the turn plays out: choosing the commands at the usual pace */
 static int g_skip_intro = BOOTSKIP_LOGOS;   /* Modern > Start: skip the logos (1), and the opening movie (2) */
@@ -1424,7 +1426,8 @@ static double ticks_ms(uint64_t t) { return (double)t * 1000.0 / (double)g_perf_
 static void perf_write(FILE* f) {
     fprintf(f, "mode: %s\n", g_classic ? "classic (DS 3D renderer)" : "enhanced (3D on the GPU)");
     fprintf(f, "renderer: %s\n", g_gl ? gl_renderer_name() : "software (no OpenGL 3.3)");
-    if (g_gl && !g_classic) fprintf(f, "3D resolution: %dx\n", gl_render_scale());
+    if (g_gl && !g_classic) fprintf(f, "3D resolution: %dx%s\n", gl_render_scale(), !g_res_auto ? "" : g_gpu_cap < GL_MAX_SCALE ? " (Auto, at most what this graphics card draws fast enough)" : " (Auto)");
+    if (g_gl && !g_classic && g_gpu_load >= 0) fprintf(f, "GPU busy: %.0f%% of the time (the last second)\n", g_gpu_load * 100);
     fprintf(f, "audio: %s\n\n", g_audio ? "on" : "off");
     fprintf(f, "Per frame, in ms. A frame must take under 16.7 ms in total (busy + present) to keep full speed.\n");
     fprintf(f, "busy = all work for the frame: game = game code, 2d = 2D layers, gl = 3D on the GPU, upload = new textures (inside gl),\n");
@@ -1640,14 +1643,47 @@ static int battle_commands_shown(void) {
     return 0;
 }
 
+/* 3D resolution Auto, and the graphics card: the share of the time the GPU
+ * spends drawing, each second (gl_gpu_ms). Past 80% it can't keep up with 60
+ * frames a second (a laptop's Intel graphics at 12x: 40 FPS), so Auto goes
+ * down to a resolution it manages (the cost goes with the pixels: the
+ * square of the scale) and stays there; up again a step only when the GPU
+ * has been idle most of the time for a while, and the step up should still
+ * leave it room (g_gpu_cap: the most Auto picks on this card). */
+static void gpu_budget(void) {
+    static uint64_t t0; static double ms0; static int scale0, quiet, since_down;
+    uint64_t now = SDL_GetPerformanceCounter(); double ms = gl_gpu_ms();
+    int s = gl_render_scale();
+    if (ms < 0) return;                                           /* no timer queries */
+    if (!t0 || s != scale0 || g_fast || g_paused || g_battle_pace > 1) { t0 = now; ms0 = ms; scale0 = s; return; }   /* (a new resolution, fast forward, faster battles: start over) */
+    double el = (double)(now - t0) * 1000.0 / (double)g_perf_freq;
+    if (el < 1000) return;
+    float load = (float)((ms - ms0) / el);
+    t0 = now; ms0 = ms; g_gpu_load = load;
+    since_down++;
+    if (load > 0.80f && s > 2) {                                  /* too slow: to about 60% */
+        int to = (int)floorf((float)s * sqrtf(0.60f / load));
+        if (to > s - 1) to = s - 1;
+        if (to < 2) to = 2;
+        if (to < g_gpu_cap) g_gpu_cap = to;
+        quiet = 0; since_down = 0;
+        LOG_INFO("3D resolution Auto: the GPU is busy %.0f%% of the time at %dx: %dx at most\n", load * 100, s, g_gpu_cap);
+        if (s > g_gpu_cap) gl_render_set_scale(g_gpu_cap);        /* at once (auto_scale waits half a second for a window being resized) */
+    } else if (g_gpu_cap < GL_MAX_SCALE && load * (float)((s + 1) * (s + 1)) / (float)(s * s) < 0.55f) {
+        if (++quiet >= 5 && since_down >= 30) { g_gpu_cap = s + 1; quiet = 0; LOG_INFO("3D resolution Auto: GPU busy %.0f%% at %dx: up to %dx\n", load * 100, s, s + 1); }
+    } else quiet = 0;
+}
+
 /* 3D resolution Auto: render at 1.5 times the size the 3D is shown at (at
- * least 2x, at most what the GPU holds), so it is never stretched and the
- * extra detail smooths the edges. Changes after the size has stayed the same
- * for half a second (resizing a window doesn't rebuild it every frame). */
+ * least 2x, at most what the GPU holds, and what it draws fast enough:
+ * gpu_budget), so it is never stretched and the extra detail smooths the
+ * edges. Changes after the size has stayed the same for half a second
+ * (resizing a window doesn't rebuild it every frame). */
 static void auto_scale(void) {
     if (!g_res_auto || g_classic || getenv("DQIX_SCALE3D")) return;
     { static long long from = -2; if (from == -2) { const char* e = getenv("DQIX_AUTO_FROM"); from = e ? atoll(e) : -1; }   /* tests: 2x until then */
       if (from >= 0 && g_frame < (uint64_t)from) return; }
+    { static int off = -1; if (off < 0) off = getenv("DQIX_NO_GPU_BUDGET") != NULL; if (!off) gpu_budget(); }
     float need = 0;
     SDL_Window* ws[2] = { g_win, g_win2 };
     for (int k = 0; k < 2; k++) {
@@ -1660,6 +1696,7 @@ static void auto_scale(void) {
         }
     }
     int want = (int)ceilf(need * 1.5f - 0.05f), top = gl_render_max_scale();
+    if (top > g_gpu_cap) top = g_gpu_cap;
     if (want < 2) want = 2;
     if (want > top) want = top;
     static int pending, frames;
@@ -2289,7 +2326,9 @@ static void present_gl(void) {
         if (!held && (pow & 1) && gl_wide_shown(&side) >= 0 && !gl_3d_ready()) { held = 1; return; }
         held = 0;
     }
+    gl_gpu_time(1);                                              /* (3D resolution Auto: how long the GPU takes) */
     gl_compose((pow >> 15) & 1, pow & 1);
+    gl_gpu_time(0);                                              /* (not the drawing in the window: it may wait there for the screen's refresh) */
     wide_update((pow >> 15) & 1);
     gl_dump_hook();
     test_hooks();
