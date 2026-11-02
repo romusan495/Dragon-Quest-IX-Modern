@@ -476,7 +476,7 @@ static const char* FS_COPY =
      * the dark letters made grey (an ingredient short) */
     "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
-    "float ink(vec2 uv, int light) { vec4 c = textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
+    "float ink(vec2 uv, int light) { ivec2 ts = textureSize(u_src, 0); vec4 c = light == 3 ? texelFetch(u_src, clamp(ivec2(uv * vec2(ts)), ivec2(0), ts - 1), 0) : textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (relative: a parchment, however dark, is as coloured) */
     "  return (light == 3 ? smoothstep(0.355, 0.325, L) : light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
@@ -491,7 +491,8 @@ static const char* FS_COPY =
     "  return max(t / 9.0, m * 0.75); }\n"
     "float greys() {\n"   /* (dim grey letters (121, 121, 121: a list's ??? not known yet): shown grey, their dots and all) */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
-    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = textureLod(u_src, v_uv + dx * float(i) + dy * float(j), 0.0); vec3 r = c.rgb / max(c.a, 0.001);\n"
+    "  ivec2 ts = textureSize(u_src, 0);\n"   /* (the texels themselves: a thin grey stroke not mixed with the panel's brown round it) */
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = texelFetch(u_src, clamp(ivec2((v_uv + dx * float(i) + dy * float(j)) * vec2(ts)), ivec2(0), ts - 1), 0); vec3 r = c.rgb / max(c.a, 0.001);\n"
     "    float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02), L = dot(r, vec3(0.299, 0.587, 0.114));\n"
     "    float a = smoothstep(0.40, 0.44, L) * smoothstep(0.58, 0.54, L) * smoothstep(0.12, 0.06, sat) * c.a; t += a; m = max(m, a); }\n"
     "  return max(t / 9.0, m * 0.75); }\n"

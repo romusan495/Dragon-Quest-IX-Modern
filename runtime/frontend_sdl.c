@@ -705,6 +705,26 @@ static void find_panels(const uint32_t* px, const uint8_t* ly) {
         }
     }
 }
+/* The rows a list's two columns have (the game fills the left one first: 13
+ * items, 7 and 6): drawn one after the other in one column, with no empty
+ * row between them (list_rows()). */
+enum { BL_ROW0 = 55, BL_ROWS_H = 113, BL_COL1_X = 0, BL_COL2_X = 119, BL_COL_W = 128 };   /* (the monster list's columns, bestiary_pieces()) */
+enum { AL_ROW0 = 48, AL_ROWS_H = 104 };                           /* (the Alchimanach's, alchemy_pieces()) */
+static int g_rows[2] = { 8, 8 };
+static int list_rows(const uint32_t* px, int x0, int x1, int row0, float rh) {
+    int n = 0;
+    for (int r = 0; r < 8; r++) {
+        int ink = 0;
+        for (int y = row0 + (int)(r * rh) + 2; y < row0 + (int)((r + 1) * rh) - 2; y++)
+            for (int x = x0; x < x1; x++) {
+                uint32_t c = px[y * 256 + x]; int R = (c >> 16) & 255, G = (c >> 8) & 255, B = c & 255;
+                int mn = R < G ? (R < B ? R : B) : (G < B ? G : B), mx = R > G ? (R > B ? R : B) : (G > B ? G : B);
+                ink += (mn > 95 && mx - mn < 50) || (R > 200 && G > 150 && B < 110) || (G > 150 && G - (R > B ? R : B) > 60);   /* (light or grey letters, a chosen line's yellow or green) */
+            }
+        if (ink >= 3) n = r + 1;
+    }
+    return n;
+}
 static int g_menu_bar = -1;                                       /* the records' menus (the book on the top screen) 1, Al Embic's 0, not told yet -1 */
 static int g_list_ghost;                                          /* a list's screen a moment, its names gone (leaving for the menu): the window alone */
 static void bestiary_update(int a_on_top) {
@@ -719,9 +739,13 @@ static void bestiary_update(int a_on_top) {
     g_bhold = page != 2 && g_bmode && g_winstyle == 2 && g_frame - g_page2_at <= 10 && parchment_share(list) >= 6;
     if (g_bhold) return;
     if (g_winstyle == 2 && page == 2) {
-        if (monster_list(list)) { m = BM_LIST; g_bpage = monster_page(top); }
+        if (monster_list(list)) {
+            m = BM_LIST; g_bpage = monster_page(top);
+            g_rows[0] = list_rows(list, 15, 118, BL_ROW0, BL_ROWS_H / 8.0f); g_rows[1] = list_rows(list, 134, 244, BL_ROW0, BL_ROWS_H / 8.0f);
+        }
         else if (alchemy_list(list)) {
             m = BM_ALCH; g_bpage = card_page(top);                 /* (a recipe's item's card, g_card_item) */
+            g_rows[0] = list_rows(list, 20, 124, AL_ROW0, AL_ROWS_H / 8.0f); g_rows[1] = list_rows(list, 140, 244, AL_ROW0, AL_ROWS_H / 8.0f);
             g_recipe = px_share(top, 186, 117, 6, 0, 9, 178, 210, 112, 145, 50, 80) >= 7 && px_share(top, 186, 150, 6, 0, 9, 150, 182, 88, 118, 38, 68) >= 7;   /* (its orange panel across the page's lower half: above its headers' line, in its empty rows) */
             if (g_bpage) item_icon(top, g_engine_layer[a_on_top ? 0 : 1]); else g_icon[2] = 0;
         }
@@ -768,7 +792,6 @@ static float* bestiary_piece(GlPresent* v, int screen, float sx, float sy, float
  * game lays it out: its name's bar, its picture (the 3D monster in its box),
  * its numbers and what it drops, where it lives, its description. In the
  * screens' pixels: */
-enum { BL_ROW0 = 55, BL_ROWS_H = 113, BL_COL1_X = 0, BL_COL2_X = 119, BL_COL_W = 128 };
 static void set_rect(float* q, float x, float y, float w, float h) { q[0] = x; q[1] = y; q[2] = w; q[3] = h; }
 static void bestiary_pieces(GlPresent* v) {
     const float M = 5, H = v->ch - 2 * M;
@@ -780,13 +803,16 @@ static void bestiary_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 8, 34, 84, 11, 6, x, y, k); y += 13 * k + 2;   /* "All monsters" (the list's family; not the tab's line under it) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y - 1, lw - 6, 0.75f); /* a line under them */
     /* each column: its names (light letters), the game's cursor by its row */
-    bestiary_piece(v, 1, 15, BL_ROW0, 103, BL_ROWS_H, 13, x - 2 + 15 * k, y, k);   /* (up to the right column's cursor) */
-    int cr = g_cur[0] >= BL_COL2_X - 20;                          /* the game's cursor's column */
-    if (g_cur[2] && !cr) bestiary_cursor_at(v, 0, BL_ROW0, x - 2, y, k);   /* the game's cursor, where its row is */
-    y += BL_ROWS_H * k;
-    bestiary_piece(v, 1, 134, BL_ROW0, 112, BL_ROWS_H, 13, x - 2 + 15 * k, y, k);
-    if (g_cur[2] && cr) bestiary_cursor_at(v, BL_COL2_X, BL_ROW0, x - 2, y, k);
-    y += BL_ROWS_H * k;
+    {   /* (the left column's rows, then the right one's right after them: no empty row between) */
+        float rh = BL_ROWS_H / 8.0f, y0 = y; int n1 = g_rows[0] ? g_rows[0] : 8;
+        bestiary_piece(v, 1, 15, BL_ROW0, 103, n1 * rh, 13, x - 2 + 15 * k, y, k);   /* (up to the right column's cursor) */
+        int cr = g_cur[0] >= BL_COL2_X - 20;                      /* the game's cursor's column */
+        if (g_cur[2] && !cr) bestiary_cursor_at(v, 0, BL_ROW0, x - 2, y, k);   /* the game's cursor, where its row is */
+        y += n1 * rh * k;
+        if (g_rows[1]) bestiary_piece(v, 1, 134, BL_ROW0, 110, g_rows[1] * rh, 13, x - 2 + 15 * k, y, k);   /* (not the panel's edge at its right) */
+        if (g_cur[2] && cr) bestiary_cursor_at(v, BL_COL2_X, BL_ROW0, x - 2, y, k);
+        y = y0 + 2 * BL_ROWS_H * k;
+    }
     bestiary_piece(v, 1, 104, 168, 48, 13, 3, M + (lw - 48 * k) / 2, y, k);              /* the page (1/4), its arrows on each side (a click turns it) */
     bestiary_piece(v, 1, 11, 170, 10, 12, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);   /* (inside the names' panel's edges) */
     bestiary_piece(v, 1, 235, 170, 10, 12, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k);
@@ -813,7 +839,6 @@ static void bestiary_pieces(GlPresent* v) {
  * recipe's item's card (as card_pieces(): equipment's jobs or an item's
  * prices) and under it the recipe (its headers' dark letters made light, its
  * ingredients' light ones). In the screens' pixels: */
-enum { AL_ROW0 = 48, AL_ROWS_H = 104 };
 static int g_card_item;
 /* The lists shown in one column (the monsters', the Alchimanach's): the game
  * keeps Up and Down in one of its two columns, round and round. Here the
@@ -841,9 +866,10 @@ static void list_keys(uint16_t* keys, int* touch, int* tx, int* ty) {
     float row0 = list ? BL_ROW0 : AL_ROW0, rh = (list ? BL_ROWS_H : AL_ROWS_H) / 8.0f;
     int right = g_cur[0] >= (list ? BL_COL2_X - 20 : 100);
     int row = (int)floorf((g_cur[1] + g_cur[3] / 2.0f - row0) / rh);
-    int to_right, to_row;
-    if ((pressed & K_DOWN) && row >= 7) { to_right = !right; to_row = 0; }
-    else if ((pressed & K_UP) && row <= 0) { to_right = !right; to_row = 7; }
+    int to_right, to_row, n1 = g_rows[0] ? g_rows[0] : 8, n2 = g_rows[1];   /* (the rows each column has) */
+    if (!n2) return;                                              /* (one column: the game's own) */
+    if ((pressed & K_DOWN) && row >= (right ? n2 : n1) - 1) { to_right = !right; to_row = 0; }
+    else if ((pressed & K_UP) && row <= 0) { to_right = !right; to_row = right ? n1 - 1 : n2 - 1; }
     else return;
     held = pressed & (K_UP | K_DOWN);
     *keys &= (uint16_t)~held;
@@ -858,13 +884,16 @@ static void alchemy_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);
     bestiary_piece(v, 1, 9, 11, 72, 12, 12, x - 3 * k, y, k); y += 12 * k + 2;           /* "Alchimanach" (12: not its bar's pattern) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
-    bestiary_piece(v, 1, 20, AL_ROW0, 104, AL_ROWS_H, 13, x - 2 + 17 * k, y, k);
-    int cr = g_cur[0] >= 100;
-    if (g_cur[2] && !cr) bestiary_cursor_at(v, 3, AL_ROW0, x - 2, y, k);
-    y += AL_ROWS_H * k;
-    bestiary_piece(v, 1, 140, AL_ROW0, 106, AL_ROWS_H, 13, x - 2 + 17 * k, y, k);
-    if (g_cur[2] && cr) bestiary_cursor_at(v, 123, AL_ROW0, x - 2, y, k);
-    y += AL_ROWS_H * k;
+    {   /* (as the monster list: no empty row between the columns) */
+        float rh = AL_ROWS_H / 8.0f, y0 = y; int n1 = g_rows[0] ? g_rows[0] : 8;
+        bestiary_piece(v, 1, 20, AL_ROW0, 104, n1 * rh, 13, x - 2 + 17 * k, y, k);
+        int cr = g_cur[0] >= 100;
+        if (g_cur[2] && !cr) bestiary_cursor_at(v, 3, AL_ROW0, x - 2, y, k);
+        y += n1 * rh * k;
+        if (g_rows[1]) bestiary_piece(v, 1, 140, AL_ROW0, 104, g_rows[1] * rh, 13, x - 2 + 17 * k, y, k);   /* (not the panel's edge at its right) */
+        if (g_cur[2] && cr) bestiary_cursor_at(v, 123, AL_ROW0, x - 2, y, k);
+        y = y0 + 2 * AL_ROWS_H * k;
+    }
     bestiary_piece(v, 1, 104, 155, 48, 10, 3, M + (lw - 48 * k) / 2, y, k);              /* the page and its arrows (above the panel's edge) */
     bestiary_piece(v, 1, 11, 155, 10, 10, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);
     bestiary_piece(v, 1, 235, 155, 10, 10, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k); y += 12 * k + 2;
@@ -884,7 +913,7 @@ static void alchemy_pieces(GlPresent* v) {
     float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kp = fminf(rw / 240.0f, (H - 4) / 176.0f);
     float px = rx + (rw - 240 * kp) / 2 - 10 * kp, py = M + (H - 176 * kp) / 2 - 6 * kp;
 #define AP(sx_, sy_, sw_, sh_, m_) bestiary_piece(v, 0, sx_, sy_, sw_, sh_, m_, px + (sx_) * kp, py + (sy_) * kp, kp)
-    AP(16, 8, 16, 16, 0); AP(37, 11, 102, 10, 3); AP(175, 9, 25, 15, 9); AP(200, 9, 48, 15, 8);   /* its kind's sign (inside the bar's edge), name, rarity */
+    AP(17, 9, 14, 14, 0); AP(37, 11, 102, 10, 3); AP(175, 9, 25, 15, 9); AP(200, 9, 48, 15, 8);   /* its kind's sign (inside the bar's edge), name, rarity */
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 27 * kp, 228 * kp, 0.75f);
     if (g_icon[2]) { float* q = v->layer[GL_LAYER_ICON]; q[0] = px + g_icon[0] * kp; q[1] = py + g_icon[1] * kp; q[2] = g_icon[2] * kp; q[3] = g_icon[3] * kp; }   /* the item alone (off its brown box) */
     AP(61, 38, 110, 40, 6);                                       /* the description (inside its panel's dotted edge) */
@@ -897,7 +926,7 @@ static void alchemy_pieces(GlPresent* v) {
     }
     if (g_recipe) {
         AP(40, 106, 50, 12, 12);                                  /* "Recipe" */
-        AP(30, 123, 206, 10, 6);                                  /* its headers (dark on their row, not the lines round it) */
+        AP(30, 123.4f, 206, 8.4f, 6);                               /* its headers (dark on their row, their accents; not the darker line under it) */
         for (int r = 0; r < 3; r++) { AP(18, 136 + 13 * r, 216, 10, 14); AP(18, 136 + 13 * r, 216, 10, 15); }   /* its ingredients, a row each (not their lines): light, or dark when short (made grey), ??? grey */
     } else if (g_card_item) AP(19, 107, 216, 66, 12);            /* where it is found, who drops it (light on their panel) */
     else AP(19, 106, 154, 68, 12);                                /* its stats (light on their panel) */
@@ -972,7 +1001,7 @@ static void card_pieces(GlPresent* v) {
     static const float equip[][5] = {                             /* x, y, w, h on the page; restyled (FS_COPY's u_mode) */
         { CS_X, CS_Y, CS_W, CS_H, 7 },                            /* the window (solid: it may lie over the field's menus) */
         { 16, 27, 228, 1, 4 }, { 16, 101, 165, 1, 4 }, { 181, 30, 1, 146, 4 },   /* the lines: under the name, over the stats (up to the jobs' line), before the jobs */
-        { 16, 8, 17, 17, 0 },                                     /* the kind's sign */
+        { 17, 9, 14, 14, 0 },                                     /* the kind's sign (inside its dark edge: not the gold beside it) */
         { 37, 11, 102, 11, 3 },                                   /* the name (light on its bar, inside its edge: not its light top row) */
         { 175, 9, 25, 15, 9 }, { 200, 9, 48, 15, 8 },             /* the rarity: its word, its stars (off their brown plates) */
         { 24, 48, 32, 32, 0 },                                    /* the icon, big */
@@ -985,7 +1014,7 @@ static void card_pieces(GlPresent* v) {
     static const float item[][5] = {
         { CS_X, CS_Y, CS_W, CS_H, 7 },
         { 16, 27, 228, 1, 4 }, { 16, 101, 228, 1, 4 }, { 179, 30, 1, 69, 4 },   /* the lines: under the name, over where it is found, before the prices */
-        { 16, 8, 17, 17, 0 }, { 37, 11, 102, 11, 3 }, { 175, 9, 25, 15, 9 }, { 200, 9, 48, 15, 8 },
+        { 17, 9, 14, 14, 0 }, { 37, 11, 102, 11, 3 }, { 175, 9, 25, 15, 9 }, { 200, 9, 48, 15, 8 },
         { 24, 48, 32, 32, 0 },
         { 60, 30, 112, 66, 6 },                                   /* the description */
         { 181, 31, 66, 58, 6 },                                   /* the prices: their words and the sums */
