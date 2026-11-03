@@ -365,6 +365,10 @@ static void card_pieces(GlPresent* v) {
  * allocating skill points (the menu's pixels): the skill's table goes there */
 enum { NOOK_X = 129, NOOK_Y = 105, NOOK_W = 122, NOOK_H = 85 };
 
+/* Widescreen: a movie in two halves is playing (hdmovie_two_screens()):
+ * both screens shown as one picture (canvas_layout_for) */
+static int g_movie2;
+
 /* second: the layout of the second window (two windows) */
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
@@ -547,6 +551,16 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
                     }
                 }
             }
+        }
+        if (g_movie2 && !second) {
+            /* a movie in two halves (the opening, "to be continued"): one
+             * picture, the top screen's half over the bottom one's, as tall
+             * as the window; nothing over it */
+            v->cw = 256; v->ch = 384; v->npiece = 0; v->front = 0; v->alpha = 1.0f; v->movie2 = 1;
+            v->top[0] = v->bot[0] = 0; v->top[1] = 0; v->bot[1] = 192;
+            v->top[2] = v->bot[2] = 256; v->top[3] = v->bot[3] = 192;
+            v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
+            memset(v->icons, 0, sizeof v->icons); memset(v->layer, 0, sizeof v->layer);
         }
     } else if (two || single) {
         v->cw = 256; v->ch = 192;                                /* one screen; the other is in the other window, or not shown */
@@ -2314,6 +2328,7 @@ static void present_gl(void) {
         if (lg && g_frame % 60 == 0) fprintf(stderr, "box: frame %llu tests %u in %u widened %u\n", (unsigned long long)g_frame, g_box_tests, g_box_in, g_box_widened);
         if (lg && g_frame % 60 == 0) g_box_tests = g_box_in = g_box_widened = 0;
     }
+    g_movie2 = !g_classic && hdmovie_two_screens();
     uint16_t pow; memcpy(&pow, &g_io[0x304], 2);
     hud_update((pow >> 15) & 1);                                 /* (before composing: the minimal style cuts the cards out for it) */
     gl_set_hud_cut(g_winstyle && (g_hud_n > 0 || g_hud_win[2]));
@@ -2366,6 +2381,7 @@ static void present_gl(void) {
     hdbar_update(&v);
     mapmarks_hover(-1, -1);
     map_overlay(&v, g_win, (pow >> 15) & 1);
+    if (g_movie2) { memset(v.overlay, 0, sizeof v.overlay); memset(v.icons, 0, sizeof v.icons); memset(v.layer, 0, sizeof v.layer); }   /* (the movie alone) */
     gl_present(&v);
     window_shot_hook(w, h, 0);
     SDL_GL_SwapWindow(g_win);
