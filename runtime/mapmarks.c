@@ -1316,12 +1316,14 @@ static void draw_legend(void) {
 /* ---------------------------------------------------------------- a building's plan */
 /* Inside a house the game shows the town around it. The room's walls are in
  * its collision: data/map/<C01M05>.amdj (NARC) holds C01A0500.col2 (DS LZ):
- * at +20 the triangles' count, at +36 where they start, 28 bytes each: three
- * corners (x, height, z: s16, 1024 per field unit), the normal (s16, 4.12)
- * and two attributes. The upright ones (the walls) seen from above outline
- * the floor: everything the outside doesn't reach. */
+ * at +4 its scale s, at +20 the triangles' count, at +36 where they start,
+ * 28 bytes each: three corners (x, height, z: s16, 4096 >> s per field
+ * unit: a small room's in finer steps than a castle's), the normal (s16,
+ * 4.12) and two attributes. The upright ones (the walls) seen from above
+ * outline the floor: everything the outside doesn't reach. (The sizes
+ * below are in the file's own steps, as they were tuned.) */
 #define PLAN_GAP 3                 /* overlay pixels: gaps in the walls up to twice this wide are closed */
-#define EDGE_EPS 300.0f            /* collision units (1024 per field unit): a wall ending this close to the plan's edge ends on it */
+#define EDGE_EPS 300.0f            /* collision steps: a wall ending this close to the plan's edge ends on it */
 #define EXIT_W (10 * 1024.0f)      /* ...a way out between two of them at most this wide */
 #define EXITS_MAX 256
 #define PLAN_TOP 15                /* top-screen rows: the place's name above (on the right), the party's names below, */
@@ -1390,7 +1392,8 @@ static int build_plan(const Place* pl) {
     const uint8_t* amdj = rom_file(path, &n), *packed = narc_file(amdj, n, name, &sz);
     uint8_t* c = packed ? ds_unpack(packed, sz, &sz) : NULL;
     if (!c || sz < 60) { free(c); return 0; }
-    uint32_t count = le32(c + 20), start = le32(c + 36);
+    uint32_t count = le32(c + 20), start = le32(c + 36), shift = le32(c + 4);
+    float unit = (float)(4096 >> (shift <= 4 ? shift : 2));      /* the file's steps per field unit (the party's, the spots' are in field units) */
     if (start < 40 || start > sz || count > (sz - start) / 28) count = 0;
     /* the walls: each upright triangle's two farthest corners, from above */
     float* seg = malloc(sizeof(float) * 4 * (count + EXITS_MAX));
@@ -1437,7 +1440,7 @@ static int build_plan(const Place* pl) {
     if (ns < 4 || x1 - x0 < 1024 || z1 - z0 < 1024 || (!g_fill && !(g_fill = malloc(sizeof(int) * MAPMARKS_W * MAPMARKS_H)))) { free(seg); return 0; }
     /* as big as the top screen shows it between the place's name and the party's names */
     float k = fminf((256 - 28) / (x1 - x0), (PLAN_BOTTOM - PLAN_TOP - 12) / (z1 - z0));   /* DS pixels per collision unit */
-    g_plan_k = k * 1024;
+    g_plan_k = k * unit;
     g_plan_ox = 128 - (x0 + x1) / 2 * k; g_plan_oy = (PLAN_TOP + PLAN_BOTTOM) / 2.0f - (z0 + z1) / 2 * k;
     /* the walls drawn thick (the outside can't slip through a doorway), the
      * outside found, then the walls thin again: what they gave up goes to
