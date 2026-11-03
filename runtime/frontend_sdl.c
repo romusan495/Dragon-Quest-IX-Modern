@@ -2082,6 +2082,11 @@ static void pop_update(int a_on_top) {
             }
             if (!(flags[c] & 1) && (best < 0 || ring[c] > ring[best])) best = c;
         }
+        /* no parchment round windows: a picture over the whole screen (the
+         * quest list's board of notices, all one part from its edge); cut by
+         * colour, only bits of its ink would be left, popped up as black
+         * stains over the menu: not shown (a card's parchment fills most of the ring) */
+        if (best < 0 || ring[best] < 400) return;
         for (int i = 0; i < N; i++) { int c = lab[i]; bg[i] = c == best || (flags[c] & 1) || !(flags[c] & 2); }
     }
     if (g_shop)                                                   /* a shop: the card's description alone (its parchment box) */
