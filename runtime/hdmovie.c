@@ -35,11 +35,24 @@ typedef struct {
 } Movie;
 
 static Movie g_mov[16];
-static int g_nmov, g_inited;
+static int g_nmov, g_inited, g_hd_looked;   /* g_hd_looked: movies/ looked in (only with the option on) */
 static struct { int m, idx, shown_m, shown_idx; uint8_t mask[256 * 192]; } g_eng[2] = { { -1, 0, -1, -1, { 0 } }, { -1, 0, -1, -1, { 0 } } };
+
+/* Every movie in the ROM, HD copy or not: the two halves of one (<name>_A on
+ * the top screen, <name>_B on the bottom one: the opening, "to be continued")
+ * are played together (hdmovie_two_screens()). */
+#define PAIR_FRAMES 20            /* both halves read this recently: playing (the game reads them every few frames) */
+static struct { char name[64]; uint32_t rom0, rom1; uint64_t last_read; int read; } g_any[16];
+static int g_nany;
 
 static void on_card_read(uint32_t addr, uint32_t len) {
     (void)len;
+    for (int i = 0; i < g_nany; i++)
+        if (addr >= g_any[i].rom0 && addr < g_any[i].rom1) {
+            { static int lg = -1; if (lg < 0) lg = getenv("DQIX_HDMOVIE_LOG") != NULL;
+              if (lg && (!g_any[i].read || g_frame - g_any[i].last_read > PAIR_FRAMES)) fprintf(stderr, "hdmovie f%llu: the game reads %s\n", (unsigned long long)g_frame, g_any[i].name); }
+            g_any[i].last_read = g_frame; g_any[i].read = 1;
+        }
     for (int i = 0; i < g_nmov; i++)
         if (addr >= g_mov[i].rom0 && addr < g_mov[i].rom1) { g_mov[i].last_read = g_frame; g_mov[i].read = 1; }
 }
@@ -112,7 +125,11 @@ static void walk(const uint8_t* fnt, const uint8_t* fat, uint32_t fat_n, int dir
         } else {
             if (!strcmp(path, "data/movie/") && n > 5 && !strcmp(name + n - 5, ".mods") && (uint32_t)fid < fat_n) {
                 name[n - 5] = 0;
-                add_movie(name, rd32(fat + fid * 8), rd32(fat + fid * 8 + 4));
+                if (g_nany < (int)(sizeof g_any / sizeof g_any[0])) {
+                    snprintf(g_any[g_nany].name, sizeof g_any[0].name, "%s", name);
+                    g_any[g_nany].rom0 = rd32(fat + fid * 8); g_any[g_nany].rom1 = rd32(fat + fid * 8 + 4); g_any[g_nany++].read = 0;
+                }
+                if (g_hdmovie_on) add_movie(name, rd32(fat + fid * 8), rd32(fat + fid * 8 + 4));
             }
             fid++;
         }
@@ -121,13 +138,25 @@ static void walk(const uint8_t* fnt, const uint8_t* fat, uint32_t fat_n, int dir
 
 void hdmovie_init(void) {
     for (int i = 0; i < g_nmov; i++) { close_movie(&g_mov[i]); free(g_mov[i].sig); free(g_mov[i].gop); free(g_mov[i].first); free(g_mov[i].part); free(g_mov[i].rgb); free(g_mov[i].small); }
-    g_nmov = 0; g_inited = 1;
+    g_nmov = g_nany = 0; g_inited = 1; g_hd_looked = g_hdmovie_on;
     g_eng[0].m = g_eng[1].m = -1;
     if (!g_rom || g_rom_size < 0x200) return;
     uint32_t fnt = rd32(g_rom + 0x40), fnt_n = rd32(g_rom + 0x44), fat = rd32(g_rom + 0x48), fat_n = rd32(g_rom + 0x4C);
     if ((size_t)fnt + fnt_n > g_rom_size || (size_t)fat + fat_n > g_rom_size) return;
     walk(g_rom + fnt, g_rom + fat, fat_n / 8, 0xF000, "", 0);
-    g_card_read_hook = g_nmov ? on_card_read : NULL;
+    g_card_read_hook = g_nany ? on_card_read : NULL;
+}
+
+int hdmovie_two_screens(void) {
+    if (!g_inited) hdmovie_init();
+    for (int i = 0; i < g_nany; i++) {
+        size_t n = strlen(g_any[i].name);
+        if (n < 3 || strcmp(g_any[i].name + n - 2, "_A") || !g_any[i].read || g_frame - g_any[i].last_read > PAIR_FRAMES) continue;
+        for (int j = 0; j < g_nany; j++)
+            if (j != i && strlen(g_any[j].name) == n && !strncmp(g_any[j].name, g_any[i].name, n - 1) && g_any[j].name[n - 1] == 'B'
+                && g_any[j].read && g_frame - g_any[j].last_read <= PAIR_FRAMES) return 1;
+    }
+    return 0;
 }
 int hdmovie_count(void) { return g_nmov; }
 
@@ -220,7 +249,7 @@ static int decode_to(Movie* m, int idx) {
 }
 
 int hdmovie_frame(int eng, const uint32_t* px, const uint8_t** rgb, int* w, int* h, const uint8_t** mask, int* fresh) {
-    if (!g_inited) hdmovie_init();
+    if (!g_inited || (g_hdmovie_on && !g_hd_looked)) hdmovie_init();
     if (!g_hdmovie_on || !g_nmov || eng < 0 || eng > 1) return 0;
     int active = 0;
     for (int i = 0; i < g_nmov; i++) {
