@@ -42,8 +42,10 @@
  *    (pointers at 0x020F33E0 + 4 * number, farm.c); a record's second word
  *    has the map's number (0x020FB3F0) in its top half while it is there;
  *    its position (x, height, z, 20.12) at +0x44, in the same units as the
- *    spots. A field's map (20001...) shows the whole field, 1 pixel per
- *    unit around the middle of the screen.
+ *    spots. A field's map (20001...) is the top screen's BG0, the field's
+ *    origin in the middle of its picture, scrolled by BG0HOFS/VOFS (not the
+ *    same in every field); the game's own mark of the hero (an 8x8 sprite,
+ *    see field_origin()) says exactly where it puts things.
  *
  * Read only: the game never sees any of it. */
 #include <stdio.h>
@@ -1677,6 +1679,45 @@ static int tmap_update(const uint8_t** rgba) {
     return 1;
 }
 
+/* Where a field's map puts the field's origin on the screen (as -cx + 128,
+ * -cy + 96, like a town's centre). A field's picture is the top screen's BG0
+ * (256x256 or bigger), the origin in its middle, scrolled (BG0HOFS/VOFS: 0,
+ * 32 west of Stornway), not the same in every field: a fixed 128, 96 put the
+ * monsters off to one side in other fields. Safest: the game's own mark of
+ * the hero, an 8x8 sprite (OAM, tile 0x140, palette 4: the party's other
+ * marks are see-through, other palettes; the same in towns), centred on the
+ * hero. Kept while it blinks or hides, for this map and scroll. */
+#define HERO_TILE 0x4140
+static void field_origin(uint32_t top, float scale, float* cx, float* cy) {
+    uint16_t cnt = IO16(top + 0x08);
+    int w = (cnt >> 14) & 1 ? 512 : 256, h = (cnt >> 14) & 2 ? 512 : 256;
+    uint32_t key = (uint32_t)rd16(MAP_NUM) << 16 ^ (uint32_t)IO16(top + 0x10) << 8 ^ IO16(top + 0x12) ^ cnt << 20;
+    static uint32_t seen_key; static float seen_cx, seen_cy;      /* the hero's mark last seen (it can blink) */
+    if (key == seen_key) { *cx = seen_cx; *cy = seen_cy; }
+    else {
+        *cx = (float)(IO16(top + 0x10) & 0x1FF) - w / 2 + 128;          /* -cx + 128 = w/2 - HOFS */
+        *cy = (float)(IO16(top + 0x12) & 0x1FF) - h / 2 + 96;
+    }
+    uint32_t a = rd32(FIELD_PTR);
+    if (a < 0x02000000 || a >= 0x02400000) return;
+    const uint8_t* o = g_oam + (top ? 0x400 : 0);
+    int found = -1;
+    for (int i = 0; i < 128; i++) {
+        uint16_t a0 = (uint16_t)(o[i * 8] | o[i * 8 + 1] << 8), a2 = (uint16_t)(o[i * 8 + 4] | o[i * 8 + 5] << 8);
+        if ((a0 & 0x300) == 0x200 || (a0 & 0xEC00) || a2 != HERO_TILE) continue;   /* hidden, see-through, not 8x8, another sprite */
+        if (found >= 0) return;                                              /* two: not sure which */
+        found = i;
+    }
+    if (found < 0) return;
+    int sx = (o[found * 8 + 2] | o[found * 8 + 3] << 8) & 0x1FF, sy = o[found * 8];
+    if (sx >= 256) sx -= 512;
+    if (sy >= 192) sy -= 256;
+    float hx = (float)(int32_t)rd32(a + 0x44) / 4096.0f, hz = (float)(int32_t)rd32(a + 0x4C) / 4096.0f;
+    float nx = hx * scale - (sx + 4) + 128, ny = hz * scale - (sy + 4) + 96;   /* the sprite's middle */
+    if (key == seen_key && fabsf(nx - seen_cx) <= 1.5f && fabsf(ny - seen_cy) <= 1.5f) return;   /* (its pixel lags the hero a little: steady) */
+    *cx = seen_cx = nx; *cy = seen_cy = ny; seen_key = key;
+}
+
 int mapmarks_update(const uint8_t** rgba) {
     static int loaded, had;
     static uint32_t last_key;
@@ -1808,6 +1849,7 @@ int mapmarks_update(const uint8_t** rgba) {
         uint16_t here = rd16(MAP_NUM);
         float scale = (float)(int32_t)rd32(mp + 0x38) / 4096.0f;
         float cx = field ? 0 : (float)(int32_t)rd32(mp + 0x44), cy = field ? 0 : (float)(int32_t)rd32(mp + 0x48);
+        if (field) field_origin(top, scale, &cx, &cy);
         for (int k = 0; scale > 0.1f && scale < 64 && k < MON_COUNT; k++) {
             uint32_t a = rd32(FIELD_PTR + 4 * (MON_FIRST + k));
             if (a < 0x02000000 || a >= 0x02400000 || (rd32(a + 4) >> 16) != here) continue;   /* there, on this map */
