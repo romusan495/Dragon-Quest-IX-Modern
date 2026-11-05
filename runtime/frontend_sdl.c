@@ -394,7 +394,7 @@ static int g_coll_quest;                                          /* (that list:
 static int quest_page(const uint32_t* px);
 static int coll_list(const uint32_t* list) {
     return px_share(list, 20, 12, 10, 0, 10, 130, 162, 70, 100, 8, 32) >= 7            /* the title's bar (146, 81, 16) */
-        && px_share(list, 20, 52, 20, 0, 10, 78, 102, 60, 84, 26, 54) >= 7             /* the names' panel's top (89, 73, 36) */
+        && px_share(list, 20, 52, 20, 0, 10, 70, 102, 54, 84, 24, 54) >= 7             /* the names' panel's top (89, 73, 36; the quests' 77, 60, 32) */
         && px_share(list, 20, 182, 20, 0, 10, 124, 136, 124, 136, 124, 136) >= 8;      /* its grey bottom edge (130) */
 }
 static int card_page(const uint32_t* px);
@@ -1067,7 +1067,7 @@ static void alchemy_pieces(GlPresent* v) {
 static void coll_pieces(GlPresent* v) {
     const float M = 5, H = v->ch - 2 * M;
     float k = (H - 10) / (12 + 4 + 12 + 2 + 2 * 8 * CL_RH + 12 + 22), lw = 122 * k + 8, x = M + 4, y = M + 3;
-    if (g_coll_quest) { k = fminf((H - 10) / (12 + 4 + 12 + 2 + 8 * CL_RH + 12 + 22) * 0.8f, (v->cw * 0.42f - 8) / 236); lw = 236 * k + 8; }   /* (one wide column) */
+    if (g_coll_quest) { k = fminf((H - 10) / (12 + 4 + 12 + 2 + 8 * CL_RH + 12 + 22) * 0.85f, (v->cw * 0.5f - 8) / 180); lw = 180 * k + 8; }   /* (one wide column) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);
     bestiary_piece(v, 1, 9, 15, 110, 12, 12, x - 3 * k, y, k); y += 12 * k + 2;           /* the title (12: not its bar's pattern) */
@@ -1075,7 +1075,7 @@ static void coll_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 12, 35, 100, 11, 6, x - 3 * k, y, k); y += 14 * k;               /* the kind shown (its tab's dark letters) */
     if (g_coll_quest) {                                           /* the quests: their signs and names, one column */
         bestiary_piece(v, 1, 21, CL_ROW0, 14, 8 * CL_RH, 20, x - 2 + 17 * k, y, k);      /* the signs, as they are (not the panel's brown round them: 20) */
-        bestiary_piece(v, 1, 35, CL_ROW0, 214, 8 * CL_RH, 13, x - 2 + 31 * k, y, k);
+        bestiary_piece(v, 1, 35, CL_ROW0, 142, 8 * CL_RH, 13, x - 2 + 31 * k, y, k);   /* (not the panel's scroll bar at its right) */
         if (g_cur[2]) bestiary_cursor_at(v, 3, CL_ROW0, x - 2, y, k);
         y += 8 * CL_RH * k + 4 * k;
     } else {
@@ -1296,7 +1296,19 @@ static void card_slots(const uint32_t* tp) {
         g_eq_slot[i] = (uint8_t)(other < 40 ? 0 : plate > 40 ? 2 : 1);
     }
 }
+static int bar_faded(const uint32_t* px) {                        /* the bar, the screen fading: its white edge grey, its blue darker */
+    int n = 0, m = 0;
+    for (int i = 0; i < 15; i++) {
+        uint32_t a = px[160 * 256 + 6 + 8 * i], b = px[161 * 256 + 6 + 8 * i];
+        int ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255, br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+        n += abs(ar - ag) < 10 && abs(ag - ab) < 10 && ar > 24;
+        m += bb > br + 16 && bb > bg + 8 && bb > ar / 2;
+    }
+    return n >= 13 && m >= 13;
+}
 static void equip_update(int a_on_top) {
+    int was = g_equip;
+    static uint64_t seen;                                         /* (the last frame it was told) */
     g_equip = 0;
     if (g_winstyle != 2 || !WIDE_GL || !g_wide) return;
     int bot = a_on_top ? 1 : 0, top = !bot;
@@ -1304,7 +1316,11 @@ static void equip_update(int a_on_top) {
     /* the bar under the character: its white edges (rows 160 and 175), its blue
      * (row 161), on the left half; the L sign over it */
     if (px_share(px, 6, 160, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 || px_share(px, 6, 175, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 ||
-        px_share(px, 6, 161, 8, 0, 15, 14, 34, 87, 107, 185, 205) < 9 || px_share(px, 6, 149, 2, 0, 5, 70, 92, 100, 125, 150, 175) < 4) return;
+        px_share(px, 6, 161, 8, 0, 15, 14, 34, 87, 107, 185, 205) < 9 || px_share(px, 6, 149, 2, 0, 5, 70, 92, 100, 125, 150, 175) < 4) {
+        if (was && g_frame - seen < 60 && bar_faded(px)) g_equip = was;   /* (fading in or out: as it was, not the DS's screens a moment) */
+        return;
+    }
+    seen = g_frame;
     g_equip = px_share(px, 250, 60, 0, 4, 20, 136, 156, 111, 131, 71, 91) >= 7 ? 2 : 1;   /* the bag's grid: its tan panel (146, 121, 81) at the right */
     int j = equip_job(bot);
     if (j >= 0) g_eq_job = j;
@@ -1391,12 +1407,12 @@ static void ui_glow(uint8_t* dst, int dw, int dh, float x, float y, float w, flo
 /* the backdrop: the shop's picture filling the canvas (cut to its shape), the
  * plaques on its wall, the job's lit; a little darker, under the windows */
 enum { EQ_P = 78, EQ_G = 14, EQ_WALL_Y = 40 };
-static void equip_back(int W, int H) {
-    static uint8_t* img; static int iw, ih, ijob = -2;
-    if (img && iw == W && ih == H && ijob == g_eq_job) return;
+static void equip_back(int W, int H, float u, float oy) {          /* (u: the picture's pixels per mockup unit; oy: where the mockup's top is) */
+    static uint8_t* img; static int iw, ih, ijob = -2; static float iu, ioy;
+    if (img && iw == W && ih == H && ijob == g_eq_job && iu == u && ioy == oy) return;
     uint8_t* n = (uint8_t*)realloc(img, (size_t)W * H * 4);
     if (!n) return;
-    img = n; iw = W; ih = H; ijob = g_eq_job;
+    img = n; iw = W; ih = H; ijob = g_eq_job; iu = u; ioy = oy;
     memset(img, 0, (size_t)W * H * 4);
     for (size_t i = 0; i < (size_t)W * H; i++) { img[i * 4] = 20; img[i * 4 + 1] = 14; img[i * 4 + 2] = 10; img[i * 4 + 3] = 255; }   /* (no picture: a dark brown) */
     const UiPic* s = ui_pic(&g_shop_pic, "ui/equip-shop.png");
@@ -1405,9 +1421,9 @@ static void equip_back(int W, int H) {
         if (sw / sh > (float)W / H) sw = sh * W / H; else sh = sw * H / W;
         ui_draw(img, W, H, s, (s->w - sw) / 2, (s->h - sh) / 2, sw, sh, 0, 0, (float)W, (float)H, 1);
     }
-    float u = H / 1080.0f, P = EQ_P * u, G = EQ_G * u, x0 = W / 2.0f - (6 * P + 5 * G) / 2;
+    float P = EQ_P * u, G = EQ_G * u, x0 = W / 2.0f - (6 * P + 5 * G) / 2;
     for (int i = 0; i < 12; i++) {
-        float x = x0 + (i % 6) * (P + G), y = (EQ_WALL_Y + (i / 6) * (EQ_P + EQ_G)) * u;
+        float x = x0 + (i % 6) * (P + G), y = oy + (EQ_WALL_Y + (i / 6) * (EQ_P + EQ_G)) * u;
         if (i + 1 == g_eq_job) ui_glow(img, W, H, x - 5 * u, y - 5 * u, P + 10 * u, P + 10 * u, 16 * u, 14 * u, 255, 196, 52, 0.8f);
         const UiPic* p = plate_pic(i + 1);
         if (p) ui_draw(img, W, H, p, 0, 0, (float)p->w, (float)p->h, x, y, P, P, 1);
@@ -1444,16 +1460,16 @@ static void modern_window(GlPresent* v, float x, float y, float w, float h) {
 }
 
 static void equip_pieces(GlPresent* v, int ww, int wh) {
-    const float C = v->ch / 1080.0f;                              /* (mockup units -> canvas) */
-    float cw = v->cw, mid = cw / 2;
+    const float C = fminf(v->ch / 1080.0f, v->cw / 1920.0f);     /* (mockup units -> canvas: narrower than 16:9, in a band across its middle) */
+    float cw = v->cw, mid = cw / 2, oy = (v->ch - 1080 * C) / 2;
 #define MX(m) (mid + ((m) - 960) * C)
-#define MY(m) ((m) * C)
+#define MY(m) (oy + (m) * C)
     {   /* the backdrop and the wall, at the window's own pixels */
         float s = wh > 0 ? (float)wh / v->ch : 5.625f;
         if (ww > 0 && wh > 0 && (float)ww / wh < cw / v->ch) s = (float)ww / cw;
         if (s > 11.25f) s = 11.25f;
         int W = (int)(cw * s + 0.5f), H = (int)(v->ch * s + 0.5f);
-        equip_back(W, H);
+        equip_back(W, H, C * s, oy * s);
         float* q = v->layer[GL_LAYER_BACK]; q[0] = 0; q[1] = 0; q[2] = cw; q[3] = v->ch;
     }
     /* the character, whole, in the middle (the 3D alone: not the backdrop) */

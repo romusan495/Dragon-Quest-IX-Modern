@@ -524,8 +524,8 @@ static const char* FS_COPY =
     "    float under = smoothstep(0.24, 0.21, r.r) * smoothstep(0.15, 0.17, r.r) * smoothstep(0.08, 0.05, r.g) * smoothstep(0.03, 0.01, r.b);\n"
     "    float cell = smoothstep(0.19, 0.21, r.r) * smoothstep(0.26, 0.24, r.r) * smoothstep(0.07, 0.09, r.g) * smoothstep(0.13, 0.11, r.g) * smoothstep(0.07, 0.05, r.b);\n"
     "    float cream = smoothstep(0.85, 0.88, r.r) * smoothstep(0.76, 0.79, r.g) * smoothstep(0.52, 0.55, r.b) * smoothstep(0.7, 0.67, r.b);\n"
-    "    float edge = smoothstep(0.3, 0.32, r.r) * smoothstep(0.39, 0.37, r.r) * smoothstep(0.2, 0.22, r.g) * smoothstep(0.29, 0.27, r.g) * smoothstep(0.11, 0.13, r.b) * smoothstep(0.19, 0.17, r.b);\n"
-    "    vec4 o = vec4(r, 1.0); o = mix(o, vec4(0.0), max(tan, under)); o = mix(o, vec4(0.0, 0.0, 0.0, 0.45), cell); o = mix(o, vec4(0.5, 0.5, 0.5, 1.0), max(cream, edge));\n"
+    "    float edge = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.27, 0.3, r.r) * smoothstep(0.43, 0.4, r.r) * smoothstep(0.08, 0.11, r.r - r.b) * smoothstep(0.24, 0.21, r.r - r.b) * (1.0 - tan);\n"   /* (the cells' brown frames) */
+    "    vec4 o = vec4(r, 1.0); o = mix(o, vec4(0.0), max(max(tan, under), cream)); o = mix(o, vec4(0.0, 0.0, 0.0, 0.45), cell); o = mix(o, vec4(0.42, 0.42, 0.42, 0.9), edge);\n"   /* (its cream edge left out: the window's own line round it) */
     "    o_color = vec4(o.rgb * o.a, o.a) * c.a; return; }\n"
     "  if (u_mode == 17) { vec3 r = c.rgb / max(c.a, 0.001); float d = max(abs(r.r - 0.157), max(abs(r.g - 0.157), abs(r.b - 0.157)));\n"   /* (the picture without its window's dark panel (40, 40, 40): see-through there) */
     "    float a = smoothstep(0.03, 0.07, d) * c.a; o_color = vec4(r * a, a); return; }\n"
