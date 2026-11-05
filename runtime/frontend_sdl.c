@@ -772,6 +772,9 @@ static int list_rows_n(const uint32_t* px, int x0, int x1, int row0, float rh, i
 static int list_rows(const uint32_t* px, int x0, int x1, int row0, float rh) { return list_rows_n(px, x0, x1, row0, rh, 8); }
 static int g_menu_bar = -1;                                       /* the records' menus (the book on the top screen) 1, Al Embic's 0, not told yet -1 */
 static int g_list_ghost;                                          /* a list's screen a moment, its names gone (leaving for the menu): the window alone */
+static void card_slots(const uint32_t* tp);
+static int card_plates(void);
+static void card_jobs(GlPresent* v, float X, float Y, float k, int n);
 static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
     logo_load();
@@ -807,7 +810,7 @@ static void bestiary_update(int a_on_top) {
             m = BM_ALCH; g_bpage = card_page(top);                 /* (a recipe's item's card, g_card_item) */
             g_rows[0] = list_rows(list, 20, 124, AL_ROW0, AL_ROWS_H / 8.0f); g_rows[1] = list_rows(list, 140, 244, AL_ROW0, AL_ROWS_H / 8.0f);
             g_recipe = px_share(top, 186, 117, 6, 0, 9, 178, 210, 112, 145, 50, 80) >= 7 && px_share(top, 186, 150, 6, 0, 9, 150, 182, 88, 118, 38, 68) >= 7;   /* (its orange panel across the page's lower half: above its headers' line, in its empty rows) */
-            if (g_bpage) item_icon(top, g_engine_layer[a_on_top ? 0 : 1]); else g_icon[2] = 0;
+            if (g_bpage) { item_icon(top, g_engine_layer[a_on_top ? 0 : 1]); card_slots(top); } else g_icon[2] = 0;
         }
         else m = BM_MENU;                                         /* (the records' menus, their fades: never the two screens) */
         if (m != BM_MENU) g_bmode_at = g_frame;
@@ -1013,7 +1016,10 @@ static void alchemy_pieces(GlPresent* v) {
     if (g_icon[2]) { float* q = v->layer[GL_LAYER_ICON]; q[0] = px + g_icon[0] * kp; q[1] = py + g_icon[1] * kp; q[2] = g_icon[2] * kp; q[3] = g_icon[3] * kp; }   /* the item alone (off its brown box) */
     AP(61, 38, 110, 40, 6);                                       /* the description (inside its panel's dotted edge) */
     if (g_card_item) { AP(184, 33, 60, 9, 6); AP(187, 45, 61, 9, 6); AP(180, 64, 66, 10, 6); AP(220, 77, 26, 10, 6); }   /* the prices: each word, each sum (off their plates' edges) */
-    else { AP(184, 33, 62, 15, 6); AP(186, 50, 54, g_recipe ? 44 : 124, 6); }   /* who can equip it (its rows the recipe leaves) */
+    else {                                                        /* who can equip it (its rows the recipe leaves): the jobs' plaques, else the card's signs */
+        AP(184, 33, 62, 15, 6);
+        if (card_plates()) card_jobs(v, px, py, kp, g_recipe ? 4 : 12); else AP(186, 50, 54, g_recipe ? 44 : 124, 6);
+    }
     if (g_card_item || g_recipe) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 103 * kp, 228 * kp, 0.75f);
     else {                                                        /* (equipment's stats, its jobs beside them: the card's own lines) */
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 101 * kp, 165 * kp, 0.75f);
@@ -1096,15 +1102,16 @@ static void accolade_plate(GlPresent* v) {                        /* the plate a
 /* (g_card_item: the card's page is an item's, not equipment's (card_page())) */
 static uint8_t g_eq_slot[12];                                     /* a card's "Equips:" signs, in the jobs' order: 0 not shown, 1 can't, 2 can (card_slots()) */
 static float g_lay_s = 5.625f;                                    /* the window's pixels per canvas unit (canvas_layout_for()) */
-static int card_plates(void);
-static void card_slots(const uint32_t* tp);
 static void equip_jobs(int W, int H, float S, float pitch, float pitch_y, int cols, int keep);
 /* the card's signs of who can equip it, the jobs' plaques instead (each in its place) */
-static void card_jobs(GlPresent* v, float X, float Y, float k) {
+static void card_jobs(GlPresent* v, float X, float Y, float k, int n) {   /* (n: the first n signs only, the others under a recipe) */
     float s = g_lay_s, S = 15 * k;
+    uint8_t keep[12]; memcpy(keep, g_eq_slot, 12);
+    for (int i = n; i < 12; i++) g_eq_slot[i] = 0;
     int W = (int)((20 + 15) * k * s + 1), H = (int)((5 * 20 + 15) * k * s + 1);
+    if (W > 0 && H > 0 && W <= 2048 && H <= 4096) equip_jobs(W, H, S * s, 20 * k * s, 20 * k * s, 2, 1);
+    memcpy(g_eq_slot, keep, 12);
     if (W <= 0 || H <= 0 || W > 2048 || H > 4096) return;
-    equip_jobs(W, H, S * s, 20 * k * s, 20 * k * s, 2, 1);
     float* q = v->layer[GL_LAYER_JOBS]; q[0] = X + 196 * k; q[1] = Y + 56 * k; q[2] = (float)W / s; q[3] = (float)H / s;
 }
 static void card_pieces(GlPresent* v) {
@@ -1132,7 +1139,7 @@ static void card_pieces(GlPresent* v) {
         { 19, 105, 218, 67, 3 } };                                /* where it is found, who drops it (light on their panel) */
     const float (*part)[5] = g_card_item ? item : equip;
     int n = g_card_item ? (int)(sizeof item / sizeof *item) : (int)(sizeof equip / sizeof *equip);
-    if (!g_card_item && card_plates()) { n--; card_jobs(v, X, Y, k); }   /* (the jobs' signs: their plaques, ui/jobs/) */
+    if (!g_card_item && card_plates()) { n--; card_jobs(v, X, Y, k, 12); }   /* (the jobs' signs: their plaques, ui/jobs/) */
     for (int i = 0; i < n; i++) {
         const float* p = part[i];
         float* q = v->piece[v->npiece++];
