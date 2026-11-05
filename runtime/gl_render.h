@@ -57,6 +57,7 @@ typedef struct {
                                                        * 3 its light letters alone; 4 no picture: a thin grey line; 5 its red ink alone, cleaned; 6 as 1, kept sharp when small, red ink left out;
                                                        * 7 as 2, solid inside; 8 an item's rarity stars, off their plate; 9 its word's letters) */
     int held;                                         /* show the picture kept by gl_hold() instead of this frame's */
+    int movie2;                                       /* a movie in two halves, stacked: its sides blurred (draw_movie_sides) */
     float overlay[4];                                 /* where to draw gl_set_overlay()'s picture on the canvas (w 0: not) */
     float icons[4];                                   /* ...and gl_set_icons()' */
     float layer[GL_LAYERS][4];                        /* ...and each gl_set_layer()'s (w 0: not this frame) */
@@ -86,3 +87,5 @@ typedef struct { double render_ms, upload_ms; int uploads, polys; long upload_te
 extern GlStats g_gl_stats;
 const char* gl_renderer_name(void);
 int gl_render_scale(void);
+double gl_gpu_ms(void);                               /* GPU time spent drawing so far, in ms (only grows; -1: not measurable) */
+void gl_gpu_time(int begin);                          /* 1: time the GPU work from here (compose, present), 0: up to here */

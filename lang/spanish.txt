@@ -479,8 +479,11 @@ es = ¿Volver a poner todas las teclas y botones como venían?
 en = Controls
 es = Controles
 
-en = Pick an action, then change one of its keys or its controller button. A key or button that another action has moves over to it (they swap). Esc and Alt+Enter, and the sticks, stay as they are.
-es = Elige una acción y cambia una de sus teclas o su botón del mando. Una tecla o un botón que ya tenía otra acción pasa a esta (se intercambian). Esc, Alt+Intro y los sticks se quedan como están.
+en = Double-click an action, then press a key or a controller button for it. A key or button that another action has moves over to it (they swap). Esc and Alt+Enter, and the sticks, stay as they are.
+es = Haz doble clic en una acción y pulsa una tecla o un botón del mando. Una tecla o un botón que ya tenía otra acción pasa a esta (se intercambian). Esc, Alt+Intro y los sticks se quedan como están.
+
+en = Press a key or a controller button for: %s (Esc cancels)
+es = Pulsa una tecla o un botón del mando para: %s (Esc cancela)
 
 en = Action
 es = Acción

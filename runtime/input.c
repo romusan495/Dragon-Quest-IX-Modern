@@ -58,12 +58,26 @@ static int free_to_walk(void) {
 #define WALK_Y 100
 #define WALK_REACH 48
 #define WALK_DEAD 9000                  /* stick distance before it walks (of 32767) */
+/* The game's stylus walk: 1 once it has taken the touch-down point as the
+ * drag's start (at 0x02114E84/88), something else while it hasn't (0x30000).
+ * Right after a menu or a dialogue closes the walk flag is already 1 but the
+ * game only takes that point some frames later (about 12 after the menu):
+ * dragging before then made it start from the stick's point, so the hero
+ * walked away from where the stick points (bug 2026-11-04). So the touch
+ * stays in the middle until the game has it. Checked on the European ROM;
+ * the address is past the code, where both versions are the same. */
+#define WALK_TAKEN 0x114E78
+#define WALK_WAIT_MAX 30                /* frames in the middle at most, if the game never takes it */
 static int g_walk_frames;               /* frames the stick has been walking (0: not) */
 static int stick_walk(int* tx, int* ty) {
     long long x = g_fe_stick_x, y = g_fe_stick_y;
     double m = sqrt((double)(x * x + y * y));
     if (!g_analog_walk || m < WALK_DEAD || !free_to_walk()) { g_walk_frames = 0; return 0; }
-    if (g_walk_frames++ < 2) { *tx = WALK_X; *ty = WALK_Y; return 1; }   /* touch down first, then drag */
+    uint32_t taken; memcpy(&taken, &g_main_ram[WALK_TAKEN], 4);
+    g_walk_frames++;
+    if (g_walk_frames <= 2 || (taken != 1 && g_walk_frames <= WALK_WAIT_MAX)) {   /* touch down first, then drag */
+        *tx = WALK_X; *ty = WALK_Y; return 1;
+    }
     int dx = (int)lround((double)x / m * WALK_REACH), dy = (int)lround((double)y / m * WALK_REACH);
     *tx = WALK_X + dx; *ty = WALK_Y + dy;
     if (*tx < 0) *tx = 0; if (*tx > 255) *tx = 255; if (*ty < 0) *ty = 0; if (*ty > 191) *ty = 191;

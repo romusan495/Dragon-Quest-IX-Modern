@@ -23,7 +23,9 @@
  *    0x212 + its flag, a pot's, barrel's or blue chest's at 0x79E + its flag.
  *  - data/map/<place>.ambl (NARC): the .bmbl inside (DS LZ) lists what can
  *    be looked at: tag 0x73 (kind, x, y, z...) then 0x74; kind 8 is a
- *    bookshelf, 0x74's first word its number in the place.
+ *    bookshelf, 0x74's first word its number in the place; kind 5 a
+ *    wardrobe or a chest of drawers, 0x74's third word the number its
+ *    treasure.nsarc record (kind 0x30) has as third word.
  *  - data/scenario/htana?.gp2: per language, tag 0x66 per bookshelf: place,
  *    number, teaches recipes (1), recipe book, then the texts (the second
  *    one when it teaches recipes) with the book's title between quotes.
@@ -40,8 +42,10 @@
  *    (pointers at 0x020F33E0 + 4 * number, farm.c); a record's second word
  *    has the map's number (0x020FB3F0) in its top half while it is there;
  *    its position (x, height, z, 20.12) at +0x44, in the same units as the
- *    spots. A field's map (20001...) shows the whole field, 1 pixel per
- *    unit around the middle of the screen.
+ *    spots. A field's map (20001...) is the top screen's BG0, the field's
+ *    origin in the middle of its picture, scrolled by BG0HOFS/VOFS (not the
+ *    same in every field); the game's own mark of the hero (an 8x8 sprite,
+ *    see field_origin()) says exactly where it puts things.
  *
  * Read only: the game never sees any of it. */
 #include <stdio.h>
@@ -537,7 +541,7 @@ static void load_quest_texts(int lang) {
 }
 
 /* ---------------------------------------------------------------- what each place holds */
-enum { K_CHEST, K_GOLD, K_BLUE, K_POT, K_BARREL, K_UNKNOWN, K_SHELF, K_QUEST };
+enum { K_CHEST, K_GOLD, K_BLUE, K_POT, K_BARREL, K_UNKNOWN, K_SHELF, K_QUEST, K_FURN };   /* K_FURN: a wardrobe, drawers (searched like a pot) */
 typedef struct { float x, z; int kind, flag, idx; uint16_t what; int rank; } Spot;   /* flag: a container's; idx: a shelf's number, a quest; rank: a chest's (1-10, 0: none) */
 typedef struct { int loaded, n; Spot* s; } Held;
 static Held* g_held;                                             /* per place (g_places' order), read when first needed */
@@ -557,6 +561,11 @@ static void load_treasure(Held* h, const Place* pl) {
     if (end > n) end = n;
     Rec r;
     while (rec_next(b, end, &p, &r)) {
+        if (r.tag == 0x67 && r.n >= 3 && r.v[1] == 0x30 && r.type[2] == 1) {   /* a wardrobe, drawers: placed by the .bmbl (load_shelves()) */
+            Spot f = { NAN, NAN, K_FURN, (int)(r.v[0] >> 16) + FLAG_OTHER, (int)r.v[2], (uint16_t)r.v[0], 0 };
+            add_spot(h, &f);
+            continue;
+        }
         if (r.tag != 0x67 || r.n < 5 || r.type[2] != 2 || r.type[4] != 2) continue;   /* the ones with a place on the map */
         Spot x = { rec_float(&r, 2), rec_float(&r, 4), K_UNKNOWN, (int)(r.v[0] >> 16), -1, (uint16_t)r.v[0] };
         if (!isfinite(x.x) || !isfinite(x.z)) continue;
@@ -582,16 +591,31 @@ static void load_shelves(Held* h, const Place* pl) {
     uint32_t end = le32(b + 4), p = 8;
     if (end > sz) end = sz;
     Rec r;
-    Spot shelf; int pending = 0;
+    Spot shelf; int pending = 0, furn = 0; float fx = 0, fz = 0;
+    int n0 = h->n;                                               /* (the wardrobes from treasure.nsarc: before) */
     while (rec_next(b, end, &p, &r)) {
         if (pending) { if (r.tag == 0x74 && r.n >= 1) shelf.idx = (int)r.v[0]; add_spot(h, &shelf); pending = 0; }
+        if (furn && r.tag == 0x74 && r.n >= 3)                   /* a wardrobe, drawers: the treasure record of that number */
+            for (int i = 0; i < n0; i++)
+                if (h->s[i].kind == K_FURN && h->s[i].idx == (int)r.v[2] && !isfinite(h->s[i].x)) { h->s[i].x = fx; h->s[i].z = fz; break; }
+        furn = 0;
         if (r.tag == 0x73 && r.n >= 4 && r.v[0] == 8 && r.type[1] == 2 && r.type[3] == 2) {   /* something to look at: 8 a bookshelf */
             shelf = (Spot){ rec_float(&r, 1), rec_float(&r, 3), K_SHELF, -1, -1, 0 };
             pending = isfinite(shelf.x) && isfinite(shelf.z);
+        } else if (r.tag == 0x73 && r.n >= 4 && r.v[0] == 5 && r.type[1] == 2 && r.type[3] == 2) {   /* 5 a wardrobe, drawers */
+            fx = rec_float(&r, 1); fz = rec_float(&r, 3);
+            furn = isfinite(fx) && isfinite(fz);
         }
     }
     if (pending) add_spot(h, &shelf);
     free(b);
+}
+
+/* The wardrobes no .bmbl placed: not shown. */
+static void drop_unplaced(Held* h) {
+    int k = 0;
+    for (int i = 0; i < h->n; i++) if (isfinite(h->s[i].x) && isfinite(h->s[i].z)) h->s[k++] = h->s[i];
+    h->n = k;
 }
 
 /* Where a quest's giver stands: data/scenario/<C01>.npc (or F.npc for the
@@ -635,7 +659,7 @@ static const Held* held(int pi) {
     if (pi < 0 || pi >= g_nplaces) return NULL;
     if (!g_held && !(g_held = calloc((size_t)g_nplaces, sizeof(Held)))) return NULL;
     Held* h = &g_held[pi];
-    if (!h->loaded) { h->loaded = 1; load_treasure(h, &g_places[pi]); load_shelves(h, &g_places[pi]); load_givers(h, &g_places[pi]); }
+    if (!h->loaded) { h->loaded = 1; load_treasure(h, &g_places[pi]); load_shelves(h, &g_places[pi]); drop_unplaced(h); load_givers(h, &g_places[pi]); }
     return h;
 }
 
@@ -802,6 +826,7 @@ typedef struct {
     int spot, opened;               /* a spot: which, emptied */
     int closed, emptied, shelves, recipes, quests;   /* a door: what its rooms hold (closed, emptied: chests) */
     int jars, jars_done, barrels;   /* a door: its pots and barrels, closed, emptied, how many are barrels */
+    int furn, furn_done;            /* a door: its wardrobes and drawers, not searched, searched */
 } Mark;
 #define MAX_MARKS 256
 static Mark g_mark[MAX_MARKS]; static int g_nmark;
@@ -815,7 +840,7 @@ static const Spot* mark_spot(int spot) { return g_in_grotto ? &g_gspot[spot] : &
 static int is_box(int kind) { return kind == K_CHEST || kind == K_GOLD || kind == K_BLUE || kind == K_UNKNOWN; }
 
 static const char* kind_name(int kind) {
-    static const char* const t[8][5] = {
+    static const char* const t[9][5] = {
         { "Treasure chest", "Coffre", "Schatztruhe", "Forziere", "Cofre" },
         { "Treasure chest", "Coffre", "Schatztruhe", "Forziere", "Cofre" },
         { "Blue chest", "Coffre bleu", "Blaue Truhe", "Forziere blu", "Cofre azul" },
@@ -824,6 +849,7 @@ static const char* kind_name(int kind) {
         { "Treasure chest", "Coffre", "Schatztruhe", "Forziere", "Cofre" },
         { "Bookshelf", "Biblioth\xC3\xA8que", "B\xC3\xBC" "cherregal", "Libreria", "Estanter\xC3\xAD" "a" },
         { "Quest", "Qu\xC3\xAA" "te", "Auftrag", "Missione", "Misi\xC3\xB3n" },
+        { "Wardrobe, drawers", "Armoire, tiroir", "Schrank, Schublade", "Armadio, cassetto", "Armario, caj\xC3\xB3n" },
     };
     return t[kind][lang_index()];
 }
@@ -912,6 +938,14 @@ static void glyph_book(float cx, float cy, float R, uint32_t cover, float a) {  
     rbox(cx - 0.1f * R, cy - 0.8f * R, 1.0f * R, 0.3f * R, 0, 0xF2C94C, a);   /* the title */
 }
 
+static void glyph_furn(float cx, float cy, float R, int opened, float a) {   /* a wardrobe: two doors, two knobs */
+    rbox(cx, cy, 2.4f * R, 3.0f * R, 0.5f * R, EDGE, a);
+    rbox(cx, cy, 2.4f * R - 1.5f, 3.0f * R - 1.5f, 0.5f * R - 1, opened ? 0x8A8A8A : 0x9C5A2C, a);
+    rbox(cx, cy, 0.18f * R, 2.6f * R, 0, EDGE, a * 0.8f);      /* between the doors */
+    rbox(cx - 0.7f * R, cy, 0.35f * R, 0.35f * R, 0.35f * R, opened ? 0xB0B0B0 : 0xF2C94C, a);
+    rbox(cx + 0.7f * R, cy, 0.35f * R, 0.35f * R, 0.35f * R, opened ? 0xB0B0B0 : 0xF2C94C, a);
+}
+
 /* A speech bubble (like the game's over the giver's head): "!" offered, "..." under way, a tick done. */
 static void glyph_quest(float cx, float cy, float R, int state, float a) {
     uint32_t fill = state == 1 ? 0xF2C94C : state == 2 ? 0x4AA3E8 : 0x9A9A9A;
@@ -933,7 +967,7 @@ static void glyph_quest(float cx, float cy, float R, int state, float a) {
     }
 }
 
-static uint32_t book_color(int recipes, int dull) { return dull ? 0x9A9A9A : recipes ? 0x8E55D8 : 0x2F9A5E; }
+static uint32_t book_color(int recipes, int dull) { return dull ? 0x9A9A9A : recipes ? 0xA040F0 : 0x2DB84A; }   /* recipes violet, stories green, nothing to read grey */
 
 /* A chest's rank: its letter on a small dark badge (S and A in gold). */
 static void draw_rank(float cx, float cy, float R, int rank, float a) {
@@ -966,7 +1000,7 @@ static void draw_mark(const Mark* m, int hover) {
         return;
     }
     if (m->door >= 0) {                                          /* a building: its contents on a dark badge */
-        int box = m->closed || m->emptied, jar = m->jars || m->jars_done, n = box + jar + (m->shelves > 0) + (m->quests > 0);
+        int box = m->closed || m->emptied, jar = m->jars || m->jars_done, furn = m->furn || m->furn_done, n = box + jar + furn + (m->shelves > 0) + (m->quests > 0);
         float k = 0.75f, step = 5.6f * R, hw = (1.0f + 2.8f * (float)n) * R, hh = 3.4f * R;
         if (hover) rbox(cx, cy, hw + 0.8f * R, hh + 0.8f * R, 1.8f * R, 0xFFFFFF, 0.95f);
         rbox(cx, cy, hw, hh, 1.4f * R, 0xFFF8E0, 0.9f);
@@ -979,6 +1013,7 @@ static void draw_mark(const Mark* m, int hover) {
             else glyph_pot(x, cy, R * k, !m->jars, 1);
             x += step;
         }
+        if (furn) { glyph_furn(x, cy, R * k, !m->furn, 1); x += step; }
         if (m->shelves) glyph_book(x, cy, R * k, book_color(m->recipes > 0, 0), 1);
         return;
     }
@@ -999,6 +1034,9 @@ static void draw_mark(const Mark* m, int hover) {
         break;
     case K_SHELF:
         glyph_book(cx, cy, R, book_color(bk && bk->recipes, !bk || bk->dull), a);
+        break;
+    case K_FURN:
+        glyph_furn(cx, cy, R, m->opened, a);
         break;
     case K_QUEST:
         glyph_quest(cx, cy, R, m->opened, a);
@@ -1222,7 +1260,7 @@ static void draw_tooltip(const Mark* m) {
 /* ---------------------------------------------------------------- the legend
  * Under the place's name (top right): a sample of each kind of mark the map
  * shows now, and its name. */
-enum { L_HERE, L_MONSTER, L_CHEST, L_BLUE, L_POT, L_BARREL, L_EMPTIED, L_SHELF, L_RECIPES, L_QUEST1, L_QUEST2, L_QUEST3, L_BUILDING, L_N };
+enum { L_HERE, L_MONSTER, L_CHEST, L_BLUE, L_POT, L_BARREL, L_FURN, L_EMPTIED, L_SHELF, L_RECIPES, L_QUEST1, L_QUEST2, L_QUEST3, L_BUILDING, L_N };
 #define LEG_TOP 17                 /* top-screen pixels: under the place's name */
 #define LEG_RIGHT 254
 #define LEG_ROW 8
@@ -1231,7 +1269,7 @@ static const char* legend_name(int l) {
     static const char* const t[L_N][5] = {
         { "You are here", "Vous \xC3\xAAtes ici", "Du bist hier", "Sei qui", "Est\xC3\xA1s aqu\xC3\xAD" },
         { "Monster", "Monstre", "Monster", "Mostro", "Monstruo" },
-        { 0 }, { 0 }, { 0 }, { 0 },                              /* kind_name() */
+        { 0 }, { 0 }, { 0 }, { 0 }, { 0 },                       /* kind_name() */
         { "Already emptied", "D\xC3\xA9j\xC3\xA0 vid\xC3\xA9", "Schon geleert", "Gi\xC3\xA0 svuotato", "Ya vaciado" },
         { 0 },
         { "Alchemy recipes", "Recettes d'alchimie", "Alchemie-Rezepte", "Ricette alchemiche", "Recetas de alquimia" },
@@ -1240,7 +1278,7 @@ static const char* legend_name(int l) {
         { "Quest completed", "Qu\xC3\xAA" "te termin\xC3\xA9" "e", "Auftrag erledigt", "Missione completata", "Misi\xC3\xB3n completada" },
         { "In the building", "Dans le b\xC3\xA2timent", "Im Geb\xC3\xA4" "ude", "Nell'edificio", "En el edificio" },
     };
-    static const int kind[L_N] = { 0, 0, K_CHEST, K_BLUE, K_POT, K_BARREL, 0, K_SHELF };
+    static const int kind[L_N] = { 0, 0, K_CHEST, K_BLUE, K_POT, K_BARREL, K_FURN, 0, K_SHELF };
     return t[l][0] ? t[l][lang_index()] : kind_name(kind[l]);
 }
 
@@ -1258,6 +1296,7 @@ static void legend_sample(int l, float cx, float cy, float R) {
     case L_BLUE: glyph_chest(cx, cy, R, 0x3C78E0, 0xF2C94C, 1); break;
     case L_POT: glyph_pot(cx, cy, R, 0, 1); break;
     case L_BARREL: glyph_barrel(cx, cy, R, 0, 1); break;
+    case L_FURN: glyph_furn(cx, cy, R, 0, 1); break;
     case L_EMPTIED: glyph_chest(cx, cy, R, 0x8A8A8A, 0xB0B0B0, 0.6f); break;
     case L_SHELF: glyph_book(cx, cy, R, book_color(0, 0), 1); break;
     case L_RECIPES: glyph_book(cx, cy, R, book_color(1, 0), 1); break;
@@ -1281,6 +1320,8 @@ static void draw_legend(void) {
             if (m->closed) has[L_CHEST] = 1;
             if (m->emptied || m->jars_done) has[L_EMPTIED] = 1;
             if (m->jars) has[m->barrels * 2 >= m->jars + m->jars_done ? L_BARREL : L_POT] = 1;
+            if (m->furn) has[L_FURN] = 1;
+            if (m->furn_done) has[L_EMPTIED] = 1;
             if (m->shelves) has[m->recipes ? L_RECIPES : L_SHELF] = 1;
             if (m->quests && m->opened >= 1 && m->opened <= 3) has[L_QUEST1 + m->opened - 1] = 1;
         } else {
@@ -1288,7 +1329,7 @@ static void draw_legend(void) {
             if (b->kind == K_QUEST) { if (m->opened >= 1 && m->opened <= 3) has[L_QUEST1 + m->opened - 1] = 1; }
             else if (b->kind == K_SHELF) { const Book* bk = find_book(g_places[g_here].num, b->idx); has[bk && bk->recipes ? L_RECIPES : L_SHELF] = 1; }
             else if (m->opened) has[L_EMPTIED] = 1;
-            else has[b->kind == K_BLUE ? L_BLUE : b->kind == K_POT ? L_POT : b->kind == K_BARREL ? L_BARREL : L_CHEST] = 1;
+            else has[b->kind == K_BLUE ? L_BLUE : b->kind == K_POT ? L_POT : b->kind == K_BARREL ? L_BARREL : b->kind == K_FURN ? L_FURN : L_CHEST] = 1;
         }
     }
     for (int l = 0; l < L_N; l++) n += has[l];
@@ -1316,18 +1357,21 @@ static void draw_legend(void) {
 /* ---------------------------------------------------------------- a building's plan */
 /* Inside a house the game shows the town around it. The room's walls are in
  * its collision: data/map/<C01M05>.amdj (NARC) holds C01A0500.col2 (DS LZ):
- * at +20 the triangles' count, at +36 where they start, 28 bytes each: three
- * corners (x, height, z: s16, 1024 per field unit), the normal (s16, 4.12)
- * and two attributes. The upright ones (the walls) seen from above outline
- * the floor: everything the outside doesn't reach. */
+ * at +4 its scale s, at +20 the triangles' count, at +36 where they start,
+ * 28 bytes each: three corners (x, height, z: s16, 4096 >> s per field
+ * unit: a small room's in finer steps than a castle's), the normal (s16,
+ * 4.12) and two attributes. The upright ones (the walls) seen from above
+ * outline the floor: everything the outside doesn't reach. (The sizes
+ * below are in the file's own steps, as they were tuned.) */
 #define PLAN_GAP 3                 /* overlay pixels: gaps in the walls up to twice this wide are closed */
-#define EDGE_EPS 300.0f            /* collision units (1024 per field unit): a wall ending this close to the plan's edge ends on it */
+#define EDGE_EPS 300.0f            /* collision steps: a wall ending this close to the plan's edge ends on it */
 #define EXIT_W (10 * 1024.0f)      /* ...a way out between two of them at most this wide */
 #define EXITS_MAX 256
 #define PLAN_TOP 15                /* top-screen rows: the place's name above (on the right), the party's names below, */
 #define PLAN_BOTTOM 176            /* left uncovered */
 #define PLAN_NAME_X 198
 #define PLAN_WALL 2.5f             /* ...the walls' half thickness */
+#define UNDER_R 0.75f              /* field units: the floor under a chest, a pot, a barrel (around its middle) */
 static uint8_t g_plan[MAPMARKS_W * MAPMARKS_H];                 /* 0 outside, 1 floor, 2 wall */
 static uint8_t g_wall[MAPMARKS_W * MAPMARKS_H];
 static int* g_fill;
@@ -1390,7 +1434,8 @@ static int build_plan(const Place* pl) {
     const uint8_t* amdj = rom_file(path, &n), *packed = narc_file(amdj, n, name, &sz);
     uint8_t* c = packed ? ds_unpack(packed, sz, &sz) : NULL;
     if (!c || sz < 60) { free(c); return 0; }
-    uint32_t count = le32(c + 20), start = le32(c + 36);
+    uint32_t count = le32(c + 20), start = le32(c + 36), shift = le32(c + 4);
+    float unit = (float)(4096 >> (shift <= 4 ? shift : 2));      /* the file's steps per field unit (the party's, the spots' are in field units) */
     if (start < 40 || start > sz || count > (sz - start) / 28) count = 0;
     /* the walls: each upright triangle's two farthest corners, from above */
     float* seg = malloc(sizeof(float) * 4 * (count + EXITS_MAX));
@@ -1437,7 +1482,7 @@ static int build_plan(const Place* pl) {
     if (ns < 4 || x1 - x0 < 1024 || z1 - z0 < 1024 || (!g_fill && !(g_fill = malloc(sizeof(int) * MAPMARKS_W * MAPMARKS_H)))) { free(seg); return 0; }
     /* as big as the top screen shows it between the place's name and the party's names */
     float k = fminf((256 - 28) / (x1 - x0), (PLAN_BOTTOM - PLAN_TOP - 12) / (z1 - z0));   /* DS pixels per collision unit */
-    g_plan_k = k * 1024;
+    g_plan_k = k * unit;
     g_plan_ox = 128 - (x0 + x1) / 2 * k; g_plan_oy = (PLAN_TOP + PLAN_BOTTOM) / 2.0f - (z0 + z1) / 2 * k;
     /* the walls drawn thick (the outside can't slip through a doorway), the
      * outside found, then the walls thin again: what they gave up goes to
@@ -1451,13 +1496,36 @@ static int build_plan(const Place* pl) {
         plan_line(g_wall, ax, ay, bx, by, PLAN_WALL);
     }
     free(seg);
+    /* under the chests, pots and barrels: floor. The game makes them
+     * obstacles, cut out of the floor: one by a wall would sit in a notch,
+     * outside the room. Closed to the outside, then floor. */
+    static uint8_t under[MAPMARKS_W * MAPMARKS_H];
+    memset(under, 0, sizeof under);
+    const Held* hd = held((int)(pl - g_places));
+    float rad = UNDER_R * unit * k * R;
+    for (int i = 0; hd && i < hd->n; i++) {
+        const Spot* b = &hd->s[i];
+        if (!is_box(b->kind) && b->kind != K_POT && b->kind != K_BARREL) continue;
+        float cx = (b->x * unit * k + g_plan_ox) * R, cy = (b->z * unit * k + g_plan_oy) * R;
+        for (int y = (int)(cy - rad) - 1; y <= (int)(cy + rad) + 1; y++)
+            for (int x = (int)(cx - rad) - 1; x <= (int)(cx + rad) + 1; x++) {
+                if (x < 1 || y < 1 || x >= MAPMARKS_W - 1 || y >= MAPMARKS_H - 1) continue;
+                float dx = (float)x + 0.5f - cx, dy = (float)y + 0.5f - cy;
+                if (dx * dx + dy * dy <= rad * rad) { under[y * MAPMARKS_W + x] = 1; g_plan[y * MAPMARKS_W + x] = 1; }
+            }
+    }
     for (int i = 0; i < MAPMARKS_W * MAPMARKS_H; i++) g_plan[i] *= 2;
     plan_outside();
+    for (int i = 0; i < MAPMARKS_W * MAPMARKS_H; i++) if (under[i]) { g_plan[i] = 0; g_wall[i] = 0; }
     int floor = 0;
     for (int i = 0; i < MAPMARKS_W * MAPMARKS_H; i++) floor += g_plan[i] == 0;
     if (floor < MAPMARKS_W * MAPMARKS_H / 40) return 0;          /* the walls don't close: no plan */
     plan_regrow();
     for (int i = 0; i < MAPMARKS_W * MAPMARKS_H; i++) g_plan[i] = g_wall[i] ? 2 : g_plan[i] == 0 ? 1 : 0;
+    for (int i = 0; i < MAPMARKS_W * MAPMARKS_H; i++) {          /* where that floor meets the outside: a wall */
+        if (!under[i] || g_plan[i] != 1) continue;              /* (never on the edge: see above) */
+        if (!g_plan[i - 1] || !g_plan[i + 1] || !g_plan[i - MAPMARKS_W] || !g_plan[i + MAPMARKS_W]) g_plan[i] = 2;
+    }
     return 1;
 }
 
@@ -1611,6 +1679,45 @@ static int tmap_update(const uint8_t** rgba) {
     return 1;
 }
 
+/* Where a field's map puts the field's origin on the screen (as -cx + 128,
+ * -cy + 96, like a town's centre). A field's picture is the top screen's BG0
+ * (256x256 or bigger), the origin in its middle, scrolled (BG0HOFS/VOFS: 0,
+ * 32 west of Stornway), not the same in every field: a fixed 128, 96 put the
+ * monsters off to one side in other fields. Safest: the game's own mark of
+ * the hero, an 8x8 sprite (OAM, tile 0x140, palette 4: the party's other
+ * marks are see-through, other palettes; the same in towns), centred on the
+ * hero. Kept while it blinks or hides, for this map and scroll. */
+#define HERO_TILE 0x4140
+static void field_origin(uint32_t top, float scale, float* cx, float* cy) {
+    uint16_t cnt = IO16(top + 0x08);
+    int w = (cnt >> 14) & 1 ? 512 : 256, h = (cnt >> 14) & 2 ? 512 : 256;
+    uint32_t key = (uint32_t)rd16(MAP_NUM) << 16 ^ (uint32_t)IO16(top + 0x10) << 8 ^ IO16(top + 0x12) ^ cnt << 20;
+    static uint32_t seen_key; static float seen_cx, seen_cy;      /* the hero's mark last seen (it can blink) */
+    if (key == seen_key) { *cx = seen_cx; *cy = seen_cy; }
+    else {
+        *cx = (float)(IO16(top + 0x10) & 0x1FF) - w / 2 + 128;          /* -cx + 128 = w/2 - HOFS */
+        *cy = (float)(IO16(top + 0x12) & 0x1FF) - h / 2 + 96;
+    }
+    uint32_t a = rd32(FIELD_PTR);
+    if (a < 0x02000000 || a >= 0x02400000) return;
+    const uint8_t* o = g_oam + (top ? 0x400 : 0);
+    int found = -1;
+    for (int i = 0; i < 128; i++) {
+        uint16_t a0 = (uint16_t)(o[i * 8] | o[i * 8 + 1] << 8), a2 = (uint16_t)(o[i * 8 + 4] | o[i * 8 + 5] << 8);
+        if ((a0 & 0x300) == 0x200 || (a0 & 0xEC00) || a2 != HERO_TILE) continue;   /* hidden, see-through, not 8x8, another sprite */
+        if (found >= 0) return;                                              /* two: not sure which */
+        found = i;
+    }
+    if (found < 0) return;
+    int sx = (o[found * 8 + 2] | o[found * 8 + 3] << 8) & 0x1FF, sy = o[found * 8];
+    if (sx >= 256) sx -= 512;
+    if (sy >= 192) sy -= 256;
+    float hx = (float)(int32_t)rd32(a + 0x44) / 4096.0f, hz = (float)(int32_t)rd32(a + 0x4C) / 4096.0f;
+    float nx = hx * scale - (sx + 4) + 128, ny = hz * scale - (sy + 4) + 96;   /* the sprite's middle */
+    if (key == seen_key && fabsf(nx - seen_cx) <= 1.5f && fabsf(ny - seen_cy) <= 1.5f) return;   /* (its pixel lags the hero a little: steady) */
+    *cx = seen_cx = nx; *cy = seen_cy = ny; seen_key = key;
+}
+
 int mapmarks_update(const uint8_t** rgba) {
     static int loaded, had;
     static uint32_t last_key;
@@ -1701,6 +1808,8 @@ int mapmarks_update(const uint8_t** rgba) {
                         } else if (b->kind == K_QUEST) {
                             int st = quest_state(b->idx);
                             if (st == 1 || st == 2) { m.quests++; if (!m.opened || st < m.opened) m.opened = st; }   /* a door's opened: its best quest state */
+                        } else if (b->kind == K_FURN) {
+                            if (flag_set(b->flag)) m.furn_done++; else m.furn++;
                         } else if (!is_box(b->kind)) {                       /* a pot or a barrel */
                             if (flag_set(b->flag)) m.jars_done++; else m.jars++;
                             if (b->kind == K_BARREL) m.barrels++;
@@ -1708,8 +1817,8 @@ int mapmarks_update(const uint8_t** rgba) {
                         else m.closed++;
                     }
                 }
-                if (!g_mapmarks_opened) m.emptied = m.jars_done = 0;
-                if (m.closed || m.emptied || m.jars || m.jars_done || m.shelves || m.quests) add_mark(&m);
+                if (!g_mapmarks_opened) m.emptied = m.jars_done = m.furn_done = 0;
+                if (m.closed || m.emptied || m.jars || m.jars_done || m.furn || m.furn_done || m.shelves || m.quests) add_mark(&m);
             }
             /* on a plan, the hero: field character 0 (farm.c) */
             uint32_t a = rd32(FIELD_PTR);
@@ -1740,6 +1849,7 @@ int mapmarks_update(const uint8_t** rgba) {
         uint16_t here = rd16(MAP_NUM);
         float scale = (float)(int32_t)rd32(mp + 0x38) / 4096.0f;
         float cx = field ? 0 : (float)(int32_t)rd32(mp + 0x44), cy = field ? 0 : (float)(int32_t)rd32(mp + 0x48);
+        if (field) field_origin(top, scale, &cx, &cy);
         for (int k = 0; scale > 0.1f && scale < 64 && k < MON_COUNT; k++) {
             uint32_t a = rd32(FIELD_PTR + 4 * (MON_FIRST + k));
             if (a < 0x02000000 || a >= 0x02400000 || (rd32(a + 4) >> 16) != here) continue;   /* there, on this map */

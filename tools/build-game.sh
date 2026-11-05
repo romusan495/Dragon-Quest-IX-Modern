@@ -80,12 +80,21 @@ echo "== Compiling (the first time takes a while; later builds only redo what ch
 mkdir -p game
 case "$(uname -s)" in
 MINGW*|MSYS*)
-    EXE=game/dqix.exe
+    # linked in build/, then put in place in one go: Explorer reads the icon of
+    # the desktop shortcut from dqix.exe, and reading it while the linker was
+    # still writing it left a black square there (cached until Windows forgets)
+    EXE=build/pc/dqix.exe
+    mkdir -p build/pc
     make_icon "$ROM" build/icon
     # dqixcore.dll: the game again as a library, for the other players' DSes in a session
     make -j"$(nproc)" -f build.mk OS=Windows_NT GEN=build/recomp GEN7=build/recomp7 OBJ=build/obj FRONTEND=sdl OUT="$EXE" CORE=game/dqixcore.dll \
          CFLAGS="-O1 -w" DEFS=-DRECOMP_TRACE SDL_CFLAGS="$(sdl2-config --cflags)" SDL_LIBS="-lSDL2" \
          LDFLAGS="-static-libgcc -Wl,--stack,67108864" RES="$RES" "$EXE" core
+    if ! cmp -s "$EXE" game/dqix.exe; then
+        cp "$EXE" game/dqix.exe.new && mv -f game/dqix.exe.new game/dqix.exe
+        # the shortcuts' icon read again from the new program (Windows 10/11; harmless if missing)
+        cmd //c "ie4uinit.exe -show" >/dev/null 2>&1 || true
+    fi
     cp /ucrt64/bin/SDL2.dll game/ ;;
 *)
     EXE=game/dqix

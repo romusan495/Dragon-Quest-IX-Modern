@@ -113,9 +113,11 @@ void volume_window_open(SDL_Window* win, int* volume, int* mute);
 void volume_window_refresh(void);                   /* the values changed elsewhere (keys) */
 /* Game > Controls...: the list of actions and their keys (controls.h). When the
  * player asks to change one, controls_window_request() reports it once
- * (what: 0 key, 1 second key, 2 controller button); the game then waits for
- * the key in its own window and calls controls_window_refresh(). */
+ * (what: 0 key, 1 second key, 2 controller button: returns 1); the game then
+ * waits for a key or a controller button and calls controls_window_refresh().
+ * Esc in the window meanwhile: returns 2 (that wait is cancelled). */
 void controls_window_open(SDL_Window* win);
 int controls_window_request(int* action, int* what);
 void controls_window_refresh(void);                    /* 0 nothing, 1 start, 2 cancel (each reported once) */
+void controls_window_prompt(const char* text);         /* what the game waits for, on the window's status line (NULL: done) */
 void session_window_close(void);

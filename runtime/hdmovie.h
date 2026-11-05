@@ -16,6 +16,7 @@ extern void (*g_card_read_hook)(uint32_t addr, uint32_t len);   /* card.c: every
 
 void hdmovie_init(void);                      /* look in movies/ (again); how many were found */
 int hdmovie_count(void);
+int hdmovie_two_screens(void);                /* a movie in two halves is playing now (top + bottom screen), HD copy or not */
 
 /* One screen's picture this frame (0xRRGGBB, 256x192). Returns 1 when it is a
  * frame of an HD movie: *rgb = that frame (*w x *h, 3 bytes a pixel), *mask

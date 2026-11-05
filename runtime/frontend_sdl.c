@@ -111,6 +111,7 @@ static int g_pop_win[4];                                          /* widescreen:
 static float g_pop_at[3];                                         /* ...where on the canvas: x, y, scale (pop_place) */
 static int g_quest_page;                                          /* ...it is a quest's sheet (quest_page()): redrawn as one modern window */
 static int g_card_page;                                           /* ...or an item's card (card_page()): the same */
+static int g_pop_nook;                                            /* ...over a menu without the field: the parchment is bare right of the stats panel (skill points: NOOK_*) */
 static int g_stamp[4];                                            /* ...its Complete! stamp (quest_stamp()): x, y, w, h on the page (w 0: none) */
 static int g_shop;                                                /* widescreen: a shop's buy list on the field, its item's description from the top screen under it (shop_update) */
 static int g_shop_cut = 118, g_shop_cut2 = 118;                   /* ...the list's rows end at the first, the panels under it start at the second */
@@ -145,6 +146,8 @@ extern int g_dlg_outline;       /* ...and the 3D screen's (the text box in battl
 void gpu_cards_hide(int eng, int y0, int y1);   /* gpu2d.c: the battle cards' boxes on those rows left out */
 extern int g_comp_win_px[2];    /* gpu2d.c: last frame, pixels of a window's panel per engine */
 static int g_paused, g_turbo;   /* Game > Pause, Game > Fast forward (latched) */
+static int g_gpu_cap = GL_MAX_SCALE;                          /* 3D resolution Auto: the most this graphics card draws fast enough (gpu_budget) */
+static float g_gpu_load = -1;                                     /* ...the share of the time its GPU was busy, the last second (-1: not measured) */
 static int g_battle_speed = 1;  /* Modern > Battle speed: 1 to 4 times as fast (not in a session) */
 static int g_battle_turn_only;  /* ...only while the turn plays out: choosing the commands at the usual pace */
 static int g_skip_intro = BOOTSKIP_LOGOS;   /* Modern > Start: skip the logos (1), and the opening movie (2) */
@@ -1219,6 +1222,14 @@ static void card_pieces(GlPresent* v) {
     }
 }
 
+/* The bare parchment at the right of the stats panel, under the list, while
+ * allocating skill points (the menu's pixels): the skill's table goes there */
+enum { NOOK_X = 129, NOOK_Y = 105, NOOK_W = 122, NOOK_H = 85 };
+
+/* Widescreen: a movie in two halves is playing (hdmovie_two_screens()):
+ * both screens shown as one picture (canvas_layout_for) */
+static int g_movie2;
+
 /* ---- Equip, modern ----
  * The Equip screen (the touch screen: the character in 3D before the
  * dressing room's backdrop, the bar of his name, job and level under him, his
@@ -1714,6 +1725,22 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
                 q[0] = x + (SHOP_DESC_X + SHOP_DESC_ICON + 8) * k; q[1] = (L + gap + SHOP_PAD) * k; q[2] = SHOP_TW * k; q[3] = SHOP_TH * k;
             }
             v->icons[0] = x; v->icons[1] = 0; v->icons[2] = 256 * k; v->icons[3] = 192 * k;
+        } else if (page == 1 && which < 0 && g_pop_win[2] && !g_quest_page && !g_card_page && !second) {
+            /* a page on the top screen over a menu without the field (allocating
+             * skill points: the skill's table over the list of skills, after a
+             * battle or from the menu): popped up in the middle it would hide
+             * the menu; the menu stays whole, and the page's windows (without
+             * their backdrop) sit small on the bare parchment beside the
+             * character's stats panel */
+            small[0] = small[1] = small[2] = small[3] = 0;
+            float w = (float)g_pop_win[2], h = (float)g_pop_win[3], kb = big[2] / 256.0f;   /* (the menu's pixels -> canvas) */
+            float k = fminf(NOOK_W / w, NOOK_H / h);
+            if (g_pop_nook && v->npiece < GL_MAX_PIECES) {           /* (not while the question lies over the parchment) */
+                float* q = v->piece[v->npiece++];
+                q[4] = 0; q[5] = (float)g_pop_win[0]; q[6] = (float)g_pop_win[1]; q[7] = w; q[8] = h;
+                q[2] = w * k * kb; q[3] = h * k * kb;
+                q[0] = big[0] + NOOK_X * kb; q[1] = big[1] + (NOOK_Y + NOOK_H) * kb - q[3];   /* against the stats panel, its bottom in line */
+            }
         } else if (page == 1) {
             /* a page on the top screen (an item's card in Items, Equipment or a
              * shop, a title): its windows alone, without the page's backdrop,
@@ -1773,6 +1800,16 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
                     }
                 }
             }
+        }
+        if (g_movie2 && !second) {
+            /* a movie in two halves (the opening, "to be continued"): one
+             * picture, the top screen's half over the bottom one's, as tall
+             * as the window; nothing over it */
+            v->cw = 256; v->ch = 384; v->npiece = 0; v->front = 0; v->alpha = 1.0f; v->movie2 = 1;
+            v->top[0] = v->bot[0] = 0; v->top[1] = 0; v->bot[1] = 192;
+            v->top[2] = v->bot[2] = 256; v->top[3] = v->bot[3] = 192;
+            v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
+            memset(v->icons, 0, sizeof v->icons); memset(v->layer, 0, sizeof v->layer);
         }
     } else if (two || single) {
         v->cw = 256; v->ch = 192;                                /* one screen; the other is in the other window, or not shown */
@@ -2653,7 +2690,8 @@ static double ticks_ms(uint64_t t) { return (double)t * 1000.0 / (double)g_perf_
 static void perf_write(FILE* f) {
     fprintf(f, "mode: %s\n", g_classic ? "classic (DS 3D renderer)" : "enhanced (3D on the GPU)");
     fprintf(f, "renderer: %s\n", g_gl ? gl_renderer_name() : "software (no OpenGL 3.3)");
-    if (g_gl && !g_classic) fprintf(f, "3D resolution: %dx\n", gl_render_scale());
+    if (g_gl && !g_classic) fprintf(f, "3D resolution: %dx%s\n", gl_render_scale(), !g_res_auto ? "" : g_gpu_cap < GL_MAX_SCALE ? " (Auto, at most what this graphics card draws fast enough)" : " (Auto)");
+    if (g_gl && !g_classic && g_gpu_load >= 0) fprintf(f, "GPU busy: %.0f%% of the time (the last second)\n", g_gpu_load * 100);
     fprintf(f, "audio: %s\n\n", g_audio ? "on" : "off");
     fprintf(f, "Per frame, in ms. A frame must take under 16.7 ms in total (busy + present) to keep full speed.\n");
     fprintf(f, "busy = all work for the frame: game = game code, 2d = 2D layers, gl = 3D on the GPU, upload = new textures (inside gl),\n");
@@ -2869,14 +2907,47 @@ static int battle_commands_shown(void) {
     return 0;
 }
 
+/* 3D resolution Auto, and the graphics card: the share of the time the GPU
+ * spends drawing, each second (gl_gpu_ms). Past 80% it can't keep up with 60
+ * frames a second (a laptop's Intel graphics at 12x: 40 FPS), so Auto goes
+ * down to a resolution it manages (the cost goes with the pixels: the
+ * square of the scale) and stays there; up again a step only when the GPU
+ * has been idle most of the time for a while, and the step up should still
+ * leave it room (g_gpu_cap: the most Auto picks on this card). */
+static void gpu_budget(void) {
+    static uint64_t t0; static double ms0; static int scale0, quiet, since_down;
+    uint64_t now = SDL_GetPerformanceCounter(); double ms = gl_gpu_ms();
+    int s = gl_render_scale();
+    if (ms < 0) return;                                           /* no timer queries */
+    if (!t0 || s != scale0 || g_fast || g_paused || g_battle_pace > 1) { t0 = now; ms0 = ms; scale0 = s; return; }   /* (a new resolution, fast forward, faster battles: start over) */
+    double el = (double)(now - t0) * 1000.0 / (double)g_perf_freq;
+    if (el < 1000) return;
+    float load = (float)((ms - ms0) / el);
+    t0 = now; ms0 = ms; g_gpu_load = load;
+    since_down++;
+    if (load > 0.80f && s > 2) {                                  /* too slow: to about 60% */
+        int to = (int)floorf((float)s * sqrtf(0.60f / load));
+        if (to > s - 1) to = s - 1;
+        if (to < 2) to = 2;
+        if (to < g_gpu_cap) g_gpu_cap = to;
+        quiet = 0; since_down = 0;
+        LOG_INFO("3D resolution Auto: the GPU is busy %.0f%% of the time at %dx: %dx at most\n", load * 100, s, g_gpu_cap);
+        if (s > g_gpu_cap) gl_render_set_scale(g_gpu_cap);        /* at once (auto_scale waits half a second for a window being resized) */
+    } else if (g_gpu_cap < GL_MAX_SCALE && load * (float)((s + 1) * (s + 1)) / (float)(s * s) < 0.55f) {
+        if (++quiet >= 5 && since_down >= 30) { g_gpu_cap = s + 1; quiet = 0; LOG_INFO("3D resolution Auto: GPU busy %.0f%% at %dx: up to %dx\n", load * 100, s, s + 1); }
+    } else quiet = 0;
+}
+
 /* 3D resolution Auto: render at 1.5 times the size the 3D is shown at (at
- * least 2x, at most what the GPU holds), so it is never stretched and the
- * extra detail smooths the edges. Changes after the size has stayed the same
- * for half a second (resizing a window doesn't rebuild it every frame). */
+ * least 2x, at most what the GPU holds, and what it draws fast enough:
+ * gpu_budget), so it is never stretched and the extra detail smooths the
+ * edges. Changes after the size has stayed the same for half a second
+ * (resizing a window doesn't rebuild it every frame). */
 static void auto_scale(void) {
     if (!g_res_auto || g_classic || getenv("DQIX_SCALE3D")) return;
     { static long long from = -2; if (from == -2) { const char* e = getenv("DQIX_AUTO_FROM"); from = e ? atoll(e) : -1; }   /* tests: 2x until then */
       if (from >= 0 && g_frame < (uint64_t)from) return; }
+    { static int off = -1; if (off < 0) off = getenv("DQIX_NO_GPU_BUDGET") != NULL; if (!off) gpu_budget(); }
     float need = 0;
     SDL_Window* ws[2] = { g_win, g_win2 };
     for (int k = 0; k < 2; k++) {
@@ -2889,6 +2960,7 @@ static void auto_scale(void) {
         }
     }
     int want = (int)ceilf(need * 1.5f - 0.05f), top = gl_render_max_scale();
+    if (top > g_gpu_cap) top = g_gpu_cap;
     if (want < 2) want = 2;
     if (want > top) want = top;
     static int pending, frames;
@@ -3221,7 +3293,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
  * around them, and what touches the edge (the sky, the torn border), go. */
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
-    g_pop_win[2] = 0; g_quest_page = g_card_page = g_accolade_page = g_pop_modern = 0;
+    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = 0;
     bestiary_update(a_on_top);
     equip_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
@@ -3301,6 +3373,11 @@ static void pop_update(int a_on_top) {
             }
             if (!(flags[c] & 1) && (best < 0 || ring[c] > ring[best])) best = c;
         }
+        /* no parchment round windows: a picture over the whole screen (the
+         * quest list's board of notices, all one part from its edge); cut by
+         * colour, only bits of its ink would be left, popped up as black
+         * stains over the menu: not shown (a card's parchment fills most of the ring) */
+        if (best < 0 || ring[best] < 400) return;
         for (int i = 0; i < N; i++) { int c = lab[i]; bg[i] = c == best || (flags[c] & 1) || !(flags[c] & 2); }
     }
     if (g_shop)                                                   /* a shop: the card's description alone (its parchment box) */
@@ -3323,6 +3400,18 @@ static void pop_update(int a_on_top) {
 #undef GREYISH
     }
     if (!g_shop) pop_place();
+    {   /* allocating skill points: the parchment bare at the right of the
+         * character's stats panel (not while the question "Finish...?" lies over it) */
+        const uint32_t* b = g_engine_out[a_on_top ? 1 : 0];
+        int warm = 0, n = 0;
+        for (int y = NOOK_Y + 3; y < NOOK_Y + NOOK_H - 2; y += 6)
+            for (int x = NOOK_X + 3; x < NOOK_X + NOOK_W - 2; x += 6) {
+                uint32_t c = b[y * 256 + x];
+                int r = (c >> 16) & 255, bl = c & 255;
+                warm += r > 120 && r > bl + 60; n++;
+            }
+        g_pop_nook = warm * 10 >= n * 9;
+    }
 }
 
 /* A shop's buy list on the field's screen (mapmarks_shop()): its signs
@@ -3527,6 +3616,7 @@ static void present_gl(void) {
         if (lg && g_frame % 60 == 0) fprintf(stderr, "box: frame %llu tests %u in %u widened %u\n", (unsigned long long)g_frame, g_box_tests, g_box_in, g_box_widened);
         if (lg && g_frame % 60 == 0) g_box_tests = g_box_in = g_box_widened = 0;
     }
+    g_movie2 = !g_classic && hdmovie_two_screens();
     uint16_t pow; memcpy(&pow, &g_io[0x304], 2);
     hud_update((pow >> 15) & 1);                                 /* (before composing: the minimal style cuts the cards out for it) */
     gl_set_hud_cut(g_winstyle && (g_hud_n > 0 || g_hud_win[2]));
@@ -3544,7 +3634,9 @@ static void present_gl(void) {
         if (!held && (pow & 1) && gl_wide_shown(&side) >= 0 && !gl_3d_ready()) { held = 1; return; }
         held = 0;
     }
+    gl_gpu_time(1);                                              /* (3D resolution Auto: how long the GPU takes) */
     gl_compose((pow >> 15) & 1, pow & 1);
+    gl_gpu_time(0);                                              /* (not the drawing in the window: it may wait there for the screen's refresh) */
     wide_update((pow >> 15) & 1);
     gl_dump_hook();
     test_hooks();
@@ -3577,6 +3669,7 @@ static void present_gl(void) {
     hdbar_update(&v);
     mapmarks_hover(-1, -1);
     map_overlay(&v, g_win, (pow >> 15) & 1);
+    if (g_movie2) { memset(v.overlay, 0, sizeof v.overlay); memset(v.icons, 0, sizeof v.icons); memset(v.layer, 0, sizeof v.layer); }   /* (the movie alone) */
     gl_present(&v);
     window_shot_hook(w, h, 0);
     SDL_GL_SwapWindow(g_win);
@@ -4792,7 +4885,7 @@ static void capture_done(const char* what) {
 }
 static void capture_key(SDL_Scancode k, Uint16 mod) {
     if (k == SDL_SCANCODE_ESCAPE) { capture_done(NULL); return; }
-    if (g_cap_what == 2) return;                                 /* a controller button is wanted */
+    if (g_cap_what == 2) g_cap_what = 0;                         /* a key, though a button was asked: its key */
     int is_mod = k == SDL_SCANCODE_LCTRL || k == SDL_SCANCODE_RCTRL || k == SDL_SCANCODE_LALT || k == SDL_SCANCODE_RALT ||
                  k == SDL_SCANCODE_LSHIFT || k == SDL_SCANCODE_RSHIFT;
     int key = (int)k;
@@ -4801,20 +4894,39 @@ static void capture_key(SDL_Scancode k, Uint16 mod) {
     char n[64]; controls_key_name(key, n, sizeof n);
     capture_done(n);
 }
-static void capture_pad(int pad) {
-    if (g_cap_what != 2) return;
+static void capture_pad(int pad) {                             /* a button, whichever was asked */
     controls_set_pad(g_cap_action, pad);
     char n[64]; controls_pad_name(pad, n, sizeof n);
     capture_done(n);
 }
 static void capture_wait(void) {                                /* the game waits meanwhile */
+    /* The Controls window has the focus (its button was just clicked): the game
+     * window is brought forward for the keys (Windows only lets it if forced),
+     * and the controller is heard even if it stays behind - SDL otherwise drops
+     * a controller's presses while no game window has the focus (an Xbox
+     * controller "did nothing"). */
+    SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
     SDL_RaiseWindow(g_win);
+    SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "0");
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (!g_pad) {                                               /* not opened yet (plugged in late): now */
+        for (int i = 0; i < SDL_NumJoysticks() && !g_pad; i++) if (SDL_IsGameController(i)) g_pad = SDL_GameControllerOpen(i);
+        if (g_pad) controls_pad_detect(g_pad);
+    }
     while (g_cap_action >= 0) {
-        snprintf(g_notice, sizeof g_notice, g_cap_what == 2 ? "Press a controller button for: %s (Esc cancels)" : "Press a key for: %s (Esc cancels)", g_ctl[g_cap_action].name);
+        char ask[160];
+        snprintf(ask, sizeof ask, T("Press a key or a controller button for: %s (Esc cancels)"), T(g_ctl[g_cap_action].name));
+        snprintf(g_notice, sizeof g_notice, "%s", ask);
+        controls_window_prompt(ask);
         g_notice_until = SDL_GetPerformanceCounter() + g_perf_freq;
         update_title(g_last_fps);
         handle_events(); present(); SDL_Delay(15);
+        int ca, cw, r = g_cap_action >= 0 ? controls_window_request(&ca, &cw) : 0;
+        if (r == 2) capture_done(NULL);
+        else if (r == 1 && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; }   /* another action picked meanwhile */
     }
+    controls_window_prompt(NULL);
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "0");
     g_next_frame = SDL_GetPerformanceCounter();
     g_pad_resync = 1;
 }
@@ -4952,7 +5064,7 @@ void frontend_frame(void) {
                 if (held_for >= 60) { held_for = 0; restart_with(NULL); }
             } else if (held_for) { if (held_for < 60) notice("Reset cancelled"); held_for = 0; }
             int ca, cw;                                           /* Game > Controls asked for a new key */
-            if (controls_window_request(&ca, &cw) && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; capture_wait(); }
+            if (controls_window_request(&ca, &cw) == 1 && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; capture_wait(); }
         }
         int mx, my;
         Uint32 mb = SDL_GetMouseState(&mx, &my);

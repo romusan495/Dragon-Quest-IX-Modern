@@ -115,6 +115,58 @@ static int load_gl(void) {
     return 1;
 }
 
+/* GPU time: how long the graphics card itself spends drawing (timer
+ * queries, whose answers are read some frames later so nothing waits for
+ * them). 3D resolution Auto keeps to what the card manages with it
+ * (gl_gpu_ms). Optional: without them (an old driver), no measure. */
+#define GPUQ 16
+#define GL_TIME_ELAPSED_ 0x88BF
+#define GL_QUERY_RESULT_ 0x8866
+#define GL_QUERY_RESULT_AVAILABLE_ 0x8867
+static void (APIENTRY* p_glGenQueries)(GLsizei, GLuint*);
+static void (APIENTRY* p_glBeginQuery)(GLenum, GLuint);
+static void (APIENTRY* p_glEndQuery)(GLenum);
+static void (APIENTRY* p_glGetQueryObjectiv)(GLuint, GLenum, GLint*);
+static void (APIENTRY* p_glGetQueryObjectui64v)(GLuint, GLenum, unsigned long long*);
+static GLuint g_gpuq[GPUQ];
+static unsigned g_gpuq_head, g_gpuq_tail;                       /* queries started / read */
+static int g_gpuq_on, g_gpuq_open;                              /* timing works; a span is being timed (spans don't nest) */
+static double g_gpu_ms;                                         /* all the GPU time measured so far */
+static void gpu_time_init(void) {
+    *(void**)&p_glGenQueries = SDL_GL_GetProcAddress("glGenQueries");
+    *(void**)&p_glBeginQuery = SDL_GL_GetProcAddress("glBeginQuery");
+    *(void**)&p_glEndQuery = SDL_GL_GetProcAddress("glEndQuery");
+    *(void**)&p_glGetQueryObjectiv = SDL_GL_GetProcAddress("glGetQueryObjectiv");
+    *(void**)&p_glGetQueryObjectui64v = SDL_GL_GetProcAddress("glGetQueryObjectui64v");
+    if (!p_glGenQueries || !p_glBeginQuery || !p_glEndQuery || !p_glGetQueryObjectiv || !p_glGetQueryObjectui64v || getenv("DQIX_NO_GPU_TIME")) return;
+    p_glGenQueries(GPUQ, g_gpuq);
+    g_gpuq_on = 1;
+}
+static void gpu_time_collect(void) {
+    while (g_gpuq_tail != g_gpuq_head - (unsigned)g_gpuq_open) {    /* (not the one still open) */
+        GLuint q = g_gpuq[g_gpuq_tail % GPUQ]; GLint ready = 0;
+        p_glGetQueryObjectiv(q, GL_QUERY_RESULT_AVAILABLE_, &ready);
+        if (!ready) break;
+        unsigned long long ns = 0; p_glGetQueryObjectui64v(q, GL_QUERY_RESULT_, &ns);
+        g_gpu_ms += (double)ns / 1e6;
+        g_gpuq_tail++;
+    }
+}
+static int gpu_time_begin(void) {
+    if (!g_gpuq_on || g_gpuq_open) return 0;
+    gpu_time_collect();
+    if (g_gpuq_head - g_gpuq_tail >= GPUQ) return 0;            /* all still out: this span goes unmeasured */
+    p_glBeginQuery(GL_TIME_ELAPSED_, g_gpuq[g_gpuq_head % GPUQ]);
+    g_gpuq_head++; g_gpuq_open = 1;
+    return 1;
+}
+static void gpu_time_end(void) {
+    if (!g_gpuq_open) return;
+    p_glEndQuery(GL_TIME_ELAPSED_); g_gpuq_open = 0;
+}
+double gl_gpu_ms(void) { if (!g_gpuq_on) return -1; if (!g_gpuq_open) gpu_time_collect(); return g_gpu_ms; }
+void gl_gpu_time(int begin) { if (begin) gpu_time_begin(); else gpu_time_end(); }
+
 #define VTX_FLOATS 18                    /* floats per vertex sent to the GPU */
 
 /* ---------------------------------------------------------------- shaders */
@@ -454,6 +506,15 @@ static const char* FS_MOVIE =
     "uniform sampler2D u_hd; uniform sampler2D u_mask;\n"
     "void main() { vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);\n"
     "  o_color = vec4(texture(u_hd, uv).rgb, texture(u_mask, uv).r); }\n";
+
+/* A movie in two halves (GlPresent.movie2): the window's sides, the picture
+ * blurred and darkened, as wide as the window */
+static const char* FS_BLUR =
+    "#version 330 core\n"
+    "in vec2 v_uv; out vec4 o_color; uniform sampler2D u_src; uniform float u_lod; uniform vec2 u_step;\n"
+    "void main() { vec3 c = vec3(0.0);\n"
+    "  for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) c += textureLod(u_src, v_uv + vec2(i, j) * u_step, u_lod).rgb;\n"
+    "  o_color = vec4(c / 25.0 * 0.45, 1.0); }\n";
 
 static const char* FS_COPY =
     "#version 330 core\n"
@@ -810,7 +871,7 @@ static GLuint program(const char* vs, const char* fs, int poly) {
 
 /* ---------------------------------------------------------------- state */
 static int g_scale = 2;
-static GLuint prog_poly, prog_post, prog_comp, prog_copy, prog_screen, prog_ghost, prog_text, prog_movie;
+static GLuint prog_poly, prog_post, prog_comp, prog_copy, prog_screen, prog_ghost, prog_text, prog_movie, prog_blur;
 static GLuint ghost_tex[2], ghost_fbo[2]; static int ghost_cur = -1, ghost_w, ghost_h;
 static GLuint skin_tex; static int skin_w, skin_h;          /* console photo (View > Console colour) */
 static GLuint vao_poly, vbo_poly, vao_quad, vbo_quad;
@@ -1330,6 +1391,7 @@ int gl_render_max_scale(void) { return g_ready ? max_scale() : GL_MAX_SCALE; }
 int gl_render_init(int scale) {
     if (!load_gl()) return 0;
     g_scale = scale < 1 ? 1 : scale > max_scale() ? max_scale() : scale;
+    gpu_time_init();
     prog_poly = program(VS_POLY, FS_POLY, 1);
     prog_post = program(VS_QUAD, FS_POST, 0);
     prog_comp = program(VS_QUAD, FS_COMP, 0);
@@ -1338,6 +1400,7 @@ int gl_render_init(int scale) {
     prog_ghost = program(VS_QUAD, FS_GHOST, 0);
     prog_text = program(VS_TEXT, FS_TEXT, 2);
     prog_movie = program(VS_QUAD, FS_MOVIE, 0);
+    prog_blur = program(VS_QUAD, FS_BLUR, 0);
     if (!prog_poly || !prog_post || !prog_comp || !prog_copy || !prog_screen || !prog_ghost) return 0;
     g_hdsprite_check = hdsprite_check; hdsprite_update();
     p_glGenVertexArrays(1, &vao_poly); p_glBindVertexArray(vao_poly);
@@ -1506,7 +1569,9 @@ float gl_3d_centre_w(void) { return g_centre_w; }
 static void gl_render_(const Frame3D* f);
 static void gl_render(const Frame3D* f) {
     double t0 = perf_ms();
+    int timed = gpu_time_begin();                                 /* (inside the frontend's own span: already counted) */
     gl_render_(f);
+    if (timed) gpu_time_end();
     g_gl_stats.render_ms += perf_ms() - t0;
     g_gl_stats.polys += f->n;
 }
@@ -1978,7 +2043,10 @@ static void draw_text(int eng, int top, float W, float wside) {
     p_glEnable(GL_BLEND);
     p_glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
     p_glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);   /* (solid where the letters are: the HUD's see-through panels) */
+    p_glEnable(GL_SCISSOR_TEST);                                  /* kept to its screen: a letter past its edge (the menu's party card sliding */
+    p_glScissor(0, top ? g_fb_h : 0, g_fb3_w, g_fb_h);            /* out of the top screen) not over the other one (its mask: the edge row's) */
     p_glDrawArrays(GL_TRIANGLES, 0, nv);
+    p_glDisable(GL_SCISSOR_TEST);
     p_glDisable(GL_BLEND);
     p_glActiveTexture(GL_TEXTURE0);
     p_glUseProgram(prog_comp);
@@ -2295,6 +2363,29 @@ static void draw_overlay(const GlPresent* v, const float* q, GLuint tex) {
     p_glDisable(GL_BLEND);
 }
 
+/* A movie in two halves (GlPresent.movie2): left and right of the picture,
+ * the same picture blurred, darkened, filling the window's width. */
+static void draw_movie_sides(const GlPresent* v) {
+    float x0 = v->ox, x1 = v->ox + v->cw * v->sc;
+    if (!prog_blur || x0 < 1 || v->win_w <= 0 || v->win_h <= 0) return;
+    float W = (float)(256 + 2 * g_wside), aspect = (float)v->win_w / (float)v->win_h;
+    float vr = fminf(1.0f, 256.0f / aspect / 384.0f);             /* the rows in view: the picture as wide as the window */
+    p_glUseProgram(prog_blur);
+    p_glActiveTexture(GL_TEXTURE0); p_glBindTexture(GL_TEXTURE_2D, final_tex); p_glBindSampler(0, 0);
+    p_glGenerateMipmap(GL_TEXTURE_2D);
+    p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    p_glUniform1i(p_glGetUniformLocation(prog_blur, "u_src"), 0);
+    p_glUniform1f(p_glGetUniformLocation(prog_blur, "u_lod"), log2f((float)g_scale) + 3.0f);   /* 8 DS pixels a texel */
+    p_glUniform2f(p_glGetUniformLocation(prog_blur, "u_step"), 8.0f / W, 8.0f / 384.0f);
+    p_glUniform4f(p_glGetUniformLocation(prog_blur, "u_rect"), -1, -1, 2, 2);
+    p_glUniform4f(p_glGetUniformLocation(prog_blur, "u_uv"), (float)g_wside / W, 0.5f - vr / 2, 256.0f / W, vr);
+    p_glBindVertexArray(vao_quad);
+    p_glEnable(GL_SCISSOR_TEST);
+    p_glScissor(0, 0, (GLsizei)x0, v->win_h); p_glDrawArrays(GL_TRIANGLES, 0, 6);
+    p_glScissor((GLint)ceilf(x1), 0, v->win_w - (GLsizei)ceilf(x1), v->win_h); p_glDrawArrays(GL_TRIANGLES, 0, 6);
+    p_glDisable(GL_SCISSOR_TEST);
+}
+
 /* gl_set_menu()'s picture over the whole window, on its window of the minimal
  * style (FS_COPY's u_mode 2, as draw_pieces' restyled windows). */
 static void draw_menu(const GlPresent* v) {
@@ -2407,6 +2498,7 @@ void gl_present(const GlPresent* v) {
     p_glUniform4f(p_glGetUniformLocation(P, "u_uv"), 0, 0, 1, 1);
     p_glBindVertexArray(vao_quad);
     p_glDrawArrays(GL_TRIANGLES, 0, 6);
+    if (v->movie2) draw_movie_sides(v);
     {   /* a picture behind the pieces (Equip's shop) */
         const float* bk = v->layer[GL_LAYER_BACK];
         if (overlay_on[2 + GL_LAYER_BACK] && bk[2] > 0 && bk[3] > 0) draw_overlay(v, bk, overlay_tex[2 + GL_LAYER_BACK]);
