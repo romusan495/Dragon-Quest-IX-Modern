@@ -14,6 +14,7 @@ void frontend_shutdown(void);
 extern uint32_t g_screen[2][256 * 192];   /* 0 = top, 1 = bottom; 0x00RRGGBB */
 extern uint16_t g_keys_down;              /* A B SELECT START RIGHT LEFT UP DOWN R L X Y (bits 0-11) */
 extern int g_touch_down, g_touch_x, g_touch_y;
+extern void (*g_list_keys)(uint16_t* keys, int* touch, int* tx, int* ty);   /* input.c calls it every frame, when set */
 extern uint16_t g_fe_keys;                /* frontend's own input, merged by input_update() */
 extern int g_fe_touch, g_fe_tx, g_fe_ty;
 /* the gamepad's left stick (-32768..32767) and the D-pad directions it means

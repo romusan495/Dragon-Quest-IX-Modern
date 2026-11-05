@@ -9,6 +9,13 @@
 enum { GL_LAYER_HINT,                                 /* a button's sign over the game's (hints.c) */
        GL_LAYER_STAMP,                                /* a quest sheet's Complete! stamp, drawn again (frontend_sdl.c quest_stamp) */
        GL_LAYER_HDBAR,                                /* how far textures-hd is, and its "done" message (frontend_sdl.c hdbar_update) */
+       GL_LAYER_LOGO,                                 /* the records' book's picture, faint, behind the monster list's or the Alchimanach's window (drawn over its first piece) */
+       GL_LAYER_KEY0, GL_LAYER_KEY1, GL_LAYER_KEY2,   /* the player's keys or buttons for the game's SELECT, L, R signs there */
+       GL_LAYER_CURSOR,                               /* ...and the game's cursor there, as the game draws it (its sprite's pixels) */
+       GL_LAYER_ICON,                                 /* ...and an item's picture alone (its sprite's pixels, off its box) */
+       GL_LAYER_BACK,                                 /* a picture behind a modern screen (Equip's shop): drawn first, under the pieces */
+       GL_LAYER_PLAQUES,                              /* ...the jobs' plaques on its wall */
+       GL_LAYER_JOBS,                                 /* ...the jobs' signs on an item's card (who can equip it) */
        GL_LAYERS };
 
 int gl_render_init(int scale);                        /* 0 on failure (use the software path) */
@@ -29,6 +36,7 @@ const Renderer3D* gl_renderer3d(void);
 void gl_compose(int a_on_top, int lcd_on);           /* at VBlank: 2D + 3D -> both screens */
 /* How to show the screens: canvas (DS pixels) placed in the window at
  * (ox, oy) with sc window pixels per DS pixel. */
+#define GL_MAX_PIECES 96                             /* (a GlPresent's pieces at most) */
 typedef struct {
     int win_w, win_h;
     float ox, oy, sc, cw, ch;
@@ -44,7 +52,7 @@ typedef struct {
     int skin;                                         /* draw the console photo (gl_set_skin) instead */
     float skin_k;                                     /* photo pixels per canvas unit */
     int npiece;                                       /* parts of a screen drawn over the canvas (widescreen battle HUD) */
-    float piece[16][10];                               /* ...each: x, y, w, h on the canvas; screen (0 top, 1 bottom; 2, 3: its 2D alone, gl_set_split()); x, y, w, h on it;
+    float piece[GL_MAX_PIECES][10];                               /* ...each: x, y, w, h on the canvas; screen (0 top, 1 bottom; 2, 3: its 2D alone, gl_set_split()); x, y, w, h on it;
                                                        * restyled (1 its dark letters alone, made light; 2 no picture: a window of the minimal style;
                                                        * 3 its light letters alone; 4 no picture: a thin grey line; 5 its red ink alone, cleaned; 6 as 1, kept sharp when small, red ink left out;
                                                        * 7 as 2, solid inside; 8 an item's rarity stars, off their plate; 9 its word's letters) */
@@ -54,7 +62,6 @@ typedef struct {
     float icons[4];                                   /* ...and gl_set_icons()' */
     float layer[GL_LAYERS][4];                        /* ...and each gl_set_layer()'s (w 0: not this frame) */
 } GlPresent;
-#define GL_MAX_PIECES 16
 void gl_hold(void);                                   /* keep this frame's picture (the map window during battles) */
 void gl_set_skin(const uint8_t* rgba, int w, int h);
 void gl_set_menu(const uint8_t* rgba, int w, int h);      /* the in-game menu over the whole window (premultiplied RGBA, rows top-down; NULL: none) */

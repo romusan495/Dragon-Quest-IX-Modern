@@ -529,22 +529,46 @@ static const char* FS_COPY =
      * over (u_ds: one DS pixel in u_src); 7 as 2, solid inside, the game's dark
      * panels' grey (24, 24, 24); 8 an item's rarity stars off their brown
      * plate: the ones it has gold, the others grey, the rest nothing; 9 its
-     * word's cream letters alone, made light */
+     * word's cream letters alone, made light; 10 a gold cursor alone (its
+     * dark edge with it), nothing else; 11 the picture premultiplied (the 3D
+     * alone: see-through where it has nothing); 12 as 3, but only grey or white
+     * letters (not a light parchment); 13 as 3, and dim grey letters (a list's
+     * ??? not known yet) kept grey; 14 as 12, and those grey letters; 15 as 6,
+     * the dark letters made grey (an ingredient short) */
     "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
-    "float ink(vec2 uv, int light) { vec4 c = textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
-    "  return (light != 0 ? smoothstep(0.45, 0.65, L) : smoothstep(0.52, 0.32, L)) * c.a; }\n"
+    "float ink(vec2 uv, int light) { ivec2 ts = textureSize(u_src, 0); vec4 c = light == 3 ? texelFetch(u_src, clamp(ivec2(uv * vec2(ts)), ivec2(0), ts - 1), 0) : textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
+    "  vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (relative: a parchment, however dark, is as coloured) */
+    "  return (light == 3 ? smoothstep(0.355, 0.325, L) : light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
-    "float letters(int light) {\n"   /* (each of 4 points in the pixel at full size, then averaged: thin strokes kept when drawn small) */
-    "  vec2 dx = dFdx(v_uv) * 0.25, dy = dFdy(v_uv) * 0.25; float t = 0.0;\n"
-    "  for (int i = 0; i < 4; i++) { vec2 uv = v_uv + dx * (i == 0 || i == 2 ? -1.0 : 1.0) + dy * (i < 2 ? -1.0 : 1.0); t += ink(uv, light) * (light != 0 ? 1.0 : 1.0 - red(uv)); }\n"
-    "  return t * 0.25; }\n"
+    "float letters(int light) {\n"   /* (9 points across the pixel at full size: a stroke thinner than the pixel drawn small is met by at least one; */
+    "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"   /* averaged, but never fainter than 3/4 of the strongest: thin strokes kept) */
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 uv = v_uv + dx * float(i) + dy * float(j); float a = ink(uv, light) * (light != 0 && light != 3 ? 1.0 : 1.0 - red(uv)); t += a; m = max(m, a); }\n"
+    "  return max(t / 9.0, m * 0.75); }\n"
+    "float yellows() {\n"   /* (bright yellow letters: not the parchment, duller and bluer) */
+    "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = textureLod(u_src, v_uv + dx * float(i) + dy * float(j), 0.0); vec3 r = c.rgb / max(c.a, 0.001);\n"
+    "    float a = max(smoothstep(0.8, 0.9, r.r) * smoothstep(0.6, 0.72, r.g) * smoothstep(0.35, 0.22, r.b), smoothstep(0.55, 0.68, r.g) * smoothstep(0.25, 0.4, r.g - max(r.r, r.b))) * c.a; t += a; m = max(m, a); }\n"   /* (and the green of a line the stylus holds: gold too) */
+    "  return max(t / 9.0, m * 0.75); }\n"
+    "float greys() {\n"   /* (dim grey letters (121, 121, 121: a list's ??? not known yet): shown grey, their dots and all) */
+    "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
+    "  ivec2 ts = textureSize(u_src, 0);\n"   /* (the texels themselves: a thin grey stroke not mixed with the panel's brown round it) */
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 c = texelFetch(u_src, clamp(ivec2((v_uv + dx * float(i) + dy * float(j)) * vec2(ts)), ivec2(0), ts - 1), 0); vec3 r = c.rgb / max(c.a, 0.001);\n"
+    "    float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02), L = dot(r, vec3(0.299, 0.587, 0.114));\n"
+    "    float a = smoothstep(0.40, 0.44, L) * smoothstep(0.58, 0.54, L) * smoothstep(0.12, 0.06, sat) * c.a; t += a; m = max(m, a); }\n"
+    "  return max(t / 9.0, m * 0.75); }\n"
     "void main() {\n"
     "  if (u_mode == 2 || u_mode == 7) {\n"
     "    vec2 p = v_uv * u_px; float d = min(min(p.x, p.y), min(u_px.x - p.x, u_px.y - p.y)) / u_line;\n"
     "    o_color = d < 0.6 ? vec4(vec3(0.08), 0.8) : d < 1.6 ? vec4(vec3(0.5), 1.0) : u_mode == 7 ? vec4(vec3(0.094), 1.0) : vec4(0.0, 0.0, 0.0, 0.55); return;\n"
     "  }\n"
+    "  if (u_mode == 23) {\n"   /* (a cell of a modern grid: see-through dark, a thin grey line round it, its corners rounded) */
+    "    vec2 p = v_uv * u_px, h = u_px * 0.5; float r = 1.2 * u_line; vec2 q = abs(p - h) - (h - r); float d = -(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r);\n"
+    "    float in_ = smoothstep(0.0, 1.0, d), line = in_ * (1.0 - smoothstep(0.55 * u_line - 0.5, 0.55 * u_line + 0.5, d));\n"
+    "    vec4 o = vec4(0.0, 0.0, 0.0, 0.45) * in_; o = mix(o, vec4(vec3(0.5) * 0.9, 0.9), line); o_color = o; return;\n"
+    "  }\n"
     "  if (u_mode == 4) { o_color = vec4(vec3(0.5), 1.0); return; }\n"
+    "  if (u_mode == 16) { o_color = vec4(0.0, 0.0, 0.0, 0.55); return; }\n"   /* (a window's panel alone: its line drawn apart, as thin as the game's around it) */
     "  if (u_mode == 5) {\n"
     "    float m = 0.0;\n"
     "    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) m += red(v_uv + vec2(i, j) * 0.6 * u_ds);\n"
@@ -552,6 +576,33 @@ static const char* FS_COPY =
     "  }\n"
     "  vec4 c = texture(u_src, v_uv);\n"
     "  float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
+    "  if (u_mode == 11) { vec4 c = texture(u_src, v_uv); o_color = vec4(c.rgb * c.a, c.a); return; }\n"
+    "  if (u_mode == 18) { vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), mn = min(r.r, min(r.g, r.b));\n"   /* (an item's picture in a list's row (the 3D alone): not its grey box (62), nor the row's dark brown) */
+    "    float box = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.16, 0.19, mx) * smoothstep(0.35, 0.33, mx);\n"   /* (62; the chosen row's 82) */
+    "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
+    "    float ring = smoothstep(0.07, 0.05, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
+    "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 21) { o_color = vec4(0.98, 0.78, 0.16, 1.0) * 0.16; return; }\n"   /* (a chosen line lit, gold, faint) */
+    "  if (u_mode == 22) { o_color = vec4(0.0); return; }\n"   /* (nothing: a touchable place only) */
+    "  if (u_mode == 20) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (signs on a book's brown panel (73, 56, 24 to 93, 73, 44): the panel see-through) */
+    "    float p = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.24, 0.26, r.r) * smoothstep(0.41, 0.39, r.r) * smoothstep(0.15, 0.17, r.g) * smoothstep(0.32, 0.3, r.g) * smoothstep(0.2, 0.18, r.b) * smoothstep(0.06, 0.08, r.r - r.b);\n"
+    "    float a = (1.0 - p) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 19 || u_mode == 24) { c = texelFetch(u_src, ivec2(v_uv * vec2(textureSize(u_src, 0))), 0); vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (nearest: no halo of its edges between texels) */   /* (the bag's grid made modern: its tan panel, the brown under it, its cells and their frames see-through: the cells drawn again, 23) */
+    "    float tan = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.17, 0.2, r.r - r.b) * smoothstep(0.34, 0.31, r.r - r.b) * smoothstep(0.42, 0.45, r.r) * smoothstep(0.7, 0.67, r.r);\n"
+    "    float under = smoothstep(0.24, 0.21, r.r) * smoothstep(0.15, 0.17, r.r) * smoothstep(0.08, 0.05, r.g) * smoothstep(0.03, 0.01, r.b);\n"
+    "    float cell = smoothstep(0.19, 0.21, r.r) * smoothstep(0.26, 0.24, r.r) * smoothstep(0.07, 0.09, r.g) * smoothstep(0.13, 0.11, r.g) * smoothstep(0.07, 0.05, r.b);\n"
+    "    float cream = smoothstep(0.85, 0.88, r.r) * smoothstep(0.76, 0.79, r.g) * smoothstep(0.52, 0.55, r.b) * smoothstep(0.7, 0.67, r.b);\n"
+    "    float edge = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.27, 0.3, r.r) * smoothstep(0.43, 0.4, r.r) * smoothstep(0.08, 0.11, r.r - r.b) * smoothstep(0.24, 0.21, r.r - r.b) * (1.0 - tan);\n"   /* (the cells' brown frames: left out, clean lines drawn instead) */
+    "    float red = smoothstep(0.23, 0.25, r.r) * smoothstep(0.56, 0.54, r.r) * smoothstep(0.06, 0.08, r.g) * smoothstep(0.22, 0.2, r.g) * smoothstep(0.03, 0.01, r.b);\n"   /* (the dark reds over the tabs) */
+    "    vec4 o = vec4(r, 1.0); o = mix(o, vec4(0.0), max(max(tan, under), max(cream, red * float(u_mode == 19)))); o = mix(o, vec4(0.0), cell); o = mix(o, vec4(0.0), edge);\n"   /* (its cream edge left out: the window's own line round it) */
+    "    o_color = vec4(o.rgb * o.a, o.a) * c.a; return; }\n"
+    "  if (u_mode == 17) { vec3 r = c.rgb / max(c.a, 0.001); float d = max(abs(r.r - 0.157), max(abs(r.g - 0.157), abs(r.b - 0.157)));\n"   /* (the picture without its window's dark panel (40, 40, 40): see-through there) */
+    "    float a = smoothstep(0.03, 0.07, d) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 10) {\n"
+    "    float g = goldness(c) * smoothstep(0.78, 0.9, c.r / max(c.a, 0.001)), near = 0.0;\n"   /* (bright: the cursor's gold, not a parchment's dark edge) */
+    "    for (int i = 0; i < 8; i++) { vec2 o = vec2(i < 3 ? -1.0 : i < 5 ? 0.0 : 1.0, i == 0 || i == 3 || i == 5 ? -1.0 : i == 1 || i == 6 ? 0.0 : 1.0); vec4 n = texture(u_src, v_uv + o * u_ds * 1.2); near = max(near, goldness(n) * smoothstep(0.78, 0.9, n.r / max(n.a, 0.001))); }\n"
+    "    float a = max(g, near * smoothstep(0.2, 0.1, L)) * c.a; o_color = vec4(c.rgb / max(c.a, 0.001) * a, a); return;\n"
+    "  }\n"
     "  if (u_mode == 8 || u_mode == 9) {\n"   /* (the word cream, a star gold, the others dark brown; the plates brown, the edges darker) */
     "    vec3 r = c.rgb / max(c.a, 0.001);\n"
     "    float gold = goldness(c) * float(u_mode == 8), near = 0.0;\n"
@@ -563,7 +614,8 @@ static const char* FS_COPY =
     "  }\n"
     "  if (u_mode == 1) { float t = smoothstep(0.52, 0.32, L) * c.a;\n"
     "    o_color = vec4(vec3(0.93) * t, t); return; }\n"
-    "  if (u_mode == 3 || u_mode == 6) { float t = letters(u_mode == 3 ? 1 : 0); o_color = vec4(vec3(0.93) * t, t); return; }\n"
+    "  if (u_mode == 3 || u_mode == 6 || (u_mode >= 12 && u_mode <= 15)) { float t = letters(u_mode == 6 ? 0 : u_mode == 15 ? 3 : u_mode == 12 || u_mode == 14 ? 2 : 1), y = u_mode == 6 || u_mode == 15 ? 0.0 : yellows();\n"   /* (the game's yellow letters, a chosen line: gold) */
+    "    float g = u_mode == 13 || u_mode == 14 ? greys() : 0.0, a = max(max(t, y), g); vec3 col = mix(g > t ? vec3(0.6) : u_mode == 15 ? vec3(0.7) : vec3(0.93), vec3(0.98, 0.78, 0.16), y / max(a, 0.001)); o_color = vec4(col * a, a); return; }\n"
     "  o_color = c;\n"
     "}\n";
 
@@ -2254,7 +2306,7 @@ void gl_hold(void) {
 
 /* Widescreen battle HUD: parts of a screen (the party's panels, the commands)
  * drawn over the picture just shown, each where the layout puts it. */
-static void draw_pieces(const GlPresent* v, GLuint src) {
+static void draw_pieces(const GlPresent* v, GLuint src, int from, int to) {
     float W = (float)(256 + 2 * g_wside);
     p_glUseProgram(prog_copy);
     p_glActiveTexture(GL_TEXTURE0); p_glBindSampler(0, 0);
@@ -2275,20 +2327,24 @@ static void draw_pieces(const GlPresent* v, GLuint src) {
     int restyled = 0;
     for (int i = 0; i < v->npiece && i < GL_MAX_PIECES; i++) restyled |= v->piece[i][9] > 0.5f;
     if (g_cut || g_cut_top || g_split || restyled) { p_glEnable(GL_BLEND); p_glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD); p_glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA); }   /* premultiplied (gl_compose) */
-    for (int i = 0; i < v->npiece && i < GL_MAX_PIECES; i++) {
+    for (int i = from; i < to && i < v->npiece && i < GL_MAX_PIECES; i++) {
         const float* q = v->piece[i];
         if (q[2] <= 0 || q[3] <= 0) continue;
-        p_glBindTexture(GL_TEXTURE_2D, q[4] > 1.5f && texs[1] ? texs[1] : src);   /* 2, 3: the 3D screen's 2D alone */
+        int alone3d = q[4] > 3.5f;                                /* 4: the 3D alone (the monster list's monster, without its box) */
+        if (alone3d && !(g_fb_shown >= 0 && g_fb[g_fb_shown].valid)) continue;
+        p_glBindTexture(GL_TEXTURE_2D, alone3d ? g_fb[g_fb_shown].post : q[4] > 1.5f && texs[1] ? texs[1] : src);   /* 2, 3: the 3D screen's 2D alone */
+        if (alone3d) { p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); }
         /* canvas (DS pixels, y down) -> window pixels -> NDC (y up); the rect's origin is its bottom left */
         float x0 = v->ox + q[0] * v->sc, y1 = v->oy + (q[1] + q[3]) * v->sc;
         p_glUniform4f(loc_rect, x0 / (float)v->win_w * 2 - 1, 1 - y1 / (float)v->win_h * 2,
                       q[2] * v->sc / (float)v->win_w * 2, q[3] * v->sc / (float)v->win_h * 2);
         /* the screen in the composed picture: the top one in the upper half, the DS's 256 columns after the sides */
         float vtop = ((int)(q[4] + 0.5f) & 1) ? 0.5f : 1.0f;
-        p_glUniform4f(loc_uv, ((float)g_wside + q[5]) / W, vtop - (q[6] + q[8]) / 384.0f, q[7] / W, q[8] / 384.0f);
+        if (alone3d) p_glUniform4f(loc_uv, ((float)g_wside + q[5]) / W, 1.0f - (q[6] + q[8]) / 192.0f, q[7] / W, q[8] / 192.0f);   /* (one screen, the 3D's own rows) */
+        else p_glUniform4f(loc_uv, ((float)g_wside + q[5]) / W, vtop - (q[6] + q[8]) / 384.0f, q[7] / W, q[8] / 384.0f);
         int mode = (int)(q[9] + 0.5f);
         p_glUniform1i(loc_mode, mode);
-        if (mode == 2 || mode == 7) {
+        if (mode == 2 || mode == 7 || mode == 23) {
             p_glUniform4f(loc_uv, 0, 0, 1, 1);
             p_glUniform2f(p_glGetUniformLocation(prog_copy, "u_px"), q[2] * v->sc, q[3] * v->sc);
         }
@@ -2451,11 +2507,22 @@ void gl_present(const GlPresent* v) {
     p_glBindVertexArray(vao_quad);
     p_glDrawArrays(GL_TRIANGLES, 0, 6);
     if (v->movie2) draw_movie_sides(v);
-    if (v->npiece) draw_pieces(v, final_tex);
+    {   /* a picture behind the pieces (Equip's shop) */
+        const float* bk = v->layer[GL_LAYER_BACK];
+        if (overlay_on[2 + GL_LAYER_BACK] && bk[2] > 0 && bk[3] > 0) draw_overlay(v, bk, overlay_tex[2 + GL_LAYER_BACK]);
+    }
+    if (v->npiece) {
+        const float* lg = v->layer[GL_LAYER_LOGO];
+        if (overlay_on[2 + GL_LAYER_LOGO] && lg[2] > 0 && lg[3] > 0) {   /* the logo over the first piece (the window), under the rest */
+            draw_pieces(v, final_tex, 0, 1);
+            draw_overlay(v, lg, overlay_tex[2 + GL_LAYER_LOGO]);
+            draw_pieces(v, final_tex, 1, v->npiece);
+        } else draw_pieces(v, final_tex, 0, v->npiece);
+    }
     if (overlay_on[0] && v->overlay[2] > 0 && v->overlay[3] > 0) draw_overlay(v, v->overlay, overlay_tex[0]);
     if (overlay_on[1] && v->icons[2] > 0 && v->icons[3] > 0) draw_overlay(v, v->icons, overlay_tex[1]);
     for (int i = 0; i < GL_LAYERS; i++)                           /* the layers, in their order (under the in-game menu) */
-        if (overlay_on[2 + i] && v->layer[i][2] > 0 && v->layer[i][3] > 0) draw_overlay(v, v->layer[i], overlay_tex[2 + i]);
+        if (i != GL_LAYER_LOGO && i != GL_LAYER_BACK && overlay_on[2 + i] && v->layer[i][2] > 0 && v->layer[i][3] > 0) draw_overlay(v, v->layer[i], overlay_tex[2 + i]);
     if (menu_on && !v->again) draw_menu(v);
 }
 

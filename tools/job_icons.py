@@ -7,9 +7,13 @@ see runtime/hdsprite.h): the game shows them instead of the originals when
 
     job_icons.py <rom.nds> <out dir> [style]
 
-style: "white" (default: a white symbol on a badge in the job's colour) or
-"dark" (the symbol dark, the badge in a light shade of the job's colour,
-closer to the original).
+style: "plate" (default: each job's symbol in polished metal on a dark
+rounded plate, drawn for this project after the game's badges:
+tools/job_icons_plate/<job>.png, 96x96, the badge's 12x12 at 8x), "white"
+(a white symbol on a badge in the job's colour) or "dark" (the symbol dark,
+the badge in a light shade of the job's colour, closer to the original).
+The same sprites are the job's sign in the menus too (a party member's bar in
+Equip, Attributes...): one pack for both.
 
 Nothing from the game is kept in this project: the icons are made from the
 player's ROM when the game is built. Only the standard library is used (the
@@ -215,10 +219,56 @@ def png(px):
             + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
 
+def png_read(path):
+    """an 8-bit RGBA PNG (not interlaced): (width, height, rows of RGBA bytes)"""
+    with open(path, "rb") as f:
+        b = f.read()
+    p, w, h, idat = 8, 0, 0, b""
+    while p < len(b):
+        n, t = struct.unpack_from(">I4s", b, p)
+        d = b[p + 8:p + 8 + n]
+        if t == b"IHDR":
+            w, h, depth, ctype, _, _, inter = struct.unpack(">IIBBBBB", d)
+            if depth != 8 or ctype != 6 or inter:
+                raise ValueError("%s: not an 8-bit RGBA PNG" % path)
+        elif t == b"IDAT":
+            idat += d
+        p += 12 + n
+    raw, rows, prev, s = zlib.decompress(idat), [], bytearray(w * 4), w * 4 + 1
+    for y in range(h):
+        f, line = raw[y * s], bytearray(raw[y * s + 1:(y + 1) * s])
+        for i in range(len(line)):
+            a = line[i - 4] if i >= 4 else 0
+            up = prev[i]
+            c = prev[i - 4] if i >= 4 else 0
+            if f == 1: line[i] = (line[i] + a) & 255
+            elif f == 2: line[i] = (line[i] + up) & 255
+            elif f == 3: line[i] = (line[i] + (a + up) // 2) & 255
+            elif f == 4:
+                pa, pb, pc = abs(up - c), abs(a - c), abs(a + up - 2 * c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else up if pb <= pc else c)) & 255
+        rows.append(line); prev = line
+    return w, h, rows
+
+
+def plate(name):
+    """the job's plate icon in a 16x16 sprite at 8x: the badge's 12x12 at the top left"""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "job_icons_plate", name.replace(" ", "_") + ".png")
+    if not os.path.exists(path):
+        return None
+    w, h, rows = png_read(path)
+    n = 16 * SCALE
+    px = [[(0, 0, 0, 0)] * n for _ in range(n)]
+    for y in range(min(h, n)):
+        for x in range(min(w, n)):
+            px[y][x] = tuple(rows[y][x * 4:x * 4 + 4])
+    return px
+
+
 def main():
     if len(sys.argv) < 3:
         sys.exit(__doc__)
-    style = sys.argv[3] if len(sys.argv) > 3 else "white"
+    style = sys.argv[3] if len(sys.argv) > 3 else "plate"
     with open(sys.argv[1], "rb") as f:
         rom = f.read()
     data = rom_file(rom, PAC)
@@ -231,7 +281,9 @@ def main():
         if not is_badge(g):
             print("job_icons: sprite %d (%s) is not a job badge, left out" % (k, name))
             continue
-        px = downsample(draw(g, colour, style), SS)
+        px = plate(name) if style == "plate" else None
+        if px is None:                                            # (no plate for it, the guardian: drawn as before)
+            px = downsample(draw(g, colour, "white" if style == "plate" else style), SS)
         with open(os.path.join(sys.argv[2], "%016x.png" % key(g)), "wb") as f:
             f.write(png(px))
         made += 1
