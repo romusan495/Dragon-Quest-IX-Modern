@@ -516,6 +516,9 @@ static const char* FS_COPY =
     "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
     "    float ring = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.04, 0.02, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
     "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 20) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (signs on a book's brown panel (73, 56, 24 to 93, 73, 44): the panel see-through) */
+    "    float p = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.24, 0.26, r.r) * smoothstep(0.41, 0.39, r.r) * smoothstep(0.15, 0.17, r.g) * smoothstep(0.32, 0.3, r.g) * smoothstep(0.2, 0.18, r.b) * smoothstep(0.06, 0.08, r.r - r.b);\n"
+    "    float a = (1.0 - p) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 19) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (the bag's grid made modern: its tan panel and the brown under it see-through, its cells dark, its edges grey lines) */
     "    float tan = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.17, 0.2, r.r - r.b) * smoothstep(0.34, 0.31, r.r - r.b) * smoothstep(0.42, 0.45, r.r) * smoothstep(0.7, 0.67, r.r);\n"
     "    float under = smoothstep(0.24, 0.21, r.r) * smoothstep(0.15, 0.17, r.r) * smoothstep(0.08, 0.05, r.g) * smoothstep(0.03, 0.01, r.b);\n"

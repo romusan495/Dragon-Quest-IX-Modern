@@ -314,6 +314,7 @@ enum { QS_X = 12, QS_Y = 10, QS_W = 235, QS_H = 174,              /* the sheet *
        QS_TITLE_Y = 16, QS_TITLE_H = 19,
        QS_DESC_Y = 38, QS_DESC_H = 128,                           /* the description (and the stamp) */
        QS_DATE_Y = 167, QS_DATE_H = 12 };
+static int g_quest_nowin;                                         /* (the sheet's parts without its window: beside the quests' list) */
 static void quest_pieces(GlPresent* v) {
     float k = g_pop_at[2], X = g_pop_at[0] - QS_X * k, Y = g_pop_at[1] - QS_Y * k;   /* (page pixels -> canvas) */
     static const float part[7][5] = {                             /* x, y, w, h on the page; restyled (FS_COPY's u_mode) */
@@ -321,7 +322,7 @@ static void quest_pieces(GlPresent* v) {
         { QS_BAR_X, QS_TITLE_Y + QS_TITLE_H + 1, QS_BAR_W, 1, 4 }, { QS_BAR_X, QS_DATE_Y - 1.5f, QS_BAR_W, 1, 4 },   /* the lines */
         { QS_BAR_X, QS_TITLE_Y, QS_BAR_W, QS_TITLE_H, 3 }, { QS_BAR_X, QS_DATE_Y, QS_BAR_W, QS_DATE_H, 3 },
         { QS_IN_X, QS_DESC_Y, QS_IN_W, QS_DESC_H, 6 } };
-    for (int i = 0; i < 6; i++) {
+    for (int i = g_quest_nowin ? 1 : 0; i < 6; i++) {
         const float* p = part[i];
         float* q = v->piece[v->npiece++];
         q[4] = 0; q[5] = p[0]; q[6] = p[1]; q[7] = p[2]; q[8] = p[3]; q[9] = p[4];
@@ -386,8 +387,18 @@ static int alchemy_list(const uint32_t* list) {                 /* the Alchimana
         && px_share(list, 20, 44, 30, 0, 8, 62, 108, 46, 90, 20, 60) >= 7             /* the names' panel's top (93, 73, 44) */
         && px_share(list, 20, 22, 15, 0, 10, 120, 175, 65, 110, 0, 50) >= 7;          /* the title's bar (154, 89, 24) */
 }
+/* the Wardrobe's and the Item list's list (the touch screen; the item's card
+ * on the top screen): the title's bar, the names' panel, its grey bottom edge */
+enum { CL_ROW0 = 57, CL_RH = 14 };
+static int g_coll_quest;                                          /* (that list: the quests', one column, the quest's sheet beside it) */
+static int quest_page(const uint32_t* px);
+static int coll_list(const uint32_t* list) {
+    return px_share(list, 20, 12, 10, 0, 10, 130, 162, 70, 100, 8, 32) >= 7            /* the title's bar (146, 81, 16) */
+        && px_share(list, 20, 52, 20, 0, 10, 78, 102, 60, 84, 26, 54) >= 7             /* the names' panel's top (89, 73, 36) */
+        && px_share(list, 20, 182, 20, 0, 10, 124, 136, 124, 136, 124, 136) >= 8;      /* its grey bottom edge (130) */
+}
 static int card_page(const uint32_t* px);
-enum { BM_NONE, BM_LIST, BM_MENU, BM_ALCH, BM_TITLES };
+enum { BM_NONE, BM_LIST, BM_MENU, BM_ALCH, BM_TITLES, BM_COLL };
 static int g_bmode, g_bpage;                                     /* the records' monster list's screens, modern (bestiary_update()) */
 static int g_bhold;                                               /* (the top screen not told a menu's page a moment: kept modern) */
 static uint64_t g_page2_at;                                       /* (the last frame the top screen was told a menu's page) */
@@ -799,6 +810,19 @@ static void bestiary_update(int a_on_top) {
         if (g_frame - g_titles_at < 90 && !(tit_black && tmean >= 8)) return;
     }
     if (g_bmode == BM_TITLES) g_bmode = BM_NONE;
+    if (g_winstyle == 2 && coll_list(list)) {                     /* the Wardrobe, the Item list, the quests' list: one window too (coll_pieces()) */
+        int icons = 0;                                            /* (the quests': a sign before each, its light ring (186, 251, 251)) */
+        for (int r = 0; r < 8; r++) icons += (list[(CL_ROW0 + 3 + r * CL_RH) * 256 + 22] & 0xFFFFFF) == 0xBAFBFB;
+        g_coll_quest = icons > 0 || quest_page(top);
+        g_bpage = !g_coll_quest && card_page(top);
+        if (g_bpage) { item_icon(top, g_engine_layer[a_on_top ? 0 : 1]); card_slots(top); } else g_icon[2] = 0;
+        g_recipe = 0;
+        g_rows[0] = list_rows(list, 14, 122, CL_ROW0, CL_RH); g_rows[1] = list_rows(list, 134, 244, CL_ROW0, CL_RH);
+        bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], 1);
+        g_bmode = BM_COLL; g_bmode_at = g_frame; return;
+    }
+    if (g_bmode == BM_COLL && g_frame - g_bmode_at < 8) return;   /* (a page turned: as it was a moment) */
+    if (g_bmode == BM_COLL) g_bmode = BM_NONE;
     g_bhold = page != 2 && g_bmode && g_winstyle == 2 && g_frame - g_page2_at <= 10 && parchment_share(list) >= 6;
     if (g_bhold) return;
     if (g_winstyle == 2 && page == 2) {
@@ -923,10 +947,10 @@ static void list_keys(uint16_t* keys, int* touch, int* tx, int* ty) {
     }
     static int edge;                                              /* (held: the game stops on a column's last row; on from there) */
     if ((now & (K_UP | K_DOWN)) && !(pressed & (K_UP | K_DOWN))) { if (++edge >= 12) { pressed |= now & (K_UP | K_DOWN); } }
-    if ((g_bmode != BM_LIST && g_bmode != BM_ALCH && g_bmode != BM_TITLES) || !g_cur[2] || *touch || !(pressed & (K_UP | K_DOWN))) { if (!(now & (K_UP | K_DOWN))) edge = 0; return; }
+    if ((g_bmode != BM_LIST && g_bmode != BM_ALCH && g_bmode != BM_TITLES && g_bmode != BM_COLL) || !g_cur[2] || *touch || !(pressed & (K_UP | K_DOWN))) { if (!(now & (K_UP | K_DOWN))) edge = 0; return; }
     edge = 0;
-    int list = g_bmode == BM_LIST, tit = g_bmode == BM_TITLES;
-    float row0 = list ? BL_ROW0 : tit ? TT_ROW0 : AL_ROW0, rh = list ? BL_ROWS_H / 8.0f : tit ? (float)TT_RH : AL_ROWS_H / 8.0f;
+    int list = g_bmode == BM_LIST, tit = g_bmode == BM_TITLES, coll = g_bmode == BM_COLL;
+    float row0 = list ? BL_ROW0 : tit ? TT_ROW0 : coll ? CL_ROW0 : AL_ROW0, rh = list ? BL_ROWS_H / 8.0f : tit ? (float)TT_RH : coll ? (float)CL_RH : AL_ROWS_H / 8.0f;
     int right = g_cur[0] >= (list ? BL_COL2_X - 20 : 100);
     int row = (int)floorf((g_cur[1] + g_cur[3] / 2.0f - row0) / rh);
     int to_right, to_row, n1 = g_rows[0] ? g_rows[0] : tit ? TT_ROWS : 8, n2 = g_rows[1];   /* (the rows each column has) */
@@ -936,7 +960,7 @@ static void list_keys(uint16_t* keys, int* touch, int* tx, int* ty) {
     else return;
     held = pressed & (K_UP | K_DOWN);
     *keys &= (uint16_t)~held;
-    ttx = to_right ? (list ? 142 : 146) : (list ? 22 : tit ? 30 : 26);   /* (on the name's first letters: the game takes a touch on its letters only) */
+    ttx = to_right ? (list || coll ? 142 : 146) : (list ? 22 : tit ? 30 : 26);   /* (on the name's first letters: the game takes a touch on its letters only) */
     tty = (int)(row0 + rh * (to_row + 0.5f));
     tap = 4; *touch = 1; *tx = ttx; *ty = tty;
 }
@@ -975,6 +999,33 @@ static void titles_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px, py + 68 * kp, 236 * kp, 0.75f);
     bestiary_piece(v, 0, 13, 107, 230, 74, 3, px + 3 * kp, py + 78 * kp, kp);           /* why it was given (light letters) */
 }
+/* the item's card (the top screen) right of a book's list, its parts on the window */
+static void book_card(GlPresent* v, float M, float H, float lw) {
+    float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kp = fminf(rw / 240.0f, (H - 4) / 176.0f);
+    float px = rx + (rw - 240 * kp) / 2 - 10 * kp, py = M + (H - 176 * kp) / 2 - 6 * kp;
+#define AP(sx_, sy_, sw_, sh_, m_) bestiary_piece(v, 0, sx_, sy_, sw_, sh_, m_, px + (sx_) * kp, py + (sy_) * kp, kp)
+    AP(17, 9, 14, 14, 0); AP(37, 11, 102, 10, 3); AP(175, 9, 25, 15, 9); AP(200, 9, 48, 15, 8);   /* its kind's sign (inside the bar's edge), name, rarity */
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 27 * kp, 228 * kp, 0.75f);
+    if (g_icon[2]) { float* q = v->layer[GL_LAYER_ICON]; q[0] = px + g_icon[0] * kp; q[1] = py + g_icon[1] * kp; q[2] = g_icon[2] * kp; q[3] = g_icon[3] * kp; }   /* the item alone (off its brown box) */
+    AP(61, 38, 110, 40, 6);                                       /* the description (inside its panel's dotted edge) */
+    if (g_card_item) { AP(184, 33, 60, 9, 6); AP(187, 45, 61, 9, 6); AP(180, 64, 66, 10, 6); AP(220, 77, 26, 10, 6); }   /* the prices: each word, each sum (off their plates' edges) */
+    else {                                                        /* who can equip it (its rows the recipe leaves): the jobs' plaques, else the card's signs */
+        AP(184, 33, 62, 15, 6);
+        if (card_plates()) card_jobs(v, px, py, kp, g_recipe ? 4 : 12); else AP(186, 50, 54, g_recipe ? 44 : 124, 6);
+    }
+    if (g_card_item || g_recipe) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 103 * kp, 228 * kp, 0.75f);
+    else {                                                        /* (equipment's stats, its jobs beside them: the card's own lines) */
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 101 * kp, 165 * kp, 0.75f);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 181 * kp, py + 30 * kp, 0.75f, 146 * kp);
+    }
+    if (g_recipe) {
+        AP(40, 106, 50, 12, 12);                                  /* "Recipe" */
+        AP(30, 123.4f, 206, 8.4f, 6);                               /* its headers (dark on their row, their accents; not the darker line under it) */
+        for (int r = 0; r < 3; r++) { AP(18, 136 + 13 * r, 216, 10, 14); AP(18, 136 + 13 * r, 216, 10, 15); }   /* its ingredients, a row each (not their lines): light, or dark when short (made grey), ??? grey */
+    } else if (g_card_item) AP(19, 107, 216, 66, 12);            /* where it is found, who drops it (light on their panel) */
+    else AP(19, 106, 154, 68, 12);                                /* its stats (light on their panel) */
+#undef AP
+}
 static void alchemy_pieces(GlPresent* v) {
     const float M = 5, H = v->ch - 2 * M;
     float k = (H - 10) / (12 + 4 + 2 * AL_ROWS_H + 12 + 17 + 22), lw = 122 * k + 8, x = M + 4, y = M + 3;
@@ -1008,30 +1059,50 @@ static void alchemy_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);
     bestiary_logo_rect(v);
     if (!g_bpage) return;
-    float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kp = fminf(rw / 240.0f, (H - 4) / 176.0f);
-    float px = rx + (rw - 240 * kp) / 2 - 10 * kp, py = M + (H - 176 * kp) / 2 - 6 * kp;
-#define AP(sx_, sy_, sw_, sh_, m_) bestiary_piece(v, 0, sx_, sy_, sw_, sh_, m_, px + (sx_) * kp, py + (sy_) * kp, kp)
-    AP(17, 9, 14, 14, 0); AP(37, 11, 102, 10, 3); AP(175, 9, 25, 15, 9); AP(200, 9, 48, 15, 8);   /* its kind's sign (inside the bar's edge), name, rarity */
-    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 27 * kp, 228 * kp, 0.75f);
-    if (g_icon[2]) { float* q = v->layer[GL_LAYER_ICON]; q[0] = px + g_icon[0] * kp; q[1] = py + g_icon[1] * kp; q[2] = g_icon[2] * kp; q[3] = g_icon[3] * kp; }   /* the item alone (off its brown box) */
-    AP(61, 38, 110, 40, 6);                                       /* the description (inside its panel's dotted edge) */
-    if (g_card_item) { AP(184, 33, 60, 9, 6); AP(187, 45, 61, 9, 6); AP(180, 64, 66, 10, 6); AP(220, 77, 26, 10, 6); }   /* the prices: each word, each sum (off their plates' edges) */
-    else {                                                        /* who can equip it (its rows the recipe leaves): the jobs' plaques, else the card's signs */
-        AP(184, 33, 62, 15, 6);
-        if (card_plates()) card_jobs(v, px, py, kp, g_recipe ? 4 : 12); else AP(186, 50, 54, g_recipe ? 44 : 124, 6);
+    book_card(v, M, H, lw);
+}
+/* The Wardrobe, the Item list, modern: one window; left, the title, the
+ * kind shown (its tab), the names in one column (the left column's, then the
+ * right one's), the page, SELECT Sort; right of a line, the item's card. */
+static void coll_pieces(GlPresent* v) {
+    const float M = 5, H = v->ch - 2 * M;
+    float k = (H - 10) / (12 + 4 + 12 + 2 + 2 * 8 * CL_RH + 12 + 22), lw = 122 * k + 8, x = M + 4, y = M + 3;
+    if (g_coll_quest) { k = fminf((H - 10) / (12 + 4 + 12 + 2 + 8 * CL_RH + 12 + 22) * 0.8f, (v->cw * 0.42f - 8) / 236); lw = 236 * k + 8; }   /* (one wide column) */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, H);
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);
+    bestiary_piece(v, 1, 9, 15, 110, 12, 12, x - 3 * k, y, k); y += 12 * k + 2;           /* the title (12: not its bar's pattern) */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
+    bestiary_piece(v, 1, 12, 35, 100, 11, 6, x - 3 * k, y, k); y += 14 * k;               /* the kind shown (its tab's dark letters) */
+    if (g_coll_quest) {                                           /* the quests: their signs and names, one column */
+        bestiary_piece(v, 1, 21, CL_ROW0, 14, 8 * CL_RH, 20, x - 2 + 17 * k, y, k);      /* the signs, as they are (not the panel's brown round them: 20) */
+        bestiary_piece(v, 1, 35, CL_ROW0, 214, 8 * CL_RH, 13, x - 2 + 31 * k, y, k);
+        if (g_cur[2]) bestiary_cursor_at(v, 3, CL_ROW0, x - 2, y, k);
+        y += 8 * CL_RH * k + 4 * k;
+    } else {
+        float y0 = y; int n1 = g_rows[0] ? g_rows[0] : 8;
+        bestiary_piece(v, 1, 14, CL_ROW0, 108, n1 * CL_RH, 13, x - 2 + 17 * k, y, k);
+        int cr = g_cur[0] >= 100;
+        if (g_cur[2] && !cr) bestiary_cursor_at(v, 3, CL_ROW0, x - 2, y, k);
+        y += n1 * CL_RH * k;
+        if (g_rows[1]) bestiary_piece(v, 1, 134, CL_ROW0, 110, g_rows[1] * CL_RH, 13, x - 2 + 17 * k, y, k);
+        if (g_cur[2] && cr) bestiary_cursor_at(v, 123, CL_ROW0, x - 2, y, k);
+        y = y0 + 2 * 8 * CL_RH * k;
     }
-    if (g_card_item || g_recipe) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 103 * kp, 228 * kp, 0.75f);
-    else {                                                        /* (equipment's stats, its jobs beside them: the card's own lines) */
-        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 16 * kp, py + 101 * kp, 165 * kp, 0.75f);
-        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), px + 181 * kp, py + 30 * kp, 0.75f, 146 * kp);
+    bestiary_piece(v, 1, 104, 172, 48, 9, 3, M + (lw - 48 * k) / 2, y, k);              /* the page and its arrows */
+    bestiary_piece(v, 1, 11, 172, 10, 10, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);
+    bestiary_piece(v, 1, 235, 172, 10, 10, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k);
+    float sy = M + H - 25 * k - 2, sx = M + (lw - 72 * k) / 2;
+    bestiary_key(v, GL_LAYER_KEY0, CA_SELECT, sx + 2 * k, sy - 1 * k, 15 * k);
+    bestiary_piece(v, 1, 206, 19, 32, 8, 12, sx + 30 * k, sy + 4 * k, k);
+    bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);
+    if (g_bpage) book_card(v, M, H, lw);
+    if (g_coll_quest && g_quest_page && g_pop_win[2]) {          /* the quest's sheet beside the list, its parts on the window */
+        float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kq = fminf(rw / QS_W, (H - 4) / QS_H), keep[3];
+        memcpy(keep, g_pop_at, sizeof keep);
+        g_pop_at[2] = kq; g_pop_at[0] = rx + (rw - QS_W * kq) / 2; g_pop_at[1] = M + (H - QS_H * kq) / 2;
+        g_quest_nowin = 1; quest_pieces(v); g_quest_nowin = 0;
+        memcpy(g_pop_at, keep, sizeof keep);
     }
-    if (g_recipe) {
-        AP(40, 106, 50, 12, 12);                                  /* "Recipe" */
-        AP(30, 123.4f, 206, 8.4f, 6);                               /* its headers (dark on their row, their accents; not the darker line under it) */
-        for (int r = 0; r < 3; r++) { AP(18, 136 + 13 * r, 216, 10, 14); AP(18, 136 + 13 * r, 216, 10, 15); }   /* its ingredients, a row each (not their lines): light, or dark when short (made grey), ??? grey */
-    } else if (g_card_item) AP(19, 107, 216, 66, 12);            /* where it is found, who drops it (light on their panel) */
-    else AP(19, 106, 154, 68, 12);                                /* its stats (light on their panel) */
-#undef AP
 }
 /* The records' menus over the monster list (how to show it, its families):
  * one window, the touch screen's light letters and its gold cursor alone
@@ -1572,7 +1643,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         if (page == 2) g_page2_at = g_frame;
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
-        if (g_bmode == BM_TITLES) page = 2;                       /* (the titles' list: no 3D, its window all the same) */
+        if (g_bmode == BM_TITLES || g_bmode == BM_COLL) page = 2;   /* (these lists: no 3D, their window all the same) */                       /* (the titles' list: no 3D, its window all the same) */
         if (g_equip && !second && !g_peek && v->npiece + 56 <= GL_MAX_PIECES) {
             /* Equip, modern: drawn again whole (equip_pieces()), no screen whole */
             v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
@@ -1587,7 +1658,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
             v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
             v->alpha = 1.0f; v->front = 0;
-            if (bmode == BM_LIST) bestiary_pieces(v); else if (bmode == BM_ALCH) alchemy_pieces(v); else if (bmode == BM_TITLES) titles_pieces(v); else bestiary_menu_pieces(v);
+            if (bmode == BM_LIST) bestiary_pieces(v); else if (bmode == BM_ALCH) alchemy_pieces(v); else if (bmode == BM_COLL) coll_pieces(v); else if (bmode == BM_TITLES) titles_pieces(v); else bestiary_menu_pieces(v);
         } else if (page == 2) {
             /* a menu with its 3D model on the top screen (the monster list):
              * both screens whole, side by side, the top one on the left, until it closes */
