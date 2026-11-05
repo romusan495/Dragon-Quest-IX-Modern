@@ -1546,7 +1546,10 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
     } else {
         float k = fminf((WW - 20 * C) / 127, (WH - 20 * C) / 192);
         float gx = lx + (WW - 127 * k) / 2, gy = WY + (WH - 192 * k) / 2;
-        bestiary_piece(v, 1, 129, 0, 127, 192, 0, gx, gy, k);    /* the bag's grid as the game draws it (its panel, cells and items) */
+        bestiary_piece(v, 1, 129, 0, 127, 192, 19, gx, gy, k);   /* the bag's grid, modern: its tabs, its item's bar, its page; its panel and cells see-through (19)... */
+        for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++)   /* ...its 4 x 4 cells drawn again in the same places, apart as in the game (24 pixels, 2 apart, from 141, 52) */
+            set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 23, 0, 0, 1), gx + (141 + 26 * i - 129) * k, gy + (52 + 26 * j) * k, 24 * k, 24 * k);
+        bestiary_piece(v, 4, 129, 0, 127, 192, 11, gx, gy, k);   /* ...the items over them as they are (the 3D alone: 19 changes browns) */
         if (g_eq_pop[2] > 0) {                                    /* an item's menu (Remove, Drop...): a modern window over all, where the DS has it */
             float px0 = gx + (g_eq_pop[0] - 129) * k, py0 = gy + g_eq_pop[1] * k;
             set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), px0 - 1, py0 - 1, g_eq_pop[2] * k + 2, g_eq_pop[3] * k + 2);   /* (darker: over the grid) */
@@ -1695,7 +1698,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
         if (g_bmode == BM_TITLES || g_bmode == BM_COLL) page = 2;   /* (these lists: no 3D, their window all the same) */                       /* (the titles' list: no 3D, its window all the same) */
-        if (g_equip && !second && !g_peek && v->npiece + 56 <= GL_MAX_PIECES) {
+        if (g_equip && !second && !g_peek && v->npiece + 80 <= GL_MAX_PIECES) {
             /* Equip, modern: drawn again whole (equip_pieces()), no screen whole */
             v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
             v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;

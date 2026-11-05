@@ -36,7 +36,7 @@ const Renderer3D* gl_renderer3d(void);
 void gl_compose(int a_on_top, int lcd_on);           /* at VBlank: 2D + 3D -> both screens */
 /* How to show the screens: canvas (DS pixels) placed in the window at
  * (ox, oy) with sc window pixels per DS pixel. */
-#define GL_MAX_PIECES 64                             /* (a GlPresent's pieces at most) */
+#define GL_MAX_PIECES 96                             /* (a GlPresent's pieces at most) */
 typedef struct {
     int win_w, win_h;
     float ox, oy, sc, cw, ch;

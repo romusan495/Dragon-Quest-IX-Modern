@@ -562,6 +562,11 @@ static const char* FS_COPY =
     "    vec2 p = v_uv * u_px; float d = min(min(p.x, p.y), min(u_px.x - p.x, u_px.y - p.y)) / u_line;\n"
     "    o_color = d < 0.6 ? vec4(vec3(0.08), 0.8) : d < 1.6 ? vec4(vec3(0.5), 1.0) : u_mode == 7 ? vec4(vec3(0.094), 1.0) : vec4(0.0, 0.0, 0.0, 0.55); return;\n"
     "  }\n"
+    "  if (u_mode == 23) {\n"   /* (a cell of a modern grid: see-through dark, a thin grey line round it, its corners rounded) */
+    "    vec2 p = v_uv * u_px, h = u_px * 0.5; float r = 1.2 * u_line; vec2 q = abs(p - h) - (h - r); float d = -(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r);\n"
+    "    float in_ = smoothstep(0.0, 1.0, d), line = in_ * (1.0 - smoothstep(0.55 * u_line - 0.5, 0.55 * u_line + 0.5, d));\n"
+    "    vec4 o = vec4(0.0, 0.0, 0.0, 0.45) * in_; o = mix(o, vec4(vec3(0.5) * 0.9, 0.9), line); o_color = o; return;\n"
+    "  }\n"
     "  if (u_mode == 4) { o_color = vec4(vec3(0.5), 1.0); return; }\n"
     "  if (u_mode == 16) { o_color = vec4(0.0, 0.0, 0.0, 0.55); return; }\n"   /* (a window's panel alone: its line drawn apart, as thin as the game's around it) */
     "  if (u_mode == 5) {\n"
@@ -582,13 +587,13 @@ static const char* FS_COPY =
     "  if (u_mode == 20) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (signs on a book's brown panel (73, 56, 24 to 93, 73, 44): the panel see-through) */
     "    float p = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.24, 0.26, r.r) * smoothstep(0.41, 0.39, r.r) * smoothstep(0.15, 0.17, r.g) * smoothstep(0.32, 0.3, r.g) * smoothstep(0.2, 0.18, r.b) * smoothstep(0.06, 0.08, r.r - r.b);\n"
     "    float a = (1.0 - p) * c.a; o_color = vec4(r * a, a); return; }\n"
-    "  if (u_mode == 19) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (the bag's grid made modern: its tan panel and the brown under it see-through, its cells dark, its edges grey lines) */
+    "  if (u_mode == 19) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (the bag's grid made modern: its tan panel, the brown under it, its cells and their frames see-through: the cells drawn again, 23) */
     "    float tan = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.17, 0.2, r.r - r.b) * smoothstep(0.34, 0.31, r.r - r.b) * smoothstep(0.42, 0.45, r.r) * smoothstep(0.7, 0.67, r.r);\n"
     "    float under = smoothstep(0.24, 0.21, r.r) * smoothstep(0.15, 0.17, r.r) * smoothstep(0.08, 0.05, r.g) * smoothstep(0.03, 0.01, r.b);\n"
     "    float cell = smoothstep(0.19, 0.21, r.r) * smoothstep(0.26, 0.24, r.r) * smoothstep(0.07, 0.09, r.g) * smoothstep(0.13, 0.11, r.g) * smoothstep(0.07, 0.05, r.b);\n"
     "    float cream = smoothstep(0.85, 0.88, r.r) * smoothstep(0.76, 0.79, r.g) * smoothstep(0.52, 0.55, r.b) * smoothstep(0.7, 0.67, r.b);\n"
     "    float edge = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.27, 0.3, r.r) * smoothstep(0.43, 0.4, r.r) * smoothstep(0.08, 0.11, r.r - r.b) * smoothstep(0.24, 0.21, r.r - r.b) * (1.0 - tan);\n"   /* (the cells' brown frames: left out, clean lines drawn instead) */
-    "    vec4 o = vec4(r, 1.0); o = mix(o, vec4(0.0), max(max(tan, under), cream)); o = mix(o, vec4(0.0, 0.0, 0.0, 0.45), cell); o = mix(o, vec4(0.0), edge);\n"   /* (its cream edge left out: the window's own line round it) */
+    "    vec4 o = vec4(r, 1.0); o = mix(o, vec4(0.0), max(max(tan, under), cream)); o = mix(o, vec4(0.0), cell); o = mix(o, vec4(0.0), edge);\n"   /* (its cream edge left out: the window's own line round it) */
     "    o_color = vec4(o.rgb * o.a, o.a) * c.a; return; }\n"
     "  if (u_mode == 17) { vec3 r = c.rgb / max(c.a, 0.001); float d = max(abs(r.r - 0.157), max(abs(r.g - 0.157), abs(r.b - 0.157)));\n"   /* (the picture without its window's dark panel (40, 40, 40): see-through there) */
     "    float a = smoothstep(0.03, 0.07, d) * c.a; o_color = vec4(r * a, a); return; }\n"
@@ -2338,7 +2343,7 @@ static void draw_pieces(const GlPresent* v, GLuint src, int from, int to) {
         else p_glUniform4f(loc_uv, ((float)g_wside + q[5]) / W, vtop - (q[6] + q[8]) / 384.0f, q[7] / W, q[8] / 384.0f);
         int mode = (int)(q[9] + 0.5f);
         p_glUniform1i(loc_mode, mode);
-        if (mode == 2 || mode == 7) {
+        if (mode == 2 || mode == 7 || mode == 23) {
             p_glUniform4f(loc_uv, 0, 0, 1, 1);
             p_glUniform2f(p_glGetUniformLocation(prog_copy, "u_px"), q[2] * v->sc, q[3] * v->sc);
         }
