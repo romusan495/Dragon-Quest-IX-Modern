@@ -1535,7 +1535,9 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
         bestiary_cursor_at(v, 0, 0, ox, oy, KL);
     } else {
         float k = fminf((WW - 20 * C) / 127, (WH - 20 * C) / 192);
-        bestiary_piece(v, 1, 129, 0, 127, 192, 19, lx + (WW - 127 * k) / 2, WY + (WH - 192 * k) / 2, k);   /* (its tan panel see-through: 19) */
+        float gx = lx + (WW - 127 * k) / 2, gy = WY + (WH - 192 * k) / 2;
+        bestiary_piece(v, 3, 129, 0, 127, 192, 19, gx, gy, k);   /* the grid's 2D alone, its tan panel see-through (19) */
+        bestiary_piece(v, 1, 129, 0, 127, 192, 0, gx, gy, k);    /* ...the items over it as they are (the 3D alone there: gl_set_split()) */
     }
     /* the card at the left: from the top, its sign, name and rarity; its
      * picture; its description; its stats; who can equip it */
@@ -3630,7 +3632,7 @@ static void present_gl(void) {
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
-    gl_set_split(g_shop);
+    gl_set_split(g_shop || g_equip == 2);                         /* (Equip's bag: its grid's 2D made modern apart from the items' 3D) */
     g_win_outline = g_hud_win[2] != 0;                           /* (the next frames: the experience and level-up windows outlined) */
     g_dlg_outline = (pow >> 15) & 1;                             /* battles (the 3D on the top screen): the text box too */
     {   /* the 3D gone for a single frame in widescreen (a shop's menu after an item's
