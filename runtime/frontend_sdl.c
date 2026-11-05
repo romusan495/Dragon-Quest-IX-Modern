@@ -1245,7 +1245,8 @@ static int g_equip;                                               /* 0 not up; 1
 static int g_eq_job = -1;                                         /* the shown character's job (its badge: 0 none, 1 warrior .. 12 ranger) */
 static int g_eq_card;                                             /* the item's card is up */
 static int g_eq_desc[4], g_eq_stat[2];
-static int g_eq_pop[4];                                           /* an item's menu over the bag's grid (x, y, w, h on the touch screen; w 0: none) */                            /* its description's letters (x0, y0, x1, y1), its stats' rows (y0, y1) */
+static int g_eq_pop[4];
+static int g_eq_tab[2];                                           /* the bag's chosen tab (x0, x1 on the touch screen: its tan, joined to the panel) */                                           /* an item's menu over the bag's grid (x, y, w, h on the touch screen; w 0: none) */                            /* its description's letters (x0, y0, x1, y1), its stats' rows (y0, y1) */
 
 /* the jobs' badges (the battle screen's sprites, as job_icons.py reads them):
  * which one is the bar's, by its HD picture's name or by its pixels */
@@ -1335,6 +1336,11 @@ static void equip_update(int a_on_top) {
     seen = g_frame;
     g_equip = px_share(px, 250, 60, 0, 4, 20, 136, 156, 111, 131, 71, 91) >= 7 ? 2 : 1;   /* the bag's grid: its tan panel (146, 121, 81) at the right */
     g_eq_pop[2] = 0;
+    if (g_equip == 2) {                                           /* the chosen tab: tan (146, 121, 81) at row 8 */
+        int a = -1, b = -1;
+        for (int x = 130; x < 254; x++) if ((px[8 * 256 + x] & 0xFFFFFF) == 0x927951) { if (a < 0) a = x; b = x; }
+        if (a >= 0) { g_eq_tab[0] = a - 1; g_eq_tab[1] = b + 1; } else { g_eq_tab[0] = 129; g_eq_tab[1] = 146; }
+    }
     if (g_equip == 2) {                                           /* an item's menu over the grid: its dark grey (48) window */
         int x0 = 256, y0 = 192, x1 = -1, y1 = -1, n = 0;
         for (int y = 0; y < 156; y++) for (int x = 0; x < 256; x++)
@@ -1547,9 +1553,25 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
         float k = fminf((WW - 20 * C) / 127, (WH - 20 * C) / 192);
         float gx = lx + (WW - 127 * k) / 2, gy = WY + (WH - 192 * k) / 2;
         bestiary_piece(v, 1, 129, 0, 127, 192, 19, gx, gy, k);   /* the bag's grid, modern: its tabs, its item's bar, its page; its panel and cells see-through (19)... */
+        {   /* ...its edge again, clean: round the panel, up and over the chosen tab (notched) */
+            const float t = 0.6f, L = 129.5f, R = 254.5f, T = 17.5f, Bt = 174.5f, a = g_eq_tab[0] + 0.5f, b = g_eq_tab[1] + 0.5f, U = 0.5f;
+#define GX(X) (gx + ((X) - 129) * k)
+#define GY(Y) (gy + (Y) * k)
+#define HL(x0, x1, Y) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), GX(x0) - t / 2, GY(Y) - t / 2, ((x1) - (x0)) * k + t, t)
+#define VL(X, y0, y1) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), GX(X) - t / 2, GY(y0) - t / 2, t, ((y1) - (y0)) * k + t)
+            VL(L, a <= L + 1 ? U : T, Bt); HL(L, R, Bt); VL(R, T, Bt);
+            if (b < R) HL(b, R, T);
+            if (a > L + 1) { HL(L, a, T); VL(a, U, T); }
+            HL(a, b, U); VL(b, U, T);
+#undef GX
+#undef GY
+#undef HL
+#undef VL
+        }
         for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++)   /* ...its 4 x 4 cells drawn again in the same places, apart as in the game (24 pixels, 2 apart, from 141, 52) */
             set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 23, 0, 0, 1), gx + (141 + 26 * i - 129) * k, gy + (52 + 26 * j) * k, 24 * k, 24 * k);
         bestiary_piece(v, 4, 129, 0, 127, 192, 11, gx, gy, k);   /* ...the items over them as they are (the 3D alone: 19 changes browns) */
+        bestiary_piece(v, 1, 129, 175, 127, 17, 24, gx, gy + 175 * k, k);   /* (SELECT Sort: its orange letters' dark edge kept, 24) */
         if (g_eq_pop[2] > 0) {                                    /* an item's menu (Remove, Drop...): a modern window over all, where the DS has it */
             float px0 = gx + (g_eq_pop[0] - 129) * k, py0 = gy + g_eq_pop[1] * k;
             set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), px0 - 1, py0 - 1, g_eq_pop[2] * k + 2, g_eq_pop[3] * k + 2);   /* (darker: over the grid) */
