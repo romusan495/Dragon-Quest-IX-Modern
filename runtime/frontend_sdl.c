@@ -1244,7 +1244,8 @@ static int g_movie2;
 static int g_equip;                                               /* 0 not up; 1 the list; 2 the grid */
 static int g_eq_job = -1;                                         /* the shown character's job (its badge: 0 none, 1 warrior .. 12 ranger) */
 static int g_eq_card;                                             /* the item's card is up */
-static int g_eq_desc[4], g_eq_stat[2];                            /* its description's letters (x0, y0, x1, y1), its stats' rows (y0, y1) */
+static int g_eq_desc[4], g_eq_stat[2];
+static int g_eq_pop[4];                                           /* an item's menu over the bag's grid (x, y, w, h on the touch screen; w 0: none) */                            /* its description's letters (x0, y0, x1, y1), its stats' rows (y0, y1) */
 
 /* the jobs' badges (the battle screen's sprites, as job_icons.py reads them):
  * which one is the bar's, by its HD picture's name or by its pixels */
@@ -1333,9 +1334,18 @@ static void equip_update(int a_on_top) {
     }
     seen = g_frame;
     g_equip = px_share(px, 250, 60, 0, 4, 20, 136, 156, 111, 131, 71, 91) >= 7 ? 2 : 1;   /* the bag's grid: its tan panel (146, 121, 81) at the right */
+    g_eq_pop[2] = 0;
+    if (g_equip == 2) {                                           /* an item's menu over the grid: its dark grey (48) window */
+        int x0 = 256, y0 = 192, x1 = -1, y1 = -1, n = 0;
+        for (int y = 0; y < 156; y++) for (int x = 0; x < 256; x++)
+            if ((px[y * 256 + x] & 0xFFFFFF) == 0x303030) { n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (n > 300 && x0 < 129) {
+            g_eq_pop[0] = x0; g_eq_pop[1] = y0; g_eq_pop[2] = x1 + 1 - x0; g_eq_pop[3] = y1 + 1 - y0;
+        }
+    }
     int j = equip_job(bot);
     if (j >= 0) g_eq_job = j;
-    if (g_equip == 1) bestiary_cursor(px, g_engine_layer[bot], 0); else g_cur[2] = 0;
+    if (g_equip == 1 || g_eq_pop[2]) bestiary_cursor(px, g_engine_layer[bot], 0); else g_cur[2] = 0;   /* (the list's, or the item's menu's: gold) */
     const uint32_t* tp = g_engine_out[top];
     g_eq_card = card_page(tp) && !g_card_item;
     if (!g_eq_card) { g_icon[2] = 0; return; }
@@ -1536,8 +1546,15 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
     } else {
         float k = fminf((WW - 20 * C) / 127, (WH - 20 * C) / 192);
         float gx = lx + (WW - 127 * k) / 2, gy = WY + (WH - 192 * k) / 2;
-        bestiary_piece(v, 3, 129, 0, 127, 192, 19, gx, gy, k);   /* the grid's 2D alone, its tan panel see-through (19) */
-        bestiary_piece(v, 1, 129, 0, 127, 192, 0, gx, gy, k);    /* ...the items over it as they are (the 3D alone there: gl_set_split()) */
+        bestiary_piece(v, 1, 129, 0, 127, 192, 19, gx, gy, k);   /* the grid, its tan panel see-through (19)... */
+        bestiary_piece(v, 4, 129, 0, 127, 192, 11, gx, gy, k);   /* ...the items over it again as they are (the 3D alone: 19 changed their browns) */
+        if (g_eq_pop[2] > 0) {                                    /* an item's menu (Remove, Drop...): a modern window over all, where the DS has it */
+            float px0 = gx + (g_eq_pop[0] - 129) * k, py0 = gy + g_eq_pop[1] * k;
+            set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), px0 - 1, py0 - 1, g_eq_pop[2] * k + 2, g_eq_pop[3] * k + 2);   /* (darker: over the grid) */
+            modern_window(v, px0 - 1, py0 - 1, g_eq_pop[2] * k + 2, g_eq_pop[3] * k + 2);
+            bestiary_piece(v, 1, g_eq_pop[0], g_eq_pop[1], g_eq_pop[2], g_eq_pop[3], 12, px0, py0, k);   /* (its letters) */
+            if (g_cur[2]) bestiary_cursor_at(v, 129, 0, gx, gy, k);
+        }
     }
     /* the card at the left: from the top, its sign, name and rarity; its
      * picture; its description; its stats; who can equip it */
@@ -3632,7 +3649,7 @@ static void present_gl(void) {
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
-    gl_set_split(g_shop || g_equip == 2);                         /* (Equip's bag: its grid's 2D made modern apart from the items' 3D) */
+    gl_set_split(g_shop);
     g_win_outline = g_hud_win[2] != 0;                           /* (the next frames: the experience and level-up windows outlined) */
     g_dlg_outline = (pow >> 15) & 1;                             /* battles (the 3D on the top screen): the text box too */
     {   /* the 3D gone for a single frame in widescreen (a shop's menu after an item's
