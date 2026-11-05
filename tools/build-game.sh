@@ -104,8 +104,9 @@ cp lang/*.txt game/lang/ 2>/dev/null || true                          # the menu
 # like the program's icon. Optional: without them the game shows its own.
 $PY tools/job_icons.py "$ROM" game/textures/jobs || echo "   job icons: not made (optional)"
 # the same plaques for the modern Equip screen (runtime/frontend_sdl.c equip_pieces:
-# the shop's wall, the bar, the card); its backdrop, ui/equip-shop.png, if there
-mkdir -p game/ui/jobs && cp tools/job_icons_plate/*.png game/ui/jobs/ 2>/dev/null || true
+# the bar, the card) and the jobs' coats of arms for the shop's wall; its backdrop, ui/equip-shop.png, if there
+mkdir -p game/ui/jobs game/ui/crests && cp tools/job_icons_plate/*.png game/ui/jobs/ 2>/dev/null || true
+cp tools/job_crests/*.png game/ui/crests/ 2>/dev/null || true
 # HD textures for the whole game, without playing through it: where Real-ESRGAN
 # is installed (game/textures-hd-outil), textures-rom takes every 3D texture out
 # of the ROM into textures/dump (once per ROM), then textures-hd makes their HD

@@ -1224,8 +1224,8 @@ static void card_pieces(GlPresent* v) {
  * dressing room's backdrop, the bar of his name, job and level under him, his
  * gear's list in 3D at the right, or the bag's grid; the top screen: the
  * chosen item's card) drawn again for the PC: the shop's picture behind
- * (ui/equip-shop.png), the twelve jobs' plaques on its wall (ui/jobs/), the
- * shown character's lit; his name, job and level above him, the character
+ * (ui/equip-shop.png), the shown character's job's coat of arms on its
+ * wall (ui/crests/), changing with him; his name, job and level above him, the character
  * whole in the middle, the card at the left and the list (or the grid) at the
  * right, in windows of the modern style, aligned. Laid out on a picture of
  * 1920 x 1080 ("mockup" units), scaled to the canvas' height; the sides keep
@@ -1361,6 +1361,12 @@ static const UiPic* plate_pic(int job) {
     return ui_pic(&g_plate_pic[job], f);
 }
 static int card_plates(void) { return plate_pic(1) != NULL; }
+static UiPic g_crest_pic[13];
+static const UiPic* crest_pic(int job) {
+    if (job < 1 || job > 12) return NULL;
+    char f[64]; snprintf(f, sizeof f, "ui/crests/%s.png", JOB_FILE[job]);
+    return ui_pic(&g_crest_pic[job], f);
+}
 /* the picture's part (sx, sy, sw, sh) into dst's rect (x, y, w, h), a few
  * samples across each pixel (smaller: averaged; larger: smooth), at alpha a */
 static void ui_draw(uint8_t* dst, int dw, int dh, const UiPic* p, float sx, float sy, float sw, float sh, float x, float y, float w, float h, float a) {
@@ -1405,8 +1411,8 @@ static void ui_glow(uint8_t* dst, int dw, int dh, float x, float y, float w, flo
 }
 
 /* the backdrop: the shop's picture filling the canvas (cut to its shape), the
- * plaques on its wall, the job's lit; a little darker, under the windows */
-enum { EQ_P = 78, EQ_G = 14, EQ_WALL_Y = 40 };
+ * job's coat of arms on its wall; a little darker, under the windows */
+enum { EQ_CREST_Y = 6, EQ_CREST_H = 272 };                         /* (mockup units: its tip just under the name's window) */
 static void equip_back(int W, int H, float u, float oy) {          /* (u: the picture's pixels per mockup unit; oy: where the mockup's top is) */
     static uint8_t* img; static int iw, ih, ijob = -2; static float iu, ioy;
     if (img && iw == W && ih == H && ijob == g_eq_job && iu == u && ioy == oy) return;
@@ -1421,13 +1427,8 @@ static void equip_back(int W, int H, float u, float oy) {          /* (u: the pi
         if (sw / sh > (float)W / H) sw = sh * W / H; else sh = sw * H / W;
         ui_draw(img, W, H, s, (s->w - sw) / 2, (s->h - sh) / 2, sw, sh, 0, 0, (float)W, (float)H, 1);
     }
-    float P = EQ_P * u, G = EQ_G * u, x0 = W / 2.0f - (6 * P + 5 * G) / 2;
-    for (int i = 0; i < 12; i++) {
-        float x = x0 + (i % 6) * (P + G), y = oy + (EQ_WALL_Y + (i / 6) * (EQ_P + EQ_G)) * u;
-        if (i + 1 == g_eq_job) ui_glow(img, W, H, x - 5 * u, y - 5 * u, P + 10 * u, P + 10 * u, 16 * u, 14 * u, 255, 196, 52, 0.8f);
-        const UiPic* p = plate_pic(i + 1);
-        if (p) ui_draw(img, W, H, p, 0, 0, (float)p->w, (float)p->h, x, y, P, P, 1);
-    }
+    const UiPic* c = crest_pic(g_eq_job);                         /* the job's coat of arms, hung on the back wall above the character */
+    if (c) { float h = EQ_CREST_H * u, w = h * c->w / c->h; ui_draw(img, W, H, c, 0, 0, (float)c->w, (float)c->h, W / 2.0f - w / 2, oy + EQ_CREST_Y * u, w, h, 1); }
     for (size_t i = 0; i < (size_t)W * H * 4; i++) img[i] = (uint8_t)(img[i] * 215 / 255 + ((i & 3) == 3) * (img[i] * 40 / 255));   /* (darker; alpha kept) */
     gl_set_layer(GL_LAYER_BACK, img, W, H);
 }
