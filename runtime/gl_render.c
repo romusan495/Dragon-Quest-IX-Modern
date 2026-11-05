@@ -573,10 +573,12 @@ static const char* FS_COPY =
     "  float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  if (u_mode == 11) { vec4 c = texture(u_src, v_uv); o_color = vec4(c.rgb * c.a, c.a); return; }\n"
     "  if (u_mode == 18) { vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), mn = min(r.r, min(r.g, r.b));\n"   /* (an item's picture in a list's row (the 3D alone): not its grey box (62), nor the row's dark brown) */
-    "    float box = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.16, 0.19, mx) * smoothstep(0.31, 0.28, mx);\n"
+    "    float box = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.16, 0.19, mx) * smoothstep(0.35, 0.33, mx);\n"   /* (62; the chosen row's 82) */
     "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
     "    float ring = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.04, 0.02, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
     "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 21) { o_color = vec4(0.98, 0.78, 0.16, 1.0) * 0.16; return; }\n"   /* (a chosen line lit, gold, faint) */
+    "  if (u_mode == 22) { o_color = vec4(0.0); return; }\n"   /* (nothing: a touchable place only) */
     "  if (u_mode == 20) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (signs on a book's brown panel (73, 56, 24 to 93, 73, 44): the panel see-through) */
     "    float p = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.24, 0.26, r.r) * smoothstep(0.41, 0.39, r.r) * smoothstep(0.15, 0.17, r.g) * smoothstep(0.32, 0.3, r.g) * smoothstep(0.2, 0.18, r.b) * smoothstep(0.06, 0.08, r.r - r.b);\n"
     "    float a = (1.0 - p) * c.a; o_color = vec4(r * a, a); return; }\n"

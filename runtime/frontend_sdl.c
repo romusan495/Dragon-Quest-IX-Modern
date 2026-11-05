@@ -1521,6 +1521,11 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
     modern_window(v, lx, WY, WW, WH);
     if (g_equip == 1) {
         const float KL = (728.0f / 192) * C, ox = lx + 17 * C - 128 * KL, oy = WY + 1 * C;   /* (the list's DS pixels -> canvas) */
+        bestiary_piece(v, 1, 128, 0, 128, 192, 22, ox + 128 * KL, oy, KL);                  /* (nothing drawn: the rows all touchable, as on the DS) */
+        if (g_cur[2]) {                                           /* the chosen row lit, whole */
+            int r = (g_cur[1] + g_cur[3] / 2) / 24; if (r < 0) r = 0; if (r > 7) r = 7;
+            set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), lx + 6 * C, oy + (r * 24 + 1) * KL, WW - 12 * C, 22 * KL);
+        }
         for (int r = 0; r < 8; r++) {
             float ry = (float)(r * 24);
             if (r) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + 12 * C, oy + ry * KL, WW - 24 * C, 0.75f);
@@ -2535,7 +2540,7 @@ static int to_touch_in(SDL_Window* win, int wx, int wy, int* tx, int* ty, int cl
         lx = ((float)wx + 0.5f - v.ox) / v.sc; ly = ((float)wy + 0.5f - v.oy) / v.sc;
     } else { canvas_layout(&v, 1, 1); SDL_RenderWindowToLogical(g_ren, wx, wy, &lx, &ly); }
     int bottom_pieces = 0;
-#define TOUCH_PIECE(q) ((((int)((q)[4] + 0.5f)) & 1) && (int)((q)[9] + 0.5f) != 2 && (int)((q)[9] + 0.5f) != 4 && (int)((q)[9] + 0.5f) != 7 && (int)((q)[9] + 0.5f) != 16)   /* a piece of the touch screen's picture (not a window, a line) */
+#define TOUCH_PIECE(q) (((((int)((q)[4] + 0.5f)) & 1) || (g_equip && (int)((q)[4] + 0.5f) == 4)) && (int)((q)[9] + 0.5f) != 2 && (int)((q)[9] + 0.5f) != 4 && (int)((q)[9] + 0.5f) != 7 && (int)((q)[9] + 0.5f) != 16)   /* a piece of the touch screen's picture (not a window, a line) */
     for (int i = 0; i < v.npiece; i++) bottom_pieces |= v.piece[i][4] > 0.5f;
     if (bottom_pieces) {                                          /* the battle HUD's panels, the character's creation: back to where they are on the touch screen */
         static int last;                                          /* the panel last touched: a drag off it stays on its edge */
