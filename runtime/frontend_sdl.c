@@ -48,6 +48,8 @@
 #include "controls.h"
 #include "uitext.h"
 #include "hints.h"
+#include "romdata.h"
+#include "hdsprite.h"
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -1092,6 +1094,19 @@ static void accolade_plate(GlPresent* v) {                        /* the plate a
 }
 
 /* (g_card_item: the card's page is an item's, not equipment's (card_page())) */
+static uint8_t g_eq_slot[12];                                     /* a card's "Equips:" signs, in the jobs' order: 0 not shown, 1 can't, 2 can (card_slots()) */
+static float g_lay_s = 5.625f;                                    /* the window's pixels per canvas unit (canvas_layout_for()) */
+static int card_plates(void);
+static void card_slots(const uint32_t* tp);
+static void equip_jobs(int W, int H, float S, float pitch, float pitch_y, int cols, int keep);
+/* the card's signs of who can equip it, the jobs' plaques instead (each in its place) */
+static void card_jobs(GlPresent* v, float X, float Y, float k) {
+    float s = g_lay_s, S = 15 * k;
+    int W = (int)((20 + 15) * k * s + 1), H = (int)((5 * 20 + 15) * k * s + 1);
+    if (W <= 0 || H <= 0 || W > 2048 || H > 4096) return;
+    equip_jobs(W, H, S * s, 20 * k * s, 20 * k * s, 2, 1);
+    float* q = v->layer[GL_LAYER_JOBS]; q[0] = X + 196 * k; q[1] = Y + 56 * k; q[2] = (float)W / s; q[3] = (float)H / s;
+}
 static void card_pieces(GlPresent* v) {
     float k = g_pop_at[2], X = g_pop_at[0] - CS_X * k, Y = g_pop_at[1] - CS_Y * k;   /* (page pixels -> canvas) */
     static const float equip[][5] = {                             /* x, y, w, h on the page; restyled (FS_COPY's u_mode) */
@@ -1117,6 +1132,7 @@ static void card_pieces(GlPresent* v) {
         { 19, 105, 218, 67, 3 } };                                /* where it is found, who drops it (light on their panel) */
     const float (*part)[5] = g_card_item ? item : equip;
     int n = g_card_item ? (int)(sizeof item / sizeof *item) : (int)(sizeof equip / sizeof *equip);
+    if (!g_card_item && card_plates()) { n--; card_jobs(v, X, Y, k); }   /* (the jobs' signs: their plaques, ui/jobs/) */
     for (int i = 0; i < n; i++) {
         const float* p = part[i];
         float* q = v->piece[v->npiece++];
@@ -1125,9 +1141,340 @@ static void card_pieces(GlPresent* v) {
     }
 }
 
+/* ---- Equip, modern ----
+ * The Equip screen (the touch screen: the character in 3D before the
+ * dressing room's backdrop, the bar of his name, job and level under him, his
+ * gear's list in 3D at the right, or the bag's grid; the top screen: the
+ * chosen item's card) drawn again for the PC: the shop's picture behind
+ * (ui/equip-shop.png), the twelve jobs' plaques on its wall (ui/jobs/), the
+ * shown character's lit; his name, job and level above him, the character
+ * whole in the middle, the card at the left and the list (or the grid) at the
+ * right, in windows of the modern style, aligned. Laid out on a picture of
+ * 1920 x 1080 ("mockup" units), scaled to the canvas' height; the sides keep
+ * to the canvas' edges, the middle to its middle. */
+static int g_equip;                                               /* 0 not up; 1 the list; 2 the grid */
+static int g_eq_job = -1;                                         /* the shown character's job (its badge: 0 none, 1 warrior .. 12 ranger) */
+static int g_eq_card;                                             /* the item's card is up */
+static int g_eq_desc[4], g_eq_stat[2];                            /* its description's letters (x0, y0, x1, y1), its stats' rows (y0, y1) */
+
+/* the jobs' badges (the battle screen's sprites, as job_icons.py reads them):
+ * which one is the bar's, by its HD picture's name or by its pixels */
+static const uint16_t JB_PAL[16] = { [1] = 0x18C6, [9] = 0x6318, [11] = 0x0000, [12] = 0x4631, [14] = 0x739C };
+static uint8_t g_jb[13][16][16]; static uint64_t g_jb_key[13]; static int g_jb_ok = -1;
+static uint32_t jb_rgb(int v) { int c = JB_PAL[v], r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return (uint32_t)((r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2)); }
+static void jb_load(void) {
+    if (g_jb_ok >= 0) return;
+    g_jb_ok = 0;
+    uint32_t n = 0; const uint8_t* d = romdata_file("data/ani/obj_gl.pac", &n);
+    if (!d || n < 0x7D0 + 13 * 128) return;
+    for (int k = 0; k < 13; k++) {
+        const uint8_t* b = d + 0x7D0 + k * 128;
+        for (int t = 0; t < 4; t++) for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) {
+            int v = b[t * 32 + y * 4 + x / 2]; g_jb[k][(t / 2) * 8 + y][(t % 2) * 8 + x] = (uint8_t)(x & 1 ? v >> 4 : v & 15);
+        }
+        uint64_t h = 0xCBF29CE484222325ull;
+        static const uint8_t size[8] = { 16, 0, 0, 0, 16, 0, 0, 0 };
+        for (int i = 0; i < 8; i++) h = (h ^ size[i]) * 0x100000001B3ull;
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
+            int v = g_jb[k][y][x]; uint32_t c = v ? jb_rgb(v) : 0; uint8_t p[4] = { (uint8_t)(c >> 16), (uint8_t)(c >> 8), (uint8_t)c, (uint8_t)(v ? 255 : 0) };
+            for (int i = 0; i < 4; i++) h = (h ^ p[i]) * 0x100000001B3ull;
+        }
+        g_jb_key[k] = h;
+    }
+    g_jb_ok = 1;
+}
+static int equip_job(int eng) {
+    jb_load();
+    if (g_jb_ok != 1) return -1;
+    for (int i = 0; i < g_hdsprite_n[eng]; i++) {                 /* its HD picture (the pack on) */
+        const HdSprite* s = &g_hdsprites[eng][i];
+        if (s->x < 50 || s->x > 90 || s->y < 145 || s->y > 175) continue;
+        for (int k = 0; k < 13; k++) if (s->key == g_jb_key[k]) return k;
+    }
+    const uint32_t* px = g_engine_out[eng]; const uint8_t* ly = g_engine_layer[eng];
+    for (int k = 0; k < 13; k++)                                  /* ...or its pixels, where they are */
+        for (int sy = 152; sy <= 168; sy++)
+            for (int sx = 56; sx <= 80; sx++) {
+                int bad = 0, n = 0;
+                for (int y = 0; y < 16 && bad < 3; y++) for (int x = 0; x < 16 && bad < 3; x++) {
+                    int v = g_jb[k][y][x]; if (!v) continue;
+                    int i = (sy + y) * 256 + sx + x; n++;
+                    bad += (ly[i] & 7) != LAYER_OBJ || (px[i] & 0xFFFFFF) != jb_rgb(v);
+                }
+                if (bad < 3 && n > 40) return k;
+            }
+    return -1;
+}
+
+/* an item's card: who can equip it (its "Equips:" panel, two columns of
+ * six), each sign on its own dark plate (162, 121, 65), or faint */
+static void card_slots(const uint32_t* tp) {
+    for (int i = 0; i < 12; i++) {
+        int sx = 196 + 20 * (i % 2), sy = 56 + 20 * (i / 2), other = 0, plate = 0;
+        for (int y = 0; y < 15; y++) for (int x = 0; x < 15; x++) {
+            uint32_t c = tp[(sy + y) * 256 + sx + x] & 0xFFFFFF;
+            other += c != 0xD3AA51; plate += c == 0xA27941;
+        }
+        g_eq_slot[i] = (uint8_t)(other < 40 ? 0 : plate > 40 ? 2 : 1);
+    }
+}
+static void equip_update(int a_on_top) {
+    g_equip = 0;
+    if (g_winstyle != 2 || !WIDE_GL || !g_wide) return;
+    int bot = a_on_top ? 1 : 0, top = !bot;
+    const uint32_t* px = g_engine_out[bot];
+    /* the bar under the character: its white edges (rows 160 and 175), its blue
+     * (row 161), on the left half; the L sign over it */
+    if (px_share(px, 6, 160, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 || px_share(px, 6, 175, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 ||
+        px_share(px, 6, 161, 8, 0, 15, 14, 34, 87, 107, 185, 205) < 9 || px_share(px, 6, 149, 2, 0, 5, 70, 92, 100, 125, 150, 175) < 4) return;
+    g_equip = px_share(px, 250, 60, 0, 4, 20, 136, 156, 111, 131, 71, 91) >= 7 ? 2 : 1;   /* the bag's grid: its tan panel (146, 121, 81) at the right */
+    int j = equip_job(bot);
+    if (j >= 0) g_eq_job = j;
+    if (g_equip == 1) bestiary_cursor(px, g_engine_layer[bot], 0); else g_cur[2] = 0;
+    const uint32_t* tp = g_engine_out[top];
+    g_eq_card = card_page(tp) && !g_card_item;
+    if (!g_eq_card) { g_icon[2] = 0; return; }
+    item_icon(tp, g_engine_layer[top]);
+    int x0 = 256, y0 = 192, x1 = -1, y1 = -1;                    /* the description's dark letters */
+    for (int y = 30; y < 96; y++) for (int x = 60; x < 172; x++) {
+        uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
+        if (L < 92) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) { x0 = 60; x1 = 60; y0 = 36; y1 = 36; }
+    g_eq_desc[0] = x0; g_eq_desc[1] = y0; g_eq_desc[2] = x1 + 1; g_eq_desc[3] = y1 + 1;
+    y0 = 192; y1 = -1;                                            /* the stats' light letters */
+    for (int y = 105; y < 175; y++) for (int x = 19; x < 174; x++) {
+        uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
+        if (L > 158) { if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (y1 < 0) { y0 = 108; y1 = 108; }
+    g_eq_stat[0] = y0; g_eq_stat[1] = y1 + 1;
+    card_slots(tp);
+}
+
+/* pictures: ui/equip-shop.png and ui/jobs/<job>.png, loaded once (straight
+ * RGBA); drawn into the layers premultiplied, over what is there */
+static const char* const JOB_FILE[13] = { NULL, "warrior", "priest", "mage", "martial_artist", "thief", "minstrel", "gladiator", "armamentalist", "paladin", "sage", "luminary", "ranger" };
+typedef struct { uint8_t* px; int w, h, tried; } UiPic;
+static UiPic g_shop_pic, g_plate_pic[13];
+static const UiPic* ui_pic(UiPic* p, const char* file) {
+    if (!p->tried) { int n; p->tried = 1; p->px = stbi_load(file, &p->w, &p->h, &n, 4); }
+    return p->px ? p : NULL;
+}
+static const UiPic* plate_pic(int job) {
+    if (job < 1 || job > 12) return NULL;
+    char f[64]; snprintf(f, sizeof f, "ui/jobs/%s.png", JOB_FILE[job]);
+    return ui_pic(&g_plate_pic[job], f);
+}
+static int card_plates(void) { return plate_pic(1) != NULL; }
+/* the picture's part (sx, sy, sw, sh) into dst's rect (x, y, w, h), a few
+ * samples across each pixel (smaller: averaged; larger: smooth), at alpha a */
+static void ui_draw(uint8_t* dst, int dw, int dh, const UiPic* p, float sx, float sy, float sw, float sh, float x, float y, float w, float h, float a) {
+    if (!p || w <= 0 || h <= 0) return;
+    int n = (int)ceilf(fmaxf(sw / w, sh / h)); if (n < 2) n = 2; if (n > 6) n = 6;
+    int X0 = (int)floorf(x), Y0 = (int)floorf(y), X1 = (int)ceilf(x + w), Y1 = (int)ceilf(y + h);
+    if (X0 < 0) X0 = 0; if (Y0 < 0) Y0 = 0; if (X1 > dw) X1 = dw; if (Y1 > dh) Y1 = dh;
+    for (int Y = Y0; Y < Y1; Y++)
+        for (int X = X0; X < X1; X++) {
+            float r = 0, g = 0, b = 0, al = 0;
+            for (int j = 0; j < n; j++) for (int i = 0; i < n; i++) {
+                float fx = ((float)X + (i + 0.5f) / n - x) / w, fy = ((float)Y + (j + 0.5f) / n - y) / h;
+                if (fx < 0 || fy < 0 || fx >= 1 || fy >= 1) continue;
+                float u = sx + fx * sw - 0.5f, v = sy + fy * sh - 0.5f;   /* bilinear */
+                int u0 = (int)floorf(u), v0 = (int)floorf(v); float tu = u - u0, tv = v - v0;
+                for (int k = 0; k < 4; k++) {
+                    int uu = u0 + (k & 1), vv = v0 + (k >> 1);
+                    if (uu < 0) uu = 0; if (vv < 0) vv = 0; if (uu >= p->w) uu = p->w - 1; if (vv >= p->h) vv = p->h - 1;
+                    float wt = ((k & 1) ? tu : 1 - tu) * ((k >> 1) ? tv : 1 - tv);
+                    const uint8_t* s = &p->px[((size_t)vv * p->w + uu) * 4]; float sa = s[3] / 255.0f * wt;
+                    r += s[0] * sa; g += s[1] * sa; b += s[2] * sa; al += sa;
+                }
+            }
+            float m = a / (float)(n * n); r *= m; g *= m; b *= m; al *= m;   /* premultiplied */
+            uint8_t* o = &dst[((size_t)Y * dw + X) * 4]; float t = 1 - al;
+            o[0] = (uint8_t)fminf(255, r + o[0] * t); o[1] = (uint8_t)fminf(255, g + o[1] * t); o[2] = (uint8_t)fminf(255, b + o[2] * t); o[3] = (uint8_t)fminf(255, al * 255 + o[3] * t);
+        }
+}
+/* a soft glow: a rounded rect (radius rr) fading over f pixels round it */
+static void ui_glow(uint8_t* dst, int dw, int dh, float x, float y, float w, float h, float rr, float f, int R, int G, int B, float a) {
+    int X0 = (int)(x - f), Y0 = (int)(y - f), X1 = (int)(x + w + f) + 1, Y1 = (int)(y + h + f) + 1;
+    if (X0 < 0) X0 = 0; if (Y0 < 0) Y0 = 0; if (X1 > dw) X1 = dw; if (Y1 > dh) Y1 = dh;
+    for (int Y = Y0; Y < Y1; Y++)
+        for (int X = X0; X < X1; X++) {
+            float px = (float)X + 0.5f, py = (float)Y + 0.5f;
+            float qx = fmaxf(fabsf(px - (x + w / 2)) - (w / 2 - rr), 0), qy = fmaxf(fabsf(py - (y + h / 2)) - (h / 2 - rr), 0);
+            float d = sqrtf(qx * qx + qy * qy) - rr, t = d <= -f ? 1 : d >= f ? 0 : 0.5f - 0.5f * sinf(d / f * 1.5707963f);
+            float al = a * t; if (al <= 0) continue;
+            uint8_t* o = &dst[((size_t)Y * dw + X) * 4]; float k = 1 - al;
+            o[0] = (uint8_t)(R * al + o[0] * k); o[1] = (uint8_t)(G * al + o[1] * k); o[2] = (uint8_t)(B * al + o[2] * k); o[3] = (uint8_t)(255 * al + o[3] * k);
+        }
+}
+
+/* the backdrop: the shop's picture filling the canvas (cut to its shape), the
+ * plaques on its wall, the job's lit; a little darker, under the windows */
+enum { EQ_P = 78, EQ_G = 14, EQ_WALL_Y = 40 };
+static void equip_back(int W, int H) {
+    static uint8_t* img; static int iw, ih, ijob = -2;
+    if (img && iw == W && ih == H && ijob == g_eq_job) return;
+    uint8_t* n = (uint8_t*)realloc(img, (size_t)W * H * 4);
+    if (!n) return;
+    img = n; iw = W; ih = H; ijob = g_eq_job;
+    memset(img, 0, (size_t)W * H * 4);
+    for (size_t i = 0; i < (size_t)W * H; i++) { img[i * 4] = 20; img[i * 4 + 1] = 14; img[i * 4 + 2] = 10; img[i * 4 + 3] = 255; }   /* (no picture: a dark brown) */
+    const UiPic* s = ui_pic(&g_shop_pic, "ui/equip-shop.png");
+    if (s) {                                                      /* (cover: cut its sides or its top and bottom to the canvas' shape) */
+        float sw = (float)s->w, sh = (float)s->h;
+        if (sw / sh > (float)W / H) sw = sh * W / H; else sh = sw * H / W;
+        ui_draw(img, W, H, s, (s->w - sw) / 2, (s->h - sh) / 2, sw, sh, 0, 0, (float)W, (float)H, 1);
+    }
+    float u = H / 1080.0f, P = EQ_P * u, G = EQ_G * u, x0 = W / 2.0f - (6 * P + 5 * G) / 2;
+    for (int i = 0; i < 12; i++) {
+        float x = x0 + (i % 6) * (P + G), y = (EQ_WALL_Y + (i / 6) * (EQ_P + EQ_G)) * u;
+        if (i + 1 == g_eq_job) ui_glow(img, W, H, x - 5 * u, y - 5 * u, P + 10 * u, P + 10 * u, 16 * u, 14 * u, 255, 196, 52, 0.8f);
+        const UiPic* p = plate_pic(i + 1);
+        if (p) ui_draw(img, W, H, p, 0, 0, (float)p->w, (float)p->h, x, y, P, P, 1);
+    }
+    for (size_t i = 0; i < (size_t)W * H * 4; i++) img[i] = (uint8_t)(img[i] * 215 / 255 + ((i & 3) == 3) * (img[i] * 40 / 255));   /* (darker; alpha kept) */
+    gl_set_layer(GL_LAYER_BACK, img, W, H);
+}
+/* the card's signs of who can equip the item: a row of plaques (faint: can't) */
+static void equip_jobs(int W, int H, float S, float pitch, float pitch_y, int cols, int keep) {
+    static uint8_t* img; static int iw, ih, lc, lk; static uint8_t last[12];
+    if (img && iw == W && ih == H && lc == cols && lk == keep && !memcmp(last, g_eq_slot, 12)) return;
+    uint8_t* m = (uint8_t*)realloc(img, (size_t)W * H * 4);
+    if (!m) return;
+    img = m; iw = W; ih = H; lc = cols; lk = keep; memcpy(last, g_eq_slot, 12);
+    memset(img, 0, (size_t)W * H * 4);
+    for (int i = 0, k = 0; i < 12; i++) {                         /* (keep: each in its own place, the card's; else one after the other) */
+        if (!g_eq_slot[i]) continue;
+        const UiPic* p = plate_pic(i + 1);
+        int at = keep ? i : k; k++;
+        float x = (at % cols) * pitch, y = (at / cols) * pitch_y;
+        if (p) ui_draw(img, W, H, p, 0, 0, (float)p->w, (float)p->h, x, y, S, S, g_eq_slot[i] == 2 ? 1.0f : 0.32f);
+    }
+    gl_set_layer(GL_LAYER_JOBS, img, W, H);
+}
+
+/* a window of the modern style: its see-through panel, its thin grey line */
+static void modern_window(GlPresent* v, float x, float y, float w, float h) {
+    float t = 0.75f;
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, w, h);
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, w, t);
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y + h - t, w, t);
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, t, h);
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x + w - t, y, t, h);
+}
+
+static void equip_pieces(GlPresent* v, int ww, int wh) {
+    const float C = v->ch / 1080.0f;                              /* (mockup units -> canvas) */
+    float cw = v->cw, mid = cw / 2;
+#define MX(m) (mid + ((m) - 960) * C)
+#define MY(m) ((m) * C)
+    {   /* the backdrop and the wall, at the window's own pixels */
+        float s = wh > 0 ? (float)wh / v->ch : 5.625f;
+        if (ww > 0 && wh > 0 && (float)ww / wh < cw / v->ch) s = (float)ww / cw;
+        if (s > 11.25f) s = 11.25f;
+        int W = (int)(cw * s + 0.5f), H = (int)(v->ch * s + 0.5f);
+        equip_back(W, H);
+        float* q = v->layer[GL_LAYER_BACK]; q[0] = 0; q[1] = 0; q[2] = cw; q[3] = v->ch;
+    }
+    /* the character, whole, in the middle (the 3D alone: not the backdrop) */
+    const float KC = 5.25f * C;                                   /* (DS pixels -> canvas) */
+    bestiary_piece(v, 4, 0, 0, 126, 159, 11, MX(960) - 52 * KC, MY(1070) - 158 * KC, KC);
+    /* his name, job and level above him, in a window */
+    {
+        const float KB = 3.4f * C, IS = 56 * C, pad = 20 * C, gap = 14 * C, bh = 74 * C, by = MY(250);
+        float nw = 56 * KB, lw = 44 * KB, bw = 2 * pad + nw + lw + IS + 4 * gap, bx = mid - bw / 2;
+        modern_window(v, bx, by, bw, bh);
+        float x = bx + pad;
+        bestiary_piece(v, 4, 6, 161, 56, 13, 11, x, by + (bh - 13 * KB) / 2, KB); x += nw + gap;
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
+        const UiPic* p = plate_pic(g_eq_job);
+        if (p) {
+            static int shown = -1;
+            if (shown != g_eq_job) {                              /* (premultiplied for the layer) */
+                static uint8_t img[256 * 256 * 4];
+                if (p->w <= 256 && p->h <= 256) {
+                    for (int i = 0; i < p->w * p->h; i++) { const uint8_t* s = &p->px[i * 4]; uint8_t* o = &img[i * 4]; o[0] = (uint8_t)(s[0] * s[3] / 255); o[1] = (uint8_t)(s[1] * s[3] / 255); o[2] = (uint8_t)(s[2] * s[3] / 255); o[3] = s[3]; }
+                    gl_set_layer(GL_LAYER_PLAQUES, img, p->w, p->h); shown = g_eq_job;
+                }
+            }
+            float* q = v->layer[GL_LAYER_PLAQUES]; q[0] = x; q[1] = by + (bh - IS) / 2; q[2] = IS; q[3] = IS;
+        }
+        x += IS + gap;
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
+        bestiary_piece(v, 4, 80, 161, 44, 13, 11, x, by + (bh - 13 * KB) / 2, KB);
+        float kh = 40 * C;                                        /* the player's keys for the other characters, either side */
+        bestiary_key(v, GL_LAYER_KEY0, CA_L, 0, by + (bh - kh) / 2, kh);
+        { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
+        bestiary_key(v, GL_LAYER_KEY1, CA_R, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
+    }
+    /* the list (or the bag's grid) at the right */
+    const float WY = MY(170), WH = 730 * C, WW = 520 * C;
+    float lx = cw - (1920 - 1370) * C;
+    modern_window(v, lx, WY, WW, WH);
+    if (g_equip == 1) {
+        const float KL = (728.0f / 192) * C, ox = lx + 17 * C - 128 * KL, oy = WY + 1 * C;   /* (the list's DS pixels -> canvas) */
+        for (int r = 0; r < 8; r++) {
+            float ry = (float)(r * 24);
+            if (r) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + 12 * C, oy + ry * KL, WW - 24 * C, 0.75f);
+            bestiary_piece(v, 4, 131, ry + 1, 30, 22, 18, ox + 131 * KL, oy + (ry + 1) * KL, KL);      /* the item's picture (off its grey box) */
+            bestiary_piece(v, 4, 160, ry + 4, 93, 16, 3, ox + 160 * KL, oy + (ry + 4) * KL, KL);       /* its name (green, worn: gold) */
+        }
+        bestiary_cursor_at(v, 0, 0, ox, oy, KL);
+    } else {
+        float k = fminf((WW - 20 * C) / 127, (WH - 20 * C) / 192);
+        bestiary_piece(v, 1, 129, 0, 127, 192, 19, lx + (WW - 127 * k) / 2, WY + (WH - 192 * k) / 2, k);   /* (its tan panel see-through: 19) */
+    }
+    /* the card at the left: from the top, its sign, name and rarity; its
+     * picture; its description; its stats; who can equip it */
+    if (!g_eq_card) return;
+    float cx = 30 * C, CW = 520 * C;
+    modern_window(v, cx, WY, CW, WH);
+    int dw = g_eq_desc[2] - g_eq_desc[0], dh = g_eq_desc[3] - g_eq_desc[1], sh = g_eq_stat[1] - g_eq_stat[0], nslot = 0;
+    for (int i = 0; i < 12; i++) nslot += g_eq_slot[i] != 0;
+    int jrows = nslot > 6 ? 2 : 1;
+    /* heights (mockup units): head 130, picture 112 + 24, description, 28 + line + 30, stats, 28 + line + 30, "Equips:" 51 + 22, signs */
+    const float KT = 3.4f, KD = 3.44f, SI = 60, KI = 3.5f;
+    float need = 130 + 24 + 32 * KI + 24 + dh * KD + 58 + sh * KT + 58 + 15 * KT + 20 + SI * (jrows * 1.2f) + 20;
+    float f = need > 730 ? 730 / need : 1;                        /* (a long one: all of it a little smaller) */
+    float u = C * f, y = WY, tx = cx + 26 * C;
+    bestiary_piece(v, 0, 17, 9, 14, 14, 0, cx + 20 * C, y + 22 * u, 4 * u);
+    bestiary_piece(v, 0, 37, 11, 102, 10, 3, cx + 70 * C, y + 28 * u, KT * u);   /* (not the bar's light edge under it) */
+    bestiary_piece(v, 0, 175, 9, 25, 15, 9, cx + 196 * C, y + 66 * u, KT * u);
+    bestiary_piece(v, 0, 200, 9, 48, 15, 8, cx + 196 * C + 25 * KT * u, y + 66 * u, KT * u);
+    y += 130 * u;
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), cx + 12 * C, y, CW - 24 * C, 0.75f);
+    y += 18 * u;
+    if (g_icon[2]) { float* q = v->layer[GL_LAYER_ICON]; float s = g_icon[2] * KI * u; q[0] = cx + (CW - s) / 2; q[1] = y; q[2] = s; q[3] = g_icon[3] * KI * u; }
+    y += 32 * KI * u + 24 * u;
+    bestiary_piece(v, 0, g_eq_desc[0] - 1, g_eq_desc[1] - 1, dw + 2, dh + 2, 6, cx + (CW - (dw + 2) * KD * u) / 2, y, KD * u);
+    y += (dh + 2) * KD * u + 28 * u;
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), cx + 12 * C, y, CW - 24 * C, 0.75f);
+    y += 30 * u;
+    bestiary_piece(v, 0, 19, g_eq_stat[0] - 1, 155, sh + 2, 3, tx - 2 * KT * u, y, KT * u);
+    y += (sh + 2) * KT * u + 28 * u;
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), cx + 12 * C, y, CW - 24 * C, 0.75f);
+    y += 30 * u;
+    bestiary_piece(v, 0, 184, 33, 62, 15, 6, tx - 2 * KT * u, y, KT * u);
+    y += 15 * KT * u + 20 * u;
+    {   /* the signs: six a row, across the window */
+        float S = SI * u, pitch = (CW - 52 * C - S) / 5, s = wh > 0 ? (float)wh / v->ch : 5.625f;
+        int W = (int)((5 * pitch + S) * s + 1), H = (int)((jrows * 1.2f * S) * s + 1);
+        if (W > 0 && H > 0 && W < 4096 && H < 4096) {
+            float* q = v->layer[GL_LAYER_JOBS];
+            equip_jobs(W, H, S * s, pitch * s, S * 1.2f * s, 6, 0);
+            q[0] = tx; q[1] = y; q[2] = (float)W / s; q[3] = (float)H / s;
+        }
+    }
+#undef MX
+#undef MY
+}
+
 /* second: the layout of the second window (two windows) */
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
+    if (wh > 0) g_lay_s = (float)wh / 192.0f;
     int two = g_gl && g_two && !g_side_by_side && !g_single;
     int wide = WIDE_GL && g_wide && !g_side_by_side && !two;
     int single = g_single && !wide;                               /* one screen (in widescreen the left trigger hides the small one instead) */
@@ -1219,7 +1566,13 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
         if (g_bmode == BM_TITLES) page = 2;                       /* (the titles' list: no 3D, its window all the same) */
-        if (page == 2 && bmode && !second && v->npiece + 40 <= GL_MAX_PIECES) {
+        if (g_equip && !second && !g_peek && v->npiece + 56 <= GL_MAX_PIECES) {
+            /* Equip, modern: drawn again whole (equip_pieces()), no screen whole */
+            v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
+            v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
+            v->alpha = 1.0f; v->front = 0;
+            equip_pieces(v, ww, wh);
+        } else if (page == 2 && bmode && !second && v->npiece + 40 <= GL_MAX_PIECES) {
             /* the monster list, modern: drawn again in two windows (bestiary_pieces()),
              * the window's shape, no screen whole */
             v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
@@ -2775,6 +3128,7 @@ static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
     g_pop_win[2] = 0; g_quest_page = g_card_page = g_accolade_page = g_pop_modern = 0;
     bestiary_update(a_on_top);
+    equip_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
     static int gone = 1 << 20;                                    /* ...frames since it was last seen */
     g_accolade_small = g_winstyle == 2 && g_bmode != BM_TITLES && accolade_page(g_engine_out[a_on_top ? 0 : 1]);   /* (the top screen small in its corner: the plate instead; not the titles' list's) */
@@ -2806,6 +3160,7 @@ static void pop_update(int a_on_top) {
     }
     if (g_winstyle == 2 && !g_shop && card_page(g_engine_out[a_on_top ? 0 : 1])) {   /* an item's card: redrawn whole (card_pieces()) */
         g_card_page = 1;
+        card_slots(g_engine_out[a_on_top ? 0 : 1]);
         g_pop_win[0] = CS_X; g_pop_win[1] = CS_Y; g_pop_win[2] = CS_W; g_pop_win[3] = CS_H;
         g_pop_at[0] = 4; g_pop_at[1] = 4; g_pop_at[2] = CARD_K;   /* small, in the top left corner: off the lists (Equip, a shop's) */
         return;

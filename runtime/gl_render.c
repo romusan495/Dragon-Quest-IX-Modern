@@ -511,6 +511,19 @@ static const char* FS_COPY =
     "  vec4 c = texture(u_src, v_uv);\n"
     "  float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  if (u_mode == 11) { vec4 c = texture(u_src, v_uv); o_color = vec4(c.rgb * c.a, c.a); return; }\n"
+    "  if (u_mode == 18) { vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), mn = min(r.r, min(r.g, r.b));\n"   /* (an item's picture in a list's row (the 3D alone): not its grey box (62), nor the row's dark brown) */
+    "    float box = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.16, 0.19, mx) * smoothstep(0.31, 0.28, mx);\n"
+    "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
+    "    float ring = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.04, 0.02, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
+    "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 19) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (the bag's grid made modern: its tan panel and the brown under it see-through, its cells dark, its edges grey lines) */
+    "    float tan = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.17, 0.2, r.r - r.b) * smoothstep(0.34, 0.31, r.r - r.b) * smoothstep(0.42, 0.45, r.r) * smoothstep(0.7, 0.67, r.r);\n"
+    "    float under = smoothstep(0.24, 0.21, r.r) * smoothstep(0.15, 0.17, r.r) * smoothstep(0.08, 0.05, r.g) * smoothstep(0.03, 0.01, r.b);\n"
+    "    float cell = smoothstep(0.19, 0.21, r.r) * smoothstep(0.26, 0.24, r.r) * smoothstep(0.07, 0.09, r.g) * smoothstep(0.13, 0.11, r.g) * smoothstep(0.07, 0.05, r.b);\n"
+    "    float cream = smoothstep(0.85, 0.88, r.r) * smoothstep(0.76, 0.79, r.g) * smoothstep(0.52, 0.55, r.b) * smoothstep(0.7, 0.67, r.b);\n"
+    "    float edge = smoothstep(0.3, 0.32, r.r) * smoothstep(0.39, 0.37, r.r) * smoothstep(0.2, 0.22, r.g) * smoothstep(0.29, 0.27, r.g) * smoothstep(0.11, 0.13, r.b) * smoothstep(0.19, 0.17, r.b);\n"
+    "    vec4 o = vec4(r, 1.0); o = mix(o, vec4(0.0), max(tan, under)); o = mix(o, vec4(0.0, 0.0, 0.0, 0.45), cell); o = mix(o, vec4(0.5, 0.5, 0.5, 1.0), max(cream, edge));\n"
+    "    o_color = vec4(o.rgb * o.a, o.a) * c.a; return; }\n"
     "  if (u_mode == 17) { vec3 r = c.rgb / max(c.a, 0.001); float d = max(abs(r.r - 0.157), max(abs(r.g - 0.157), abs(r.b - 0.157)));\n"   /* (the picture without its window's dark panel (40, 40, 40): see-through there) */
     "    float a = smoothstep(0.03, 0.07, d) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 10) {\n"
@@ -2391,6 +2404,10 @@ void gl_present(const GlPresent* v) {
     p_glUniform4f(p_glGetUniformLocation(P, "u_uv"), 0, 0, 1, 1);
     p_glBindVertexArray(vao_quad);
     p_glDrawArrays(GL_TRIANGLES, 0, 6);
+    {   /* a picture behind the pieces (Equip's shop) */
+        const float* bk = v->layer[GL_LAYER_BACK];
+        if (overlay_on[2 + GL_LAYER_BACK] && bk[2] > 0 && bk[3] > 0) draw_overlay(v, bk, overlay_tex[2 + GL_LAYER_BACK]);
+    }
     if (v->npiece) {
         const float* lg = v->layer[GL_LAYER_LOGO];
         if (overlay_on[2 + GL_LAYER_LOGO] && lg[2] > 0 && lg[3] > 0) {   /* the logo over the first piece (the window), under the rest */
@@ -2402,7 +2419,7 @@ void gl_present(const GlPresent* v) {
     if (overlay_on[0] && v->overlay[2] > 0 && v->overlay[3] > 0) draw_overlay(v, v->overlay, overlay_tex[0]);
     if (overlay_on[1] && v->icons[2] > 0 && v->icons[3] > 0) draw_overlay(v, v->icons, overlay_tex[1]);
     for (int i = 0; i < GL_LAYERS; i++)                           /* the layers, in their order (under the in-game menu) */
-        if (i != GL_LAYER_LOGO && overlay_on[2 + i] && v->layer[i][2] > 0 && v->layer[i][3] > 0) draw_overlay(v, v->layer[i], overlay_tex[2 + i]);
+        if (i != GL_LAYER_LOGO && i != GL_LAYER_BACK && overlay_on[2 + i] && v->layer[i][2] > 0 && v->layer[i][3] > 0) draw_overlay(v, v->layer[i], overlay_tex[2 + i]);
     if (menu_on && !v->again) draw_menu(v);
 }
 
