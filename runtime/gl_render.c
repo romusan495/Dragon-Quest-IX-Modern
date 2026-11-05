@@ -575,7 +575,7 @@ static const char* FS_COPY =
     "  if (u_mode == 18) { vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), mn = min(r.r, min(r.g, r.b));\n"   /* (an item's picture in a list's row (the 3D alone): not its grey box (62), nor the row's dark brown) */
     "    float box = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.16, 0.19, mx) * smoothstep(0.35, 0.33, mx);\n"   /* (62; the chosen row's 82) */
     "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
-    "    float ring = smoothstep(0.035, 0.02, mx - mn) * smoothstep(0.04, 0.02, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
+    "    float ring = smoothstep(0.07, 0.05, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
     "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 21) { o_color = vec4(0.98, 0.78, 0.16, 1.0) * 0.16; return; }\n"   /* (a chosen line lit, gold, faint) */
     "  if (u_mode == 22) { o_color = vec4(0.0); return; }\n"   /* (nothing: a touchable place only) */
