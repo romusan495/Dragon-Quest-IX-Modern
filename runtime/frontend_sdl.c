@@ -1546,16 +1546,7 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
     } else {
         float k = fminf((WW - 20 * C) / 127, (WH - 20 * C) / 192);
         float gx = lx + (WW - 127 * k) / 2, gy = WY + (WH - 192 * k) / 2;
-        bestiary_piece(v, 1, 129, 0, 127, 192, 19, gx, gy, k);   /* the grid, its tan panel see-through (19)... */
-        {   /* its 4 x 4 cells (24 pixels, 2 apart, from 141, 52 on the touch screen): clean thin lines between and round them */
-            static const float gxs[5] = { 139.5f, 165.5f, 191.5f, 217.5f, 243.5f }, gys[5] = { 50.5f, 76.5f, 102.5f, 128.5f, 154.5f };
-            const float t = 0.6f;
-            for (int i = 0; i < 5; i++) {
-                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), gx + (gxs[i] - 129) * k - t / 2, gy + gys[0] * k, t, (gys[4] - gys[0]) * k);
-                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), gx + (gxs[0] - 129) * k, gy + gys[i] * k - t / 2, (gxs[4] - gxs[0]) * k, t);
-            }
-        }
-        bestiary_piece(v, 4, 129, 0, 127, 192, 11, gx, gy, k);   /* ...the items over it again as they are (the 3D alone: 19 changed their browns) */
+        bestiary_piece(v, 1, 129, 0, 127, 192, 0, gx, gy, k);    /* the bag's grid as the game draws it (its panel, cells and items) */
         if (g_eq_pop[2] > 0) {                                    /* an item's menu (Remove, Drop...): a modern window over all, where the DS has it */
             float px0 = gx + (g_eq_pop[0] - 129) * k, py0 = gy + g_eq_pop[1] * k;
             set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), px0 - 1, py0 - 1, g_eq_pop[2] * k + 2, g_eq_pop[3] * k + 2);   /* (darker: over the grid) */
