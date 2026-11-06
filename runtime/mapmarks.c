@@ -2160,27 +2160,51 @@ int mapmarks_bag_list(int hero, uint16_t keys[8], int* sel) {
     return lines;
 }
 
-/* The bag's list (Items: the bag, or a character's things), laid out again
- * by the front end (bag_pieces()): each line's item's icon in the gap opened
- * before its name (n lines from y0, dy apart, the icons size s at x), and the
- * chosen one's big in the description's window (bx, by, bs; bs 0: none); in
- * DS pixels. */
-int mapmarks_bag(const uint16_t* keys, int n, int x, int y0, int dy, int s, int sel, int bx, int by, int bs, const uint8_t** rgba, int* changed) {
+/* The bag's list, laid out again by the front end (bag_pieces()): each
+ * line's item's icon (n lines from y0, dy apart, size s at x), the chosen
+ * one's big in the description's window (bx, by, bs; bs 0: none), and the
+ * marks between the path's words above the window (chev: x, y of each, h
+ * high); in the overlay's units (MAPMARKS_R pixels each). */
+int mapmarks_bag(const uint16_t* keys, int n, float x, float y0, float dy, float s, int sel, float bx, float by, float bs,
+                 const float* chev, int nchev, float ch, const uint8_t** rgba, int* changed) {
     static uint32_t last_key;
     *rgba = g_icons; *changed = 0;
     if (n <= 0) { if (last_key) { last_key = 0; memset(g_icons, 0, sizeof g_icons); *changed = 1; } return 0; }
     uint32_t key = 2166136261u;
     for (int i = 0; i < n; i++) key = (key ^ keys[i]) * 16777619u;
-    int v[8] = { n, x, y0, dy, s, sel, bx, by };
-    for (int i = 0; i < 8; i++) key = (key ^ (uint32_t)v[i]) * 16777619u;
-    key = (key ^ (uint32_t)bs) * 16777619u;
+    float v[8] = { x, y0, dy, s, bx, by, bs, ch };
+    for (int i = 0; i < 8; i++) key = (key ^ (uint32_t)lroundf(v[i] * 8)) * 16777619u;
+    for (int i = 0; i < 2 * nchev; i++) key = (key ^ (uint32_t)lroundf(chev[i] * 8)) * 16777619u;
+    key = (key ^ (uint32_t)sel) * 16777619u; key = (key ^ (uint32_t)n) * 16777619u;
     if (!key) key = 1;
     if (key == last_key) return 1;
     last_key = key; *changed = 1;
     memset(g_icons, 0, sizeof g_icons);
+    const float R = MAPMARKS_R;
     for (int i = 0; i < n; i++)
-        if (keys[i] != 0xFFFF) draw_icon(keys[i], x * MAPMARKS_R, (y0 + dy * i) * MAPMARKS_R, s * MAPMARKS_R);
-    if (bs > 0 && sel >= 0 && sel < n && keys[sel] != 0xFFFF) draw_icon(keys[sel], bx * MAPMARKS_R, by * MAPMARKS_R, bs * MAPMARKS_R);
+        if (keys[i] != 0xFFFF) draw_icon(keys[i], (int)lroundf(x * R), (int)lroundf((y0 + dy * i) * R), (int)lroundf(s * R));
+    if (bs > 0 && sel >= 0 && sel < n && keys[sel] != 0xFFFF) draw_icon(keys[sel], (int)lroundf(bx * R), (int)lroundf(by * R), (int)lroundf(bs * R));
+    for (int c = 0; c < nchev; c++) {                             /* the marks: "›", light grey, two strokes */
+        float ax = chev[2 * c] * R, ay = (chev[2 * c + 1] - ch / 2) * R, bx2 = ax + ch * 0.45f * R, by2 = chev[2 * c + 1] * R, cy = (chev[2 * c + 1] + ch / 2) * R;
+        float hw = 0.32f * R;                                     /* (half the stroke's width) */
+        for (int Y = (int)(ay - 2); Y <= (int)(cy + 2); Y++)
+            for (int X = (int)(ax - 2); X <= (int)(bx2 + 2); X++) {
+                if (X < 0 || Y < 0 || X >= MAPMARKS_W || Y >= MAPMARKS_H) continue;
+                float px = X + 0.5f, py = Y + 0.5f, d = 1e9f;
+                for (int sgm = 0; sgm < 2; sgm++) {
+                    float x1 = ax, y1 = sgm ? cy : ay, dx = bx2 - x1, dy = by2 - y1, t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+                    t = t < 0 ? 0 : t > 1 ? 1 : t;
+                    float ex = px - (x1 + t * dx), ey = py - (y1 + t * dy), dd = sqrtf(ex * ex + ey * ey);
+                    if (dd < d) d = dd;
+                }
+                float a2 = (hw + 0.5f - d) * 0.85f;
+                if (a2 <= 0) continue;
+                if (a2 > 0.85f) a2 = 0.85f;
+                uint8_t* dst = &g_icons[(Y * MAPMARKS_W + X) * 4];
+                for (int k = 0; k < 3; k++) dst[k] = (uint8_t)(a2 * 200 + dst[k] * (1 - a2));
+                dst[3] = (uint8_t)(a2 * 255 + dst[3] * (1 - a2));
+            }
+    }
     return 1;
 }
 
