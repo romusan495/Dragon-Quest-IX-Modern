@@ -1431,7 +1431,13 @@ static int build_plan(const Place* pl) {
     snprintf(path, sizeof path, "data/map/%s.amdj", pl->code);
     snprintf(name, sizeof name, "%.3sA%s00.col2", pl->code, pl->code + 4);
     uint32_t n = 0, sz = 0;
-    const uint8_t* amdj = rom_file(path, &n), *packed = narc_file(amdj, n, name, &sz);
+    const uint8_t* amdj = rom_file(path, &n);
+    if (!amdj && len == 7) {                                     /* the inn's VIP rooms (R05M01a...): R05M01's */
+        snprintf(path, sizeof path, "data/map/%.6s.amdj", pl->code);
+        amdj = rom_file(path, &n);
+    }
+    const uint8_t* packed = narc_file(amdj, n, name, &sz);
+    if (!packed && pl->code[0] == 'R') packed = narc_file(amdj, n, "*00.col2", &sz);   /* an inn room built from another's (R05M01: R01A1100) */
     uint8_t* c = packed ? ds_unpack(packed, sz, &sz) : NULL;
     if (!c || sz < 60) { free(c); return 0; }
     uint32_t count = le32(c + 20), start = le32(c + 36), shift = le32(c + 4);
@@ -1739,7 +1745,8 @@ int mapmarks_update(const uint8_t** rgba) {
     /* the map is the top screen's BG1: off when a page covers it (the quest log...) */
     uint32_t top = (IO16(0x304) & 0x8000) ? 0x0000 : 0x1000, bright = IO16(top + 0x6C);
     int grotto = is_grotto(rd16(MAP_NUM));                       /* (drawn like a town's) */
-    int field = rd16(MAP_NUM) >= 20000 && !grotto;              /* the fields (20001...) draw their map on BG0 */
+    int field = rd16(MAP_NUM) >= 20000 && rd16(MAP_NUM) < 30000;   /* the fields (20001...) draw their map on BG0; the
+                                                                   * inn's rooms (50101...) and the grottos are a town's */
     if (ok && !(IO32(top) & (field ? 0x100 : 0x200))) ok = 0;
     if (ok && (bright >> 14) == 2 && (bright & 0x1F) >= 16) ok = 0;   /* faded to black */
     if (ok && !loaded) {
