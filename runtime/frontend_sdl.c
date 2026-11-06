@@ -78,6 +78,10 @@ static int g_hints = 1;                                           /* the DS butt
 static int g_hint_pad = -1;                                       /* ...the last used: 1 the controller, 0 the keyboard, -1 not yet */
 static int g_minimap = 1;                                         /* widescreen: the map small in a corner of the one window (no second window), not in battles */
 static int g_map_shown = 1;                                       /* ...shown (Modern > Map in the top right corner) */
+static int g_round_map = 1;                                       /* ...round, centred on the hero, a gold ring round it (Modern > Round map) */
+static int g_place_plate = -1;                                    /* the map's place name plate: its left edge on the top screen (-1: none) */
+static int g_place_txt[2];
+static int g_species_w, g_species_h;                              /* the monsters near's list (mapmarks_species()), its size (overlay pixels; 0: none) */                                        /* ...its letters (x0, x1) */
 static float g_mini_vis = 1.0f;                                   /* ...1 shown, 0 gone (the game's 2D under it: a menu) */
 /* An adventure is loaded (the field's characters, farm.c): before it (the
  * logos, the opening movie, the title) the minimap isn't shown. */
@@ -1625,6 +1629,99 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
 #undef MY
 }
 
+/* The round minimap's ring (GL_LAYER_RING): gold, a dark line either side,
+ * the compass' marks (a gold arrow at the north, knobs at the east, south and
+ * west, dots between), at the window's pixels: radius R, ring T (pixels). */
+static void round_ring(int D, float R, float T) {
+    static uint8_t* img; static int had;
+    if (img && had == D) return;
+    uint8_t* n = (uint8_t*)realloc(img, (size_t)D * D * 4);
+    if (!n) return;
+    img = n; had = D;
+    float c = D / 2.0f;
+    for (int y = 0; y < D; y++)
+        for (int x = 0; x < D; x++) {
+            float px = x + 0.5f - c, py = y + 0.5f - c, r = sqrtf(px * px + py * py), ang = atan2f(px, -py);   /* (0 at the north, clockwise) */
+            float a = 0, cr = 0, cg = 0, cb = 0;
+#define OVER(al, R_, G_, B_) do { float a_ = (al); if (a_ > 0) { cr = (R_) * a_ + cr * (1 - a_); cg = (G_) * a_ + cg * (1 - a_); cb = (B_) * a_ + cb * (1 - a_); a = a_ + a * (1 - a_); } } while (0)
+            float ri = R - 0.5f, ro = R + T;                       /* the ring: from just inside the map's edge */
+            float dark = fminf(fmaxf(0, 1 - fabsf(r - (ri - 0.6f))), 1) + fminf(fmaxf(0, 1 - fabsf(r - (ro + 0.6f))), 1);
+            float in = fminf(fmaxf(0, r - ri + 0.5f), 1) * fminf(fmaxf(0, ro - r + 0.5f), 1);
+            if (in > 0) {                                          /* gold, lit from the top left */
+                float t = (r - ri) / (ro - ri), lit = 0.5f + 0.5f * cosf(ang + 0.8f);
+                float g = 0.72f + 0.28f * (1 - fabsf(t - 0.4f) * 2) + 0.12f * lit;
+                OVER(in, 236 * g, 180 * g, 74 * g);
+            }
+            OVER(fminf(dark, 1) * 0.85f, 40, 26, 10);
+            for (int k = 0; k < 8; k++) {                          /* the compass' marks */
+                float aa = k * 0.78539816f, mx = sinf(aa) * (R + T * 0.5f), my = -cosf(aa) * (R + T * 0.5f);
+                float d = sqrtf((px - mx) * (px - mx) + (py - my) * (py - my));
+                if (k == 0) {                                      /* the north: a gold arrow out of the ring */
+                    float ty = -(R + T * 0.5f), h = T * 2.2f, w = T * 1.25f, yy = py - ty;   /* (its tip above the ring) */
+                    if (yy < 0.5f && yy > -h) {
+                        float half = w * (yy + h) / h, e = half - fabsf(px);
+                        float al = fminf(fmaxf(e + 0.5f, 0), 1);
+                        if (al > 0) { float sh = px < 0 ? 1.1f : 0.8f; OVER(fminf(fmaxf(e + 1.3f, 0), 1) * 0.9f, 40, 26, 10); OVER(al, 255 * sh > 255 ? 255 : 255 * sh, 208 * sh > 255 ? 255 : 208 * sh, 96 * sh); }
+                    }
+                } else if (k % 2 == 0) {                           /* east, south, west: a knob */
+                    float rk = T * 0.75f;
+                    OVER(fminf(fmaxf(rk + 1.2f - d, 0), 1) * 0.9f, 40, 26, 10);
+                    float al = fminf(fmaxf(rk + 0.5f - d, 0), 1); float sh = 0.85f + 0.35f * ((-(px - mx) - (py - my)) / (rk + 0.01f));
+                    OVER(al, fminf(255, 250 * sh), fminf(255, 205 * sh), fminf(255, 100 * sh));
+                } else {                                           /* between: a dot */
+                    float rk = T * 0.32f;
+                    OVER(fminf(fmaxf(rk + 0.5f - d, 0), 1), 70, 46, 18);
+                }
+            }
+#undef OVER
+            uint8_t* o = &img[((size_t)y * D + x) * 4];             /* (premultiplied) */
+            o[0] = (uint8_t)fminf(255, cr * a); o[1] = (uint8_t)fminf(255, cg * a); o[2] = (uint8_t)fminf(255, cb * a); o[3] = (uint8_t)(a * 255);
+        }
+    gl_set_layer(GL_LAYER_RING, img, D, D);
+}
+/* The minimap round: in the corner the small screen was given, the map's
+ * part around the hero in a circle (gl_render.c draw_round()), the gold ring
+ * over it, the place's name in a little modern window under it. */
+static void round_minimap(GlPresent* v, const float* small, int z) {
+    static const float RAD[3] = { 22, 29, 40 }, SRC = 60;          /* (canvas; DS pixels of the map shown from its centre to its edge) */
+    static float hx = 128, hy = 96; static int was;
+    float R = RAD[z < 0 || z > 2 ? 1 : z], T = R * 0.09f + 0.8f, m = 3 + T, lab = 10;
+    int c = g_small_corner & 3;
+    float cx = c == 0 || c == 3 ? m + R : v->cw - m - R, cy = c < 2 ? m + R + 1.5f * T : 192 - m - R - lab;
+    if (g_map_hero_ok) {                                          /* (follows the hero, smoothly; at once on a new map) */
+        if (!was || fabsf(g_map_hero[0] - hx) > 40 || fabsf(g_map_hero[1] - hy) > 40) { hx = g_map_hero[0]; hy = g_map_hero[1]; }
+        else { hx += (g_map_hero[0] - hx) * 0.35f; hy += (g_map_hero[1] - hy) * 0.35f; }
+        was = 1;
+    } else was = 0;
+    v->round[0] = cx; v->round[1] = cy; v->round[2] = R; v->round[3] = v->alpha;
+    v->round_src[0] = hx; v->round_src[1] = hy; v->round_src[2] = SRC;
+    {   /* the ring, at the window's pixels */
+        float s = g_lay_s, D = 2 * (R + T * 3.6f);
+        int Dp = (int)(D * s + 0.5f);
+        if (Dp > 8 && Dp < 2048) {
+            round_ring(Dp, R * s, T * s);
+            float* q = v->layer[GL_LAYER_RING]; q[0] = cx - D / 2; q[1] = cy - D / 2; q[2] = D; q[3] = D;
+        }
+    }
+    if (g_place_plate >= 0 && v->npiece + 6 <= GL_MAX_PIECES && v->alpha > 0.5f) {   /* the place's name (the map's plate at its top right: its letters) */
+        float k = 0.62f, w = (float)(g_place_txt[1] - g_place_txt[0] + 2), lw = w * k + 8, lh = 9 * k + 3.5f, lx = cx - lw / 2, ly = cy + R + T + 1.5f;
+        if (c >= 2) ly = cy + R + T + 1.5f;
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), lx, ly, lw, lh);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, lw, 0.6f);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly + lh - 0.6f, lw, 0.6f);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, 0.6f, lh);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + lw - 0.6f, ly, 0.6f, lh);
+        bestiary_piece(v, 0, g_place_txt[0] - 1, 3, w, 10, 3, lx + 4, ly + 1.75f, k);
+        if (g_species_w > 0 && g_mapmarks_monsters && c < 2) {     /* under it, the monsters near: their colours and names */
+            float ks = 0.24f, sw = g_species_w * ks, sh = g_species_h * ks;
+            float* q = v->layer[GL_LAYER_SPECIES]; q[0] = cx - sw / 2; q[1] = ly + lh + 1.5f; q[2] = sw; q[3] = sh;
+            if (q[0] + sw > v->cw - 2) q[0] = v->cw - 2 - sw;
+            if (q[0] < 2) q[0] = 2;
+        }
+    }
+    (void)small;
+}
+
 /* second: the layout of the second window (two windows) */
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
@@ -1683,6 +1780,11 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             if (g_mini_vis < 0.02f || !g_map_shown) small[2] = small[3] = 0;
         } else if (g_minimap) v->alpha = 1.0f;                   /* battles: solid */
         if (g_small_hide && !pop) small[2] = small[3] = 0;
+        if (g_minimap && g_round_map && which != 0 && small[2] > 0 && !g_peek && !second) {   /* the map round, not the screen small */
+            int z = g_small_size < 0 || g_small_size > 2 ? 1 : g_small_size;
+            round_minimap(v, small, z);
+            small[0] = small[1] = small[2] = small[3] = 0;
+        }
         if (g_peek && !pop) { small[0] = (v->cw - 256) / 2; small[1] = 0; small[2] = 256; small[3] = 192; v->alpha = 1.0f; }   /* the other screen, whole */
         else if (g_accolade_small && small == v->top && !second && top_page_mode() != 1 && v->npiece + 3 <= GL_MAX_PIECES) {   /* a title given, the top screen small (not its page: pop_update()): its gold plate instead */
             small[0] = small[1] = small[2] = small[3] = 0;
@@ -2015,6 +2117,7 @@ static void settings_load(void) {
          * chosen, the one layout is widescreen with the map in the corner, stacked in Classic) */
         else if (!strcmp(key, "small_screen_size")) { int v = atoi(val); if (v >= 0 && v <= 2) g_small_size = v; }
         else if (!strcmp(key, "minimap")) g_map_shown = atoi(val) != 0;
+        else if (!strcmp(key, "round_minimap")) g_round_map = atoi(val) != 0;
         else if (!strcmp(key, "volume")) { int v = atoi(val); if (v >= 0 && v <= 100) g_volume = v; }
         else if (!strcmp(key, "mute")) g_mute = atoi(val) != 0;
         else if (!strcmp(key, "widescreen_battle_hud")) g_hud = atoi(val) != 0;
@@ -2125,6 +2228,7 @@ static void settings_save(void) {
     fprintf(f, "hd_movies = %d\n", g_hdmovie);
     fprintf(f, "# the map in the top right corner (gone during battles): 0 or 1; its size 0 small, 1 medium, 2 large\n");
     fprintf(f, "minimap = %d\n", g_map_shown);
+    fprintf(f, "round_minimap = %d\n", g_round_map);
     fprintf(f, "small_screen_size = %d\n", g_small_size);
     fprintf(f, "# widescreen battles: the party's panels along the top and the commands in the bottom left, over the 3D: 0 or 1\n");
     fprintf(f, "widescreen_battle_hud = %d\n", g_hud);
@@ -2825,6 +2929,22 @@ static void wide_update(int a_on_top) {
         for (int i = 0; i < 256 * 192 && blank; i += 7) if (px[i] & 0xFFFFFF) blank = 0;
         g_small_blank = blank;
     }
+    if (g_minimap && which == 1) {                                /* the map's place name plate at the top screen's top right: where it starts */
+        const uint32_t* tp = g_engine_out[a_on_top ? 0 : 1];
+        int x = 255, n = 0;
+        for (; x > 120; x--) {                                    /* (its dark brown, gold edge or white letters along row 7) */
+            uint32_t q = tp[7 * 256 + x] & 0xFFFFFF; int r = q >> 16, g = (q >> 8) & 255, b = q & 255;
+            int brown = r >= 80 && r <= 112 && g >= 56 && g <= 80 && b >= 32 && b <= 56, gold = r > 190 && g > 130 && g < 160 && b < 70, white = r > 230 && g > 230 && b > 230;
+            if (!(brown || gold || white)) break;
+            n += brown;
+        }
+        g_place_plate = n > 20 && x < 245 ? x + 1 : -1;
+        if (g_place_plate >= 0) {                                 /* its white letters, from the first to the last */
+            int a = 256, b = -1;
+            for (int y = 2; y < 15; y++) for (int xx = g_place_plate; xx < 256; xx++) { uint32_t q = tp[y * 256 + xx]; if ((q & 0xF0F0F0) == 0xF0F0F0) { if (xx < a) a = xx; if (xx > b) b = xx; } }
+            if (b < a) g_place_plate = -1; else { g_place_txt[0] = a; g_place_txt[1] = b + 1; }
+        }
+    }
     if (g_minimap && which == 1 && g_comp_has3d) {   /* the minimap: is the game's 2D (a menu) under it? Then it fades out, and back once that's gone */
         /* (only while it can show: no popping back over a shop's menu after its card) */
         static const int SW[3] = { 64, 85, 128 }, SH[3] = { 48, 64, 96 };
@@ -3506,6 +3626,15 @@ static void shop_update(int a_on_top) {
  * shows it whole, while it shows the map (the 3D on the bottom screen, or the
  * map kept during a battle); the mouse over that window points at them. */
 static void map_overlay(GlPresent* v, SDL_Window* win, int a_on_top) {
+    if (v->round[2] > 0) {                                        /* the round minimap: its marks drawn with it; the mouse in its circle */
+        if (SDL_GetMouseFocus() != win || mapmarks_top_page()) return;
+        int ww, wh, dw, dh, mx, my; SDL_GetWindowSize(win, &ww, &wh); SDL_GL_GetDrawableSize(win, &dw, &dh);
+        SDL_GetMouseState(&mx, &my);
+        float lx = (((float)mx + 0.5f) * (float)dw / (float)ww - v->ox) / v->sc, ly = (((float)my + 0.5f) * (float)dh / (float)wh - v->oy) / v->sc;
+        float dx = (lx - v->round[0]) / v->round[2], dy = (ly - v->round[1]) / v->round[2];
+        if (dx * dx + dy * dy < 1) mapmarks_hover(v->round_src[0] + dx * v->round_src[2], v->round_src[1] + dy * v->round_src[2]);
+        return;
+    }
     const float* t = v->top;
     float least = g_minimap ? 48 : 128;                          /* the minimap: small, but it's the map */
     if (t[2] < least || t[3] < least * 0.75f || v->topx[1] != 256 || (a_on_top && !v->held) || (g_minimap && g_mini_vis < 0.99f) || mapmarks_top_page()) return;
@@ -3704,6 +3833,8 @@ static void present_gl(void) {
     {   /* the map's markers: drawn when they change */
         const uint8_t* rgba;
         if (mapmarks_update(&rgba)) gl_set_overlay(rgba, MAPMARKS_W, MAPMARKS_H);
+        int sw, sh;                                               /* the round minimap's list of the monsters near */
+        if (mapmarks_species(&rgba, &sw, &sh)) { gl_set_layer(GL_LAYER_SPECIES, rgba, sw, sh); g_species_w = rgba ? sw : 0; g_species_h = rgba ? sh : 0; }
     }
     int w, h; SDL_GL_GetDrawableSize(g_win, &w, &h);
     {   /* the in-game menu (Esc) or the journal (J), over everything */
@@ -3832,6 +3963,7 @@ static void menu_sync(void) {
     menu_check(MI_MAPMARKS, g_mapmarks); menu_enable(MI_MAPMARKS, g_gl);
     menu_check(MI_MAPMARKS_OPENED, g_mapmarks_opened); menu_enable(MI_MAPMARKS_OPENED, g_gl && g_mapmarks);
     menu_check(MI_MAPMONSTERS, g_mapmarks_monsters); menu_enable(MI_MAPMONSTERS, g_gl && g_mapmarks);
+    menu_check(MI_ROUND_MAP, g_round_map); menu_enable(MI_ROUND_MAP, g_gl);
     menu_check(MI_INTERIOR_MAPS, g_interior_maps); menu_enable(MI_INTERIOR_MAPS, g_gl);
     menu_check(MI_MAP_LEGEND, g_map_legend); menu_enable(MI_MAP_LEGEND, g_gl && g_mapmarks);
     menu_check(MI_NAME_TYPING, g_name_typing); menu_enable(MI_NAME_TYPING, g_gl);
@@ -4468,6 +4600,7 @@ static void do_action(int id) {
     case MI_MAPMARKS: g_mapmarks = !g_mapmarks; break;
     case MI_MAPMARKS_OPENED: g_mapmarks_opened = !g_mapmarks_opened; break;
     case MI_MAPMONSTERS: g_mapmarks_monsters = !g_mapmarks_monsters; break;
+    case MI_ROUND_MAP: g_round_map = !g_round_map; break;
     case MI_INTERIOR_MAPS: g_interior_maps = !g_interior_maps; break;
     case MI_MAP_LEGEND: g_map_legend = !g_map_legend; break;
     case MI_NAME_TYPING: g_name_typing = !g_name_typing; break;

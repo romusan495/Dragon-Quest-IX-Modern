@@ -323,8 +323,8 @@ fr = &Carte : marquer les coffres, bibliothèques et quêtes (la souris dessus :
 en = Map: also mark the ones already &emptied or done (greyed)
 fr = Carte : marquer aussi ceux déjà &vidés ou finis (en gris)
 
-en = Map: show the m&onsters walking nearby (red dots)
-fr = Carte : montrer les m&onstres qui rôdent (points rouges)
+en = Map: show the m&onsters walking nearby (a colour and a name for each kind)
+fr = Carte : montrer les m&onstres qui rôdent (une couleur et un nom par espèce)
 
 en = Map: a plan of the &rooms inside buildings (drawn from their walls)
 fr = Carte : un plan des &pièces dans les bâtiments (tracé d'après leurs murs)
@@ -1245,3 +1245,6 @@ fr = Verr num
 
 en = num
 fr = num
+
+en = Map in the corner: roun&d, centred on you (gold compass ring)
+fr = Carte dans le coin : ron&de, centrée sur vous (anneau doré et boussole)

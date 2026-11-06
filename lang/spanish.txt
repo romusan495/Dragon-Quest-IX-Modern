@@ -323,8 +323,8 @@ es = &Mapa: marcar cofres, estanterías y misiones (el ratón encima: su conteni
 en = Map: also mark the ones already &emptied or done (greyed)
 es = Mapa: marcar también los ya &vaciados o hechos (en gris)
 
-en = Map: show the m&onsters walking nearby (red dots)
-es = Mapa: mostrar los m&onstruos cercanos (puntos rojos)
+en = Map: show the m&onsters walking nearby (a colour and a name for each kind)
+es = Mapa: mostrar los m&onstruos cercanos (un color y un nombre por especie)
 
 en = Map: a plan of the &rooms inside buildings (drawn from their walls)
 es = Mapa: un plano de las &salas de los edificios (trazado según sus paredes)
@@ -1245,3 +1245,6 @@ es = Bloq num
 
 en = num
 es = num
+
+en = Map in the corner: roun&d, centred on you (gold compass ring)
+es = Mapa en la esquina: redon&do, centrado en ti (anillo dorado con brújula)

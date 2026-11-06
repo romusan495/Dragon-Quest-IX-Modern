@@ -32,3 +32,13 @@ void mapmarks_hover(float x, float y);
 #define SHOP_DESC_X    18
 #define SHOP_DESC_ICON 32
 int mapmarks_shop(uint32_t* px, uint8_t* info, int desc_y, const uint8_t** rgba, int* changed);
+
+/* Where the hero is on the top screen's map (DS pixels), for the round
+ * minimap to centre on him; g_map_hero_ok 0: not known now. */
+extern float g_map_hero[2];
+extern int g_map_hero_ok;
+/* The round minimap's list of the kinds of monsters near (their colours on
+ * the map, names, how many): premultiplied RGBA, rows top-down, at the
+ * overlay's scale (MAPMARKS_R pixels per DS pixel); *rgba NULL: none. 1 if
+ * it changed. */
+int mapmarks_species(const uint8_t** rgba, int* w, int* h);

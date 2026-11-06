@@ -535,7 +535,7 @@ static const char* FS_COPY =
      * letters (not a light parchment); 13 as 3, and dim grey letters (a list's
      * ??? not known yet) kept grey; 14 as 12, and those grey letters; 15 as 6,
      * the dark letters made grey (an ingredient short) */
-    "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds;\n"
+    "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds; uniform vec4 u_clip; uniform float u_fade;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
     "float ink(vec2 uv, int light) { ivec2 ts = textureSize(u_src, 0); vec4 c = light == 3 ? texelFetch(u_src, clamp(ivec2(uv * vec2(ts)), ivec2(0), ts - 1), 0) : textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (relative: a parchment, however dark, is as coloured) */
@@ -561,6 +561,15 @@ static const char* FS_COPY =
     "  if (u_mode == 2 || u_mode == 7) {\n"
     "    vec2 p = v_uv * u_px; float d = min(min(p.x, p.y), min(u_px.x - p.x, u_px.y - p.y)) / u_line;\n"
     "    o_color = d < 0.6 ? vec4(vec3(0.08), 0.8) : d < 1.6 ? vec4(vec3(0.5), 1.0) : u_mode == 7 ? vec4(vec3(0.094), 1.0) : vec4(0.0, 0.0, 0.0, 0.55); return;\n"
+    "  }\n"
+    "  if (u_mode == 25 || u_mode == 26) {\n"   /* (the round minimap: the map's part in a circle, its edge smooth; 25 the map, outside it parchment; 26 its marks) */
+    "    vec2 l = (v_uv - u_clip.xy) / u_clip.zw - 0.5; float rr = length(l) * 2.0, e = 2.0 / max(u_px.x, 1.0);\n"
+    "    float m = 1.0 - smoothstep(1.0 - e, 1.0, rr);\n"
+    "    vec4 c = texture(u_src, v_uv);\n"
+    "    bool out_ = v_uv.x < u_ds.x || v_uv.x > u_ds.y || v_uv.y < min(u_line, u_px.y) || v_uv.y > max(u_line, u_px.y);\n"
+    "    if (u_mode == 25) { if (out_) c = vec4(0.83, 0.68, 0.43, 1.0); c.rgb *= 1.0 - 0.35 * smoothstep(0.7, 1.0, rr); }\n"   /* (a little darker towards its rim) */
+    "    else if (out_) c = vec4(0.0);\n"
+    "    o_color = c * m * u_fade; return;\n"
     "  }\n"
     "  if (u_mode == 23) {\n"   /* (a cell of a modern grid: see-through dark, a thin grey line round it, its corners rounded) */
     "    vec2 p = v_uv * u_px, h = u_px * 0.5; float r = 1.2 * u_line; vec2 q = abs(p - h) - (h - r); float d = -(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r);\n"
@@ -2437,6 +2446,50 @@ void gl_set_menu(const uint8_t* rgba, int w, int h) {
     p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
+/* The round minimap (GlPresent.round): the top screen's part around the
+ * hero in a circle (outside the screen: parchment), then the map's marks
+ * (gl_set_overlay()) the same, over it. */
+static void draw_round(const GlPresent* v) {
+    const float* r = v->round, *s = v->round_src;
+    if (r[2] <= 0 || s[2] <= 0) return;
+    float W = (float)(256 + 2 * g_wside), x0 = v->ox + (r[0] - r[2]) * v->sc, y1 = v->oy + (r[1] + r[2]) * v->sc, d = 2 * r[2] * v->sc;
+    p_glUseProgram(prog_copy);
+    p_glActiveTexture(GL_TEXTURE0); p_glBindSampler(0, 0);
+    p_glUniform1i(p_glGetUniformLocation(prog_copy, "u_src"), 0);
+    p_glUniform4f(p_glGetUniformLocation(prog_copy, "u_rect"), x0 / (float)v->win_w * 2 - 1, 1 - y1 / (float)v->win_h * 2, d / (float)v->win_w * 2, d / (float)v->win_h * 2);
+    p_glUniform2f(p_glGetUniformLocation(prog_copy, "u_px"), d, d);
+    p_glUniform1f(p_glGetUniformLocation(prog_copy, "u_fade"), r[3] > 0 ? r[3] : 1.0f);
+    p_glBindVertexArray(vao_quad);
+    p_glEnable(GL_BLEND); p_glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+    p_glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);   /* premultiplied */
+    {   /* the map: the composed picture's upper half, the DS's columns after the sides; y up */
+        float u0 = ((float)g_wside + s[0] - s[2]) / W, uw = 2 * s[2] / W, v0 = 1.0f - (s[1] + s[2]) / 384.0f, vh = 2 * s[2] / 384.0f;
+        p_glBindTexture(GL_TEXTURE_2D, final_tex);
+        p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        p_glUniform4f(p_glGetUniformLocation(prog_copy, "u_uv"), u0, v0, uw, vh);
+        p_glUniform4f(p_glGetUniformLocation(prog_copy, "u_clip"), u0, v0, uw, vh);
+        p_glUniform2f(p_glGetUniformLocation(prog_copy, "u_ds"), (float)g_wside / W, ((float)g_wside + 256) / W);   /* (the screen's bounds: x, then y in u_line / u_px.y) */
+        p_glUniform1f(p_glGetUniformLocation(prog_copy, "u_line"), 0.5f);
+        p_glUniform2f(p_glGetUniformLocation(prog_copy, "u_px"), d, 1.0f);
+        p_glUniform1i(p_glGetUniformLocation(prog_copy, "u_mode"), 25);
+        p_glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+    if (overlay_on[0]) {   /* its marks: rows top-down, 0..1 the whole top screen */
+        float u0 = (s[0] - s[2]) / 256.0f, uw = 2 * s[2] / 256.0f, v0 = (s[1] + s[2]) / 192.0f, vh = -2 * s[2] / 192.0f;
+        p_glBindTexture(GL_TEXTURE_2D, overlay_tex[0]);
+        p_glUniform4f(p_glGetUniformLocation(prog_copy, "u_uv"), u0, v0, uw, vh);
+        p_glUniform4f(p_glGetUniformLocation(prog_copy, "u_clip"), u0, v0, uw, vh);
+        p_glUniform2f(p_glGetUniformLocation(prog_copy, "u_ds"), 0.0f, 1.0f);
+        p_glUniform1f(p_glGetUniformLocation(prog_copy, "u_line"), 0.0f);
+        p_glUniform2f(p_glGetUniformLocation(prog_copy, "u_px"), d, 1.0f);
+        p_glUniform1i(p_glGetUniformLocation(prog_copy, "u_mode"), 26);
+        p_glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+    p_glUniform1i(p_glGetUniformLocation(prog_copy, "u_mode"), 0);
+    p_glUniform1f(p_glGetUniformLocation(prog_copy, "u_fade"), 1.0f);
+    p_glDisable(GL_BLEND);
+}
+
 /* Draw the screens (and the console, if chosen) into the window. Call once
  * per emulated frame: the motion blur advances with every call. */
 void gl_present(const GlPresent* v) {
@@ -2519,6 +2572,7 @@ void gl_present(const GlPresent* v) {
             draw_pieces(v, final_tex, 1, v->npiece);
         } else draw_pieces(v, final_tex, 0, v->npiece);
     }
+    draw_round(v);
     if (overlay_on[0] && v->overlay[2] > 0 && v->overlay[3] > 0) draw_overlay(v, v->overlay, overlay_tex[0]);
     if (overlay_on[1] && v->icons[2] > 0 && v->icons[3] > 0) draw_overlay(v, v->icons, overlay_tex[1]);
     for (int i = 0; i < GL_LAYERS; i++)                           /* the layers, in their order (under the in-game menu) */

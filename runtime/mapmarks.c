@@ -62,6 +62,8 @@ int g_mapmarks_opened = 1;
 int g_mapmarks_monsters = 1;
 int g_interior_maps = 1;
 int g_map_legend = 1;
+float g_map_hero[2];
+int g_map_hero_ok;
 
 /* ---------------------------------------------------------------- the game's memory */
 #define FIELD_PTR   0x0F33E0       /* 0 until an adventure is loaded (farm.c) */
@@ -401,6 +403,38 @@ static void load_names(int lang) {
         clean_name(raw, nm->name, sizeof nm->name);
     }
     free(b);
+}
+
+/* The monsters' names, by their number (mon_list_<language>.nat: 32 bytes
+ * each, +4 its model's name, +8 its own, +12 its number; the strings after). */
+#define MON_NAMES 1024
+static char (*g_mon_name)[40]; static int g_mon_lang = -1;
+static const char* mon_name(int id) {
+    if (g_mon_lang != g_fw_language) {
+        g_mon_lang = g_fw_language;
+        if (!g_mon_name) g_mon_name = calloc(MON_NAMES, sizeof *g_mon_name);
+        if (!g_mon_name) return NULL;
+        memset(g_mon_name, 0, MON_NAMES * sizeof *g_mon_name);
+        uint32_t n = 0, sz = 0;
+        const uint8_t* pack = rom_file("data/prm/mon_list.gp2", &n);
+        char fname[40];
+        snprintf(fname, sizeof fname, "mon_list_%s.nat", LANG_SUFFIX[g_fw_language >= 1 && g_fw_language <= 5 ? g_fw_language - 1 : 0]);
+        uint8_t* b = gpc_file(pack, n, fname, &sz);
+        if (!b) b = gpc_file(pack, n, "mon_list_en.nat", &sz);
+        if (b && sz >= 4) {
+            uint32_t count = le32(b) & 0xFFF, base = 4 + 32 * count;
+            for (uint32_t i = 0; i < count && base <= sz; i++) {
+                const uint8_t* e = b + 4 + 32 * i;
+                uint32_t id = le32(e + 12) & 0xFFFF, at = base + le32(e + 8);
+                if (id >= MON_NAMES || at >= sz) continue;
+                char raw[96]; snprintf(raw, sizeof raw, "%.*s", (int)slen((const char*)b + at, sz - at), (const char*)b + at);
+                clean_name(raw, g_mon_name[id], sizeof g_mon_name[id]);
+                if (g_mon_name[id][0] >= 'a' && g_mon_name[id][0] <= 'z') g_mon_name[id][0] -= 32;   /* (written small: a capital first) */
+            }
+        }
+        free(b);
+    }
+    return g_mon_name && id > 0 && id < MON_NAMES && g_mon_name[id][0] ? g_mon_name[id] : NULL;
 }
 
 static const char* item_name(uint16_t key) {
@@ -831,6 +865,12 @@ typedef struct {
 #define MAX_MARKS 256
 static Mark g_mark[MAX_MARKS]; static int g_nmark;
 static float g_hx = -1, g_hy = -1; static int g_hover = -1;
+/* the kinds of monsters walking near (each its colour on the map, and in the
+ * round minimap's list): by number, how many */
+#define SP_MAX 7
+static int g_sp_id[SP_MAX], g_sp_n[SP_MAX], g_nsp;
+static const uint32_t SP_COL[SP_MAX] = { 0xE0302A, 0xF08A24, 0xE8C840, 0x5CC060, 0x3CC0E0, 0xB070E0, 0xF070B0 };
+static uint32_t sp_color(int id) { for (int i = 0; i < g_nsp; i++) if (g_sp_id[i] == id) return SP_COL[i]; return SP_COL[0]; }
 static int g_here = -1, g_own, g_plan_on; static const Pic* g_pic;   /* this frame's place, drawn in its own units, on its plan, and picture */
 
 void mapmarks_hover(float x, float y) { g_hx = x; g_hy = y; }
@@ -892,10 +932,11 @@ static uint8_t g_img[MAPMARKS_W * MAPMARKS_H * 4];
 #define TXT_H 440
 static uint32_t g_txt[MAPMARKS_W * TXT_H];                       /* the tooltip's text, drawn alone */
 
+static uint8_t* g_dst = g_img; static int g_dw = MAPMARKS_W, g_dh = MAPMARKS_H;   /* where blend() draws (the overlay; the monsters' list) */
 static void blend(int x, int y, uint32_t rgb, float a) {
-    if (x < 0 || y < 0 || x >= MAPMARKS_W || y >= MAPMARKS_H || a <= 0) return;
+    if (x < 0 || y < 0 || x >= g_dw || y >= g_dh || a <= 0) return;
     if (a > 1) a = 1;
-    uint8_t* p = &g_img[((size_t)y * MAPMARKS_W + x) * 4];
+    uint8_t* p = &g_dst[((size_t)y * g_dw + x) * 4];
     float r = (float)((rgb >> 16) & 255), g = (float)((rgb >> 8) & 255), b = (float)(rgb & 255), k = 1 - a;
     p[0] = (uint8_t)(r * a + p[0] * k); p[1] = (uint8_t)(g * a + p[1] * k); p[2] = (uint8_t)(b * a + p[2] * k);
     p[3] = (uint8_t)(255 * a + p[3] * k);
@@ -994,9 +1035,9 @@ static void draw_mark(const Mark* m, int hover) {
         rbox(cx, cy, 2.4f * R - 2, 2.4f * R - 2, 2.4f * R - 2, 0x2A6CE0, 1);
         return;
     }
-    if (m->door == -2) {                                         /* a monster: a red dot */
+    if (m->door == -2) {                                         /* a monster: a dot, its kind's colour */
         rbox(cx, cy, 1.9f * R, 1.9f * R, 1.9f * R, 0xFFF8E0, 0.8f);
-        rbox(cx, cy, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 0xE0302A, 1);
+        rbox(cx, cy, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 1.9f * R - 1.5f, sp_color(m->spot), 1);
         return;
     }
     if (m->door >= 0) {                                          /* a building: its contents on a dark badge */
@@ -1244,7 +1285,8 @@ static void lines_draw(int x0, int y0, int tw, int th, int lh) {
 
 static void draw_tooltip(const Mark* m) {
     g_nline = 0;
-    if (m->door >= 0) door_lines(m);
+    if (m->door == -2) { const char* n = mon_name(m->spot); if (n) add_line(C_TEXT, n); }   /* a monster: its name */
+    else if (m->door >= 0) door_lines(m);
     else spot_lines(g_here, mark_spot(m->spot), m->opened, 0);
     if (!g_nline) return;
     int tw, th, lh = lines_size(&tw, &th, 7.5f * MAPMARKS_R);
@@ -1731,7 +1773,7 @@ int mapmarks_update(const uint8_t** rgba) {
             was = 0; had = 1; last_key = 0;                      /* (the map's marks drawn afresh) */
         }
     }
-    g_nmark = 0; g_here = -1; g_own = 0; g_plan_on = 0; g_pic = NULL; g_in_grotto = 0;
+    g_nmark = 0; g_here = -1; g_own = 0; g_plan_on = 0; g_pic = NULL; g_in_grotto = 0; g_map_hero_ok = 0; g_nsp = 0;
     int ok = (g_mapmarks || g_interior_maps) && rd32(FIELD_PTR) != 0;
     uint32_t mp = rd32(MINIMAP_PTR);
     if (ok && (mp < 0x02000000 || mp >= 0x02400000)) ok = 0;
@@ -1826,6 +1868,7 @@ int mapmarks_update(const uint8_t** rgba) {
                 float x = (float)(int32_t)rd32(a + 0x44) / 4096.0f, z = (float)(int32_t)rd32(a + 0x4C) / 4096.0f;
                 Mark m = { x * k + ox, z * k + oy, -3, -1, 0, 0, 0, 0, 0, 0 };
                 if (on_screen(m.sx, m.sy)) add_mark(&m);
+                g_map_hero[0] = m.sx; g_map_hero[1] = m.sy; g_map_hero_ok = 1;
             }
         }
     }
@@ -1843,6 +1886,19 @@ int mapmarks_update(const uint8_t** rgba) {
             }
         }
     }
+    /* the hero on the map (the round minimap centres on him): as the
+     * monsters below; on a plan, as drawn there */
+    if (ok && !g_plan_on) {
+        float scale = (float)(int32_t)rd32(mp + 0x38) / 4096.0f;
+        float cx = field ? 0 : (float)(int32_t)rd32(mp + 0x44), cy = field ? 0 : (float)(int32_t)rd32(mp + 0x48);
+        if (field) field_origin(top, scale, &cx, &cy);
+        uint32_t a = rd32(FIELD_PTR);
+        if (scale > 0.1f && scale < 64 && a >= 0x02000000 && a < 0x02400000) {
+            g_map_hero[0] = (float)(int32_t)rd32(a + 0x44) / 4096.0f * scale - cx + 128;
+            g_map_hero[1] = (float)(int32_t)rd32(a + 0x4C) / 4096.0f * scale - cy + 96;
+            g_map_hero_ok = 1;
+        }
+    }
     /* the monsters walking around: a town's picture scrolls (its centre at
      * +0x44/+0x48), a field's shows the whole field around its origin */
     if (ok && g_mapmarks && g_mapmarks_monsters && !g_plan_on) {
@@ -1850,11 +1906,22 @@ int mapmarks_update(const uint8_t** rgba) {
         float scale = (float)(int32_t)rd32(mp + 0x38) / 4096.0f;
         float cx = field ? 0 : (float)(int32_t)rd32(mp + 0x44), cy = field ? 0 : (float)(int32_t)rd32(mp + 0x48);
         if (field) field_origin(top, scale, &cx, &cy);
+        g_nsp = 0;
+        for (int k = 0; scale > 0.1f && scale < 64 && k < MON_COUNT; k++) {   /* (their kinds first, in their numbers' order: steady colours) */
+            uint32_t a = rd32(FIELD_PTR + 4 * (MON_FIRST + k));
+            if (a < 0x02000000 || a >= 0x02400000 || (rd32(a + 4) >> 16) != here) continue;
+            int id = (int)(rd32(a) >> 16), j = 0;
+            while (j < g_nsp && g_sp_id[j] < id) j++;
+            if (j < g_nsp && g_sp_id[j] == id) { g_sp_n[j]++; continue; }
+            if (g_nsp == SP_MAX) continue;
+            memmove(g_sp_id + j + 1, g_sp_id + j, sizeof(int) * (size_t)(g_nsp - j)); memmove(g_sp_n + j + 1, g_sp_n + j, sizeof(int) * (size_t)(g_nsp - j));
+            g_sp_id[j] = id; g_sp_n[j] = 1; g_nsp++;
+        }
         for (int k = 0; scale > 0.1f && scale < 64 && k < MON_COUNT; k++) {
             uint32_t a = rd32(FIELD_PTR + 4 * (MON_FIRST + k));
             if (a < 0x02000000 || a >= 0x02400000 || (rd32(a + 4) >> 16) != here) continue;   /* there, on this map */
             float x = (float)(int32_t)rd32(a + 0x44) / 4096.0f, z = (float)(int32_t)rd32(a + 0x4C) / 4096.0f;
-            Mark m = { x * scale - cx + 128, z * scale - cy + 96, -2, -1, 0, 0, 0, 0, 0, 0 };
+            Mark m = { x * scale - cx + 128, z * scale - cy + 96, -2, (int)(rd32(a) >> 16), 0, 0, 0, 0, 0, 0 };   /* (its number: +2) */
             if (on_screen(m.sx, m.sy)) add_mark(&m);
         }
     }
@@ -1863,7 +1930,7 @@ int mapmarks_update(const uint8_t** rgba) {
     float best = 64;                                             /* within 8 pixels */
     for (int i = 0; i < g_nmark; i++) {
         float dx = g_mark[i].sx - g_hx, dy = g_mark[i].sy - g_hy;
-        if (g_hx >= 0 && g_mark[i].door > -2 && dx * dx + dy * dy < best) { best = dx * dx + dy * dy; g_hover = i; }
+        if (g_hx >= 0 && g_mark[i].door > -3 && dx * dx + dy * dy < best) { best = dx * dx + dy * dy; g_hover = i; }
     }
     /* redraw only when something changed */
     uint32_t key = 2166136261u;
@@ -1873,6 +1940,7 @@ int mapmarks_update(const uint8_t** rgba) {
         for (int k = 0; k < 11; k++) key = (key ^ (uint32_t)v[k]) * 16777619u;
     }
     key = (key ^ (uint32_t)(g_hover + 2)) * 16777619u;
+    for (int i = 0; i < g_nsp; i++) key = (key ^ (uint32_t)g_sp_id[i]) * 16777619u;   /* (the kinds' colours) */
     key = (key ^ (uint32_t)g_fw_language) * 16777619u;
     key = (key ^ (uint32_t)g_here) * 16777619u;
     key = (key ^ (uint32_t)(g_in_grotto ? g_gen : -1)) * 16777619u;
@@ -2046,6 +2114,47 @@ int mapmarks_shop(uint32_t* px, uint8_t* info, int desc_y, const uint8_t** rgba,
 }
 
 /* ---------------------------------------------------------------- shared readers (romdata.h) */
+/* The round minimap's list of the monsters near: a dark box, a line each
+ * (a dot of its colour, its name, how many). */
+int mapmarks_species(const uint8_t** rgba, int* w, int* h) {
+    static uint8_t img[MAPMARKS_W * 160 * 4]; static uint32_t last = 1; static int iw, ih;
+    uint32_t key = 2166136261u;
+    for (int i = 0; i < g_nsp; i++) { key = (key ^ (uint32_t)g_sp_id[i]) * 16777619u; key = (key ^ (uint32_t)g_sp_n[i]) * 16777619u; }
+    key = (key ^ (uint32_t)g_fw_language) * 16777619u; key ^= (uint32_t)g_nsp << 24;
+    *rgba = g_nsp ? img : NULL; *w = iw; *h = ih;
+    if (key == last) return 0;
+    last = key;
+    if (!g_nsp) { iw = ih = 0; *w = *h = 0; return 1; }
+    g_nline = 0;
+    for (int i = 0; i < g_nsp; i++) {
+        const char* n = mon_name(g_sp_id[i]); char t[64];
+        if (g_sp_n[i] > 1) snprintf(t, sizeof t, "%s  x%d", n ? n : "?", g_sp_n[i]); else snprintf(t, sizeof t, "%s", n ? n : "?");
+        add_line(C_TEXT, t);
+    }
+    const float R = MAPMARKS_R;
+    int tw, th, lh = lines_size(&tw, &th, 7.0f * R), dot = (int)(4.5f * R);
+    iw = tw + dot; ih = th;
+    if (iw > MAPMARKS_W) iw = MAPMARKS_W;
+    if (ih > 160) ih = 160;
+    memset(img, 0, sizeof img);
+    uint8_t* keep = g_dst; int kw = g_dw, kh = g_dh;
+    g_dst = img; g_dw = iw; g_dh = ih;
+    rbox(iw / 2.0f, ih / 2.0f, iw / 2.0f, ih / 2.0f, 2.0f * R, 0x101418, 0.85f);
+    for (int i = 0; i < g_nsp && i < g_nline; i++) {
+        float cy = (float)LINES_PAD + (float)i * (float)lh + (float)lh * 0.45f;
+        rbox(LINES_PAD + 1.6f * R, cy, 1.6f * R, 1.6f * R, 1.6f * R, 0xFFF8E0, 0.8f);
+        rbox(LINES_PAD + 1.6f * R, cy, 1.6f * R - 1.2f, 1.6f * R - 1.2f, 1.6f * R - 1.2f, SP_COL[i], 1);
+    }
+    for (int y = 0; y < g_nline * lh && y + LINES_PAD < ih; y++)
+        for (int x = 0; x < tw - 2 * LINES_PAD; x++) {
+            uint32_t t = g_txt[y * MAPMARKS_W + x];
+            if (t) blend(dot + LINES_PAD + x, LINES_PAD + y, g_line[y / lh].c, (float)((t >> 16) & 255) / 255.0f);
+        }
+    g_dst = keep; g_dw = kw; g_dh = kh;
+    *w = iw; *h = ih;
+    return 1;
+}
+
 const uint8_t* romdata_file(const char* path, uint32_t* size) { return rom_file(path, size); }
 uint8_t* romdata_gpc_file(const uint8_t* d, uint32_t n, const char* name, uint32_t* size) { return gpc_file(d, n, name, size); }
 int romdata_rec_next(const uint8_t* b, uint32_t end, uint32_t* p, Rec* r) { return rec_next(b, end, p, r); }

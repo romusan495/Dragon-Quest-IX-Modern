@@ -16,6 +16,8 @@ enum { GL_LAYER_HINT,                                 /* a button's sign over th
        GL_LAYER_BACK,                                 /* a picture behind a modern screen (Equip's shop): drawn first, under the pieces */
        GL_LAYER_PLAQUES,                              /* ...the jobs' plaques on its wall */
        GL_LAYER_JOBS,                                 /* ...the jobs' signs on an item's card (who can equip it) */
+       GL_LAYER_RING,                                 /* the round minimap's gold ring and compass, over it */
+       GL_LAYER_SPECIES,                              /* ...the monsters near: their kinds' colours and names, under it */
        GL_LAYERS };
 
 int gl_render_init(int scale);                        /* 0 on failure (use the software path) */
@@ -60,6 +62,8 @@ typedef struct {
     int movie2;                                       /* a movie in two halves, stacked: its sides blurred (draw_movie_sides) */
     float overlay[4];                                 /* where to draw gl_set_overlay()'s picture on the canvas (w 0: not) */
     float icons[4];                                   /* ...and gl_set_icons()' */
+    float round[4];                                   /* the round minimap: its centre (canvas x, y), its radius (0: none), its alpha */
+    float round_src[3];                               /* ...the top screen's part in it: centre (DS x, y), radius (DS pixels) */
     float layer[GL_LAYERS][4];                        /* ...and each gl_set_layer()'s (w 0: not this frame) */
 } GlPresent;
 void gl_hold(void);                                   /* keep this frame's picture (the map window during battles) */

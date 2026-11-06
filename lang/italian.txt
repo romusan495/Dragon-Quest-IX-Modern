@@ -323,8 +323,8 @@ it = &Mappa: segna forzieri, librerie e missioni (il mouse sopra: cosa contiene)
 en = Map: also mark the ones already &emptied or done (greyed)
 it = Mappa: segna anche quelli già &svuotati o completati (in grigio)
 
-en = Map: show the m&onsters walking nearby (red dots)
-it = Mappa: mostra i m&ostri nei dintorni (punti rossi)
+en = Map: show the m&onsters walking nearby (a colour and a name for each kind)
+it = Mappa: mostra i m&ostri nei dintorni (un colore e un nome per specie)
 
 en = Map: a plan of the &rooms inside buildings (drawn from their walls)
 it = Mappa: una pianta delle &stanze negli edifici (disegnata dai loro muri)
@@ -1245,3 +1245,6 @@ it = Bloc num
 
 en = num
 it = num
+
+en = Map in the corner: roun&d, centred on you (gold compass ring)
+it = Mappa nell'angolo: roton&da, centrata su di te (anello dorato con bussola)
