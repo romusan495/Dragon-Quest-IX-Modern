@@ -14,6 +14,10 @@
  * - textures with nothing to draw (all see-through, or one colour) get no HD
  *   version: the game's own draws the same, and a blank one in the pack can
  *   stand in for a texture the game fills in later (dialogue letters);
+ * - the tiniest textures (MIN_TEXELS or fewer, 16 x 16 and smaller) get none
+ *   either: Real-ESRGAN turns their few pixels into flat smudges in the wrong
+ *   colours (the monsters walking on the map), and the game enlarges them with
+ *   xBR instead (gl_render.c PACK_MIN_TEXELS, the same limit);
  * - Real-ESRGAN's picture is used as it is (smooth and painted, Romuald's
  *   choice); TEXHD_SHARP=<0..100> mixes in that % of a sharp (Lanczos)
  *   enlargement of the original instead, which keeps the pixels' grain
@@ -47,6 +51,7 @@
 
 #define PAD 8
 #define SCALE 4
+#define MIN_TEXELS 256                                         /* smaller textures: no HD version (gl_render.c PACK_MIN_TEXELS) */
 #define BATCH 100                                              /* textures per Real-ESRGAN run */
 static FILE* g_log;
 static int g_sharp = 0;                                        /* % of the sharp enlargement mixed into Real-ESRGAN's (TEXHD_SHARP) */
@@ -390,9 +395,10 @@ static int upscale_new(const char* game) {
         char p[700]; snprintf(p, sizeof p, "%s" SEP "%s", dump, names[i]);
         int w, h, c; unsigned char* px = stbi_load(p, &w, &h, &c, 4);
         if (!px) continue;
-        int b = 1; for (int k = 1; k < w * h && b; k++) if (memcmp(px + k * 4, px, 4) && (px[k * 4 + 3] || px[3])) b = 0;
+        int b = w * h <= MIN_TEXELS;                             /* too small: the game enlarges it with xBR */
+        if (!b) { b = 1; for (int k = 1; k < w * h && b; k++) if (memcmp(px + k * 4, px, 4) && (px[k * 4 + 3] || px[3])) b = 0; }
         stbi_image_free(px);
-        if (b) blank++;                                          /* nothing to draw (see-through or one colour): left as it is */
+        if (b) blank++;                                          /* nothing to draw (see-through or one colour), or too small: left as it is */
         else snprintf(work[todo++], 32, "%s", names[i]);
     }
     int total = n - blank, done = total - todo;
@@ -402,7 +408,7 @@ static int upscale_new(const char* game) {
         return 0;
     }
     g_log = fopen(logp, "a");
-    time_t t = time(NULL); logf_("\n%s%d new texture(s) in textures/dump (%d HD already, %d with nothing to draw)\n", ctime(&t), todo, done, blank);
+    time_t t = time(NULL); logf_("\n%s%d new texture(s) in textures/dump (%d HD already, %d with nothing to draw or too small)\n", ctime(&t), todo, done, blank);
     mkdir_(hd); mkdir_(tmp);
     snprintf(in_c, sizeof in_c, "%s" SEP "c", tmp); snprintf(in_a, sizeof in_a, "%s" SEP "a", tmp);
     snprintf(out_c, sizeof out_c, "%s" SEP "c4", tmp); snprintf(out_a, sizeof out_a, "%s" SEP "a4", tmp);
