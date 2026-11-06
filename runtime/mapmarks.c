@@ -1005,9 +1005,9 @@ static void star(float cx, float cy, float r, uint32_t rgb, float a) {
         }
 }
 static void glyph_star(float cx, float cy, float R, int waiting, float a) {
-    star(cx, cy, 3.4f * R, EDGE, a);
-    star(cx, cy, 3.4f * R - 2.2f, waiting ? 0x9A9A9A : 0xFFD84A, a);
-    if (!waiting) rbox(cx - 0.5f * R, cy - 0.3f * R, 0.45f * R, 0.45f * R, 0.45f * R, 0xFFFBE0, a);   /* a glint */
+    star(cx, cy, 2.6f * R, EDGE, a);
+    star(cx, cy, 2.6f * R - 2.0f, waiting ? 0x9A9A9A : 0xFFD84A, a);
+    if (!waiting) rbox(cx - 0.4f * R, cy - 0.2f * R, 0.35f * R, 0.35f * R, 0.35f * R, 0xFFFBE0, a);   /* a glint */
 }
 
 static uint32_t book_color(int recipes, int dull) { return dull ? 0x9A9A9A : recipes ? 0xA040F0 : 0x2DB84A; }   /* recipes violet, stories green, nothing to read grey */
@@ -1042,11 +1042,8 @@ static void draw_mark(const Mark* m, int hover) {
         rbox(cx, cy, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 0xE0302A, 1);
         return;
     }
-    if (m->door == -4) {                                         /* a gathering spot: a star, grey while nothing sparkles there */
-        float a = m->opened ? 0.7f : 1.0f;
-        if (hover) rbox(cx, cy, 4.2f * R, 4.2f * R, 4.2f * R, 0xFFFFFF, 0.95f);
-        else rbox(cx, cy, 3.9f * R, 3.9f * R, 3.9f * R, 0xFFF8E0, 0.45f * a);
-        glyph_star(cx, cy, R, m->opened, a);
+    if (m->door == -4) {                                         /* a gathering spot: a star (no halo), grey while nothing sparkles there */
+        glyph_star(cx, cy, hover ? R * 1.25f : R, m->opened, m->opened && !hover ? 0.7f : 1.0f);   /* under the mouse: bigger */
         return;
     }
     if (m->door >= 0) {                                          /* a building: its contents on a dark badge */
