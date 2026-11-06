@@ -636,11 +636,12 @@ static void bestiary_logo_rect(GlPresent* v) {                    /* in the midd
 /* The player's own key (or button) for one of the game's signs (SELECT, L,
  * R) drawn as hints.c draws the "X Menu" one, into layer id at the canvas
  * rect x, y (its height h; its width follows the key's name). */
+static int g_key_pad;                                             /* bestiary_key(): this controller button instead of the action's (0: the action's) */
 static void bestiary_key(GlPresent* v, int id, int action, float x, float y, float h) {
     static char shown[GL_LAYERS][96];
     static uint8_t img[GL_LAYERS][64 * 8 * 9 * 8 * 4];
     int pad = g_hint_pad < 0 ? g_pad != NULL : g_hint_pad && g_pad;
-    int style = HINT_KEYBOARD, face = HINT_OTHER, b = pad ? g_ctl_pad[action] : CTL_NONE;
+    int style = HINT_KEYBOARD, face = HINT_OTHER, b = pad ? (g_key_pad ? g_key_pad : g_ctl_pad[action]) : CTL_NONE;
     char lab[64] = "", key[96];
     if (b != CTL_NONE) {
         style = g_ctl_pad_style == CTL_STYLE_PLAYSTATION ? HINT_PLAYSTATION : g_ctl_pad_style == CTL_STYLE_XBOX ? HINT_XBOX :
@@ -1290,7 +1291,9 @@ static int equip_job(int eng) {
                 for (int y = 0; y < 16 && bad < 3; y++) for (int x = 0; x < 16 && bad < 3; x++) {
                     int v = g_jb[k][y][x]; if (!v) continue;
                     int i = (sy + y) * 256 + sx + x; n++;
-                    bad += (ly[i] & 7) != LAYER_OBJ || (px[i] & 0xFFFFFF) != jb_rgb(v);
+                    uint32_t c = px[i], e = jb_rgb(v);           /* (near: the screen's colours top out under 255, at 251; a sprite, or the 3D's) */
+                    bad += ((ly[i] & 7) != LAYER_OBJ && (ly[i] & 7) != LAYER_3D) || abs((int)((c >> 16) & 255) - (int)((e >> 16) & 255)) > 8 ||
+                           abs((int)((c >> 8) & 255) - (int)((e >> 8) & 255)) > 8 || abs((int)(c & 255) - (int)(e & 255)) > 8;
                 }
                 if (bad < 3 && n > 40) return k;
             }
@@ -1309,15 +1312,30 @@ static void card_slots(const uint32_t* tp) {
         g_eq_slot[i] = (uint8_t)(other < 40 ? 0 : plate > 40 ? 2 : 1);
     }
 }
-static int bar_faded(const uint32_t* px) {                        /* the bar, the screen fading: its white edge grey, its blue darker */
-    int n = 0, m = 0;
+/* the bar's coloured edge (rows 161 and 174, inside its white one): the shown
+ * character's own colour (the hero's blue, red, purple, pink...), the same all
+ * along both rows; sat: how far from grey it must be (lower while fading) */
+static int bar_colour(const uint32_t* px, int sat) {
+    uint32_t c = px[161 * 256 + 6] & 0xFFFFFF;
+    int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255, hi = r > g ? (r > b ? r : b) : (g > b ? g : b), lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    if (hi - lo < sat) return 0;
+    int n = 0;
+    for (int i = 0; i < 15; i++) n += (px[161 * 256 + 6 + 8 * i] & 0xFFFFFF) == c && (px[174 * 256 + 6 + 8 * i] & 0xFFFFFF) == c;
+    return n >= 13;
+}
+static int bar_faded(const uint32_t* px) {                        /* the bar, the screen fading: its white edge grey, its colour darker */
+    int n = 0;
     for (int i = 0; i < 15; i++) {
-        uint32_t a = px[160 * 256 + 6 + 8 * i], b = px[161 * 256 + 6 + 8 * i];
-        int ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255, br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+        uint32_t a = px[160 * 256 + 6 + 8 * i];
+        int ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
         n += abs(ar - ag) < 10 && abs(ag - ab) < 10 && ar > 24;
-        m += bb > br + 16 && bb > bg + 8 && bb > ar / 2;
     }
-    return n >= 13 && m >= 13;
+    return n >= 13 && bar_colour(px, 12);
+}
+static int hd_row(const uint8_t* m, int y, int x0, int x1) {   /* how many of a row's pixels are in a letter's box (the HD text's mask) */
+    int n = 0;
+    for (int x = x0; x < x1; x++) n += m[y * 256 + x] != 0;
+    return n;
 }
 static void equip_update(int a_on_top) {
     int was = g_equip;
@@ -1326,10 +1344,11 @@ static void equip_update(int a_on_top) {
     if (g_winstyle != 2 || !WIDE_GL || !g_wide) return;
     int bot = a_on_top ? 1 : 0, top = !bot;
     const uint32_t* px = g_engine_out[bot];
-    /* the bar under the character: its white edges (rows 160 and 175), its blue
-     * (row 161), on the left half; the L sign over it */
+    /* the bar under the character: its white edges (rows 160 and 175), its
+     * colour inside them (rows 161 and 174: the character's, bar_colour()), on
+     * the left half; the L sign over it */
     if (px_share(px, 6, 160, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 || px_share(px, 6, 175, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 ||
-        px_share(px, 6, 161, 8, 0, 15, 14, 34, 87, 107, 185, 205) < 9 || px_share(px, 6, 149, 2, 0, 5, 70, 92, 100, 125, 150, 175) < 4) {
+        !bar_colour(px, 48) || px_share(px, 6, 149, 2, 0, 5, 70, 92, 100, 125, 150, 175) < 4) {
         if (was && g_frame - seen < 60 && bar_faded(px)) g_equip = was;   /* (fading in or out: as it was, not the DS's screens a moment) */
         return;
     }
@@ -1356,21 +1375,68 @@ static void equip_update(int a_on_top) {
     g_eq_card = card_page(tp) && !g_card_item;
     if (!g_eq_card) { g_icon[2] = 0; return; }
     item_icon(tp, g_engine_layer[top]);
+    /* (with the HD text on, the letters are left out of the screen's picture:
+     * where they are from the boxes they show in, hdtext.h's mask; only rows
+     * a line of letters crosses, not a stray pixel or two at the edges) */
+    const uint8_t* hm = g_hdtext_on ? g_hdtext_mask[top] : NULL;
+#define HD_ROW(y, xa, xb) (hm && hd_row(hm, y, xa, xb) >= 6)
     int x0 = 256, y0 = 192, x1 = -1, y1 = -1;                    /* the description's dark letters */
-    for (int y = 30; y < 96; y++) for (int x = 60; x < 172; x++) {
-        uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
-        if (L < 92) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    for (int y = 30; y < 96; y++) {
+        int row = HD_ROW(y, 60, 176);
+        for (int x = 60; x < 176; x++) {
+            uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
+            if ((x < 172 && L < 92) || (row && hm[y * 256 + x])) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
     }
     if (x1 < 0) { x0 = 60; x1 = 60; y0 = 36; y1 = 36; }
+    else if (hm && x1 < 175) x1 = x1 + 8 < 175 ? x1 + 8 : 175;   /* (the PC font's words can be wider than the game's) */
     g_eq_desc[0] = x0; g_eq_desc[1] = y0; g_eq_desc[2] = x1 + 1; g_eq_desc[3] = y1 + 1;
     y0 = 192; y1 = -1;                                            /* the stats' light letters */
-    for (int y = 105; y < 175; y++) for (int x = 19; x < 174; x++) {
-        uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
-        if (L > 158) { if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    for (int y = 105; y < 175; y++) {
+        if (HD_ROW(y, 19, 174)) { if (y < y0) y0 = y; if (y > y1) y1 = y; continue; }
+        for (int x = 19; x < 174; x++) {
+            uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
+            if (L > 158) { if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
     }
+#undef HD_ROW
     if (y1 < 0) { y0 = 108; y1 = 108; }
     g_eq_stat[0] = y0; g_eq_stat[1] = y1 + 1;
     card_slots(tp);
+}
+
+/* Equip, modern: the controller's triggers change the character shown, the
+ * right one to the next, the left one to the one before (the game has only
+ * Y, the next one: pressed for it, once, or once less than the party's size).
+ * Not when Game > Controls gives a trigger to one of the DS's buttons. Each
+ * press waits for the game to have changed the character (about 30 frames). */
+static int trigger_free(int pad) {
+    for (int a = 0; a < CA_N; a++) if (g_ctl_pad[a] == pad) return 0;
+    return 1;
+}
+static int equip_trig_keys(void) { return g_equip == 1 && g_pad && trigger_free(CTL_PAD_LT) && trigger_free(CTL_PAD_RT); }   /* (the list: not the bag's grid) */
+static void equip_triggers(void) {
+    static int was_l, was_r, taps, wait;
+    static const char* test; static int test_init;                /* tests: DQIX_TEST_TRIGGERS="frame:L,frame:R" */
+    if (!test_init) { test_init = 1; test = getenv("DQIX_TEST_TRIGGERS"); }
+    int l = 0, r = 0;
+    if (equip_trig_keys()) { l = controls_pad_down(g_pad, CTL_PAD_LT); r = controls_pad_down(g_pad, CTL_PAD_RT); }
+    if (test && g_equip == 1) {
+        char at[32]; snprintf(at, sizeof at, "%llu:", (unsigned long long)g_frame);
+        for (const char* t = strstr(test, at); t; t = NULL) { char c = t[strlen(at)]; l |= c == 'L'; r |= c == 'R'; }
+    }
+    if (g_equip != 1) { taps = 0; wait = 0; }
+    else {
+        if (r && !was_r) taps += 1;
+        if (l && !was_l) {
+            int n = g_main_ram[0x0F6D58];                         /* the party's size (1 to 4) */
+            if (n >= 2 && n <= 4) taps += n - 1;
+        }
+    }
+    was_l = l; was_r = r;
+    if (wait > 0) wait--;
+    if (taps > 0 && wait == 0) { taps--; wait = 36; }
+    if (wait > 32) g_fe_keys |= (uint16_t)(1u << g_ctl[CA_Y].ds_bit);   /* (Y held 4 frames) */
 }
 
 /* pictures: ui/equip-shop.png and ui/jobs/<job>.png, loaded once (straight
@@ -1527,9 +1593,17 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
         bestiary_piece(v, 4, 80, 161, 44, 13, 11, x, by + (bh - 13 * KB) / 2, KB);
         float kh = 40 * C;                                        /* the player's keys for the other characters, either side */
-        bestiary_key(v, GL_LAYER_KEY0, CA_L, 0, by + (bh - kh) / 2, kh);
-        { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
-        bestiary_key(v, GL_LAYER_KEY1, CA_R, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
+        int on_pad = g_hint_pad < 0 ? g_pad != NULL : g_hint_pad && g_pad;   /* (as bestiary_key() shows keys) */
+        if (g_equip != 1) {                                       /* the bag's grid: L and R as they were */
+            bestiary_key(v, GL_LAYER_KEY0, CA_L, 0, by + (bh - kh) / 2, kh);
+            { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
+            bestiary_key(v, GL_LAYER_KEY1, CA_R, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
+        } else if (on_pad && equip_trig_keys()) {                    /* the list: the triggers (equip_triggers()), the one before and the next */
+            g_key_pad = CTL_PAD_LT; bestiary_key(v, GL_LAYER_KEY0, CA_Y, 0, by + (bh - kh) / 2, kh);
+            { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
+            g_key_pad = CTL_PAD_RT; bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
+            g_key_pad = 0;
+        } else bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);   /* (else Y: the next one) */
     }
     /* the list (or the bag's grid) at the right */
     const float WY = MY(170), WH = 730 * C, WW = 520 * C;
@@ -5091,6 +5165,7 @@ void frontend_frame(void) {
             for (int i = 0; i < SDL_NUM_SCANCODES; i++) if (text_key((SDL_Scancode)i)) kc[i] = 0;
             g_fe_keys = key_bits(kc) | pad_bits();
         } else g_fe_keys = key_bits(ks) | pad_bits();
+        equip_triggers();
         static int always_fast = -1; if (always_fast < 0) always_fast = getenv("DQIX_FAST") != NULL;   /* tests */
         g_fast = controls_key_held(CA_FAST, ks) || controls_pad_held(CA_FAST, g_pad) || always_fast || g_turbo || (g_farm_on && g_farm_fast) || bootskip_active();
         {   /* the controller's own shortcuts (stick clicks, triggers...): when pressed */
