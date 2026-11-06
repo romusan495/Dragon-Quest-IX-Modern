@@ -701,11 +701,12 @@ static void bestiary_logo_rect(GlPresent* v) {                    /* in the midd
 /* The player's own key (or button) for one of the game's signs (SELECT, L,
  * R) drawn as hints.c draws the "X Menu" one, into layer id at the canvas
  * rect x, y (its height h; its width follows the key's name). */
+static int g_key_pad;                                             /* bestiary_key(): this controller button instead of the action's (0: the action's) */
 static void bestiary_key(GlPresent* v, int id, int action, float x, float y, float h) {
     static char shown[GL_LAYERS][96];
     static uint8_t img[GL_LAYERS][64 * 8 * 9 * 8 * 4];
     int pad = g_hint_pad < 0 ? g_pad != NULL : g_hint_pad && g_pad;
-    int style = HINT_KEYBOARD, face = HINT_OTHER, b = pad ? g_ctl_pad[action] : CTL_NONE;
+    int style = HINT_KEYBOARD, face = HINT_OTHER, b = pad ? (g_key_pad ? g_key_pad : g_ctl_pad[action]) : CTL_NONE;
     char lab[64] = "", key[96];
     if (b != CTL_NONE) {
         style = g_ctl_pad_style == CTL_STYLE_PLAYSTATION ? HINT_PLAYSTATION : g_ctl_pad_style == CTL_STYLE_XBOX ? HINT_XBOX :
@@ -834,16 +835,22 @@ static int titles_list(const uint32_t* list, const uint32_t* top) {
     g_titles_dim = f > 1.12f;
     return 1;
 }static int g_rows[2] = { 8, 8 };
+/* (with HD text, the letters are left out of the screen's pixels and drawn at
+ * full resolution: the list's screen's letters whose ink shows count too) */
+static int g_list_eng = -1;
 static int list_rows_n(const uint32_t* px, int x0, int x1, int row0, float rh, int rows) {
     int n = 0;
+    const HdGlyph* gl = NULL; int ng = g_list_eng >= 0 ? hdtext_glyphs(g_list_eng, &gl) : 0;
     for (int r = 0; r < rows; r++) {
-        int ink = 0;
-        for (int y = row0 + (int)(r * rh) + 2; y < row0 + (int)((r + 1) * rh) - 2; y++)
+        int ink = 0, ya = row0 + (int)(r * rh) + 2, yb = row0 + (int)((r + 1) * rh) - 2;
+        for (int y = ya; y < yb; y++)
             for (int x = x0; x < x1; x++) {
                 uint32_t c = px[y * 256 + x]; int R = (c >> 16) & 255, G = (c >> 8) & 255, B = c & 255;
                 int mn = R < G ? (R < B ? R : B) : (G < B ? G : B), mx = R > G ? (R > B ? R : B) : (G > B ? G : B);
                 ink += (mn > 95 && mx - mn < 50) || (R > 200 && G > 150 && B < 110) || (G > 150 && G - (R > B ? R : B) > 60);   /* (light or grey letters, a chosen line's yellow or green) */
             }
+        for (int i = 0; i < ng && ink < 3; i++)                  /* (a letter's middle in the row, its ink seen) */
+            if (gl[i].has_color && gl[i].x + gl[i].w / 2 >= x0 && gl[i].x + gl[i].w / 2 < x1 && gl[i].y + 6 >= ya && gl[i].y + 6 < yb) ink = 3;
         if (ink >= 3) n = r + 1;
     }
     return n;
@@ -858,6 +865,7 @@ static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
     logo_load();
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
+    g_list_eng = a_on_top ? 1 : 0;
     int m = BM_NONE, page = top_page_mode();
     if (page == 2) g_page2_at = g_frame;
     /* a frame or two where the top screen isn't told a menu's page (its 3D
@@ -1142,8 +1150,11 @@ static void coll_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
     bestiary_piece(v, 1, 12, 35, 100, 11, 6, x - 3 * k, y, k); y += 14 * k;               /* the kind shown (its tab's dark letters) */
     if (g_coll_quest) {                                           /* the quests: their signs and names, one column */
-        bestiary_piece(v, 1, 21, CL_ROW0, 14, 8 * CL_RH, 20, x - 2 + 17 * k, y, k);      /* the signs, as they are (not the panel's brown round them: 20) */
-        bestiary_piece(v, 1, 35, CL_ROW0, 142, 8 * CL_RH, 13, x - 2 + 31 * k, y, k);   /* (not the panel's scroll bar at its right) */
+        int nq = g_rows[0];                                       /* (the rows with a quest: the empty ones' panel brown not kept as specks) */
+        if (nq) {
+            bestiary_piece(v, 1, 21, CL_ROW0, 14, nq * CL_RH, 20, x - 2 + 17 * k, y, k);     /* the signs, as they are (not the panel's brown round them: 20) */
+            bestiary_piece(v, 1, 35, CL_ROW0, 142, nq * CL_RH, 13, x - 2 + 31 * k, y, k);   /* (not the panel's scroll bar at its right) */
+        }
         if (g_cur[2]) bestiary_cursor_at(v, 3, CL_ROW0, x - 2, y, k);
         y += 8 * CL_RH * k + 4 * k;
     } else {
@@ -1224,6 +1235,7 @@ enum { AC_X = 9, AC_Y = 24, AC_W = 238, AC_H = 160,                /* the plate 
        AC_PX = 24, AC_PW = 208, AC_PH = 56 };                      /* the plate (its dark outer edge) */
 static int g_accolade_page, g_accolade_small;
 static int g_pop_modern;                                          /* the popped up page is one modern window (pop_update()) */
+static int g_pop_panel;                                           /* the page is one big plain panel over a backdrop of its own (pop_update()) */
 static int accolade_page(const uint32_t* px) {
     return px_share(px, 2, 4, 0, 8, 12, 100, 255, 0, 30, 0, 30) >= 8          /* the curtain at the left edge (203, 0, 0 to 121, 0, 0) */
         && px_share(px, 128, 4, 0, 0, 1, 100, 255, 0, 30, 0, 30) >= 10        /* ...and above the plate */
@@ -1355,7 +1367,9 @@ static int equip_job(int eng) {
                 for (int y = 0; y < 16 && bad < 3; y++) for (int x = 0; x < 16 && bad < 3; x++) {
                     int v = g_jb[k][y][x]; if (!v) continue;
                     int i = (sy + y) * 256 + sx + x; n++;
-                    bad += (ly[i] & 7) != LAYER_OBJ || (px[i] & 0xFFFFFF) != jb_rgb(v);
+                    uint32_t c = px[i], e = jb_rgb(v);           /* (near: the screen's colours top out under 255, at 251; a sprite, or the 3D's) */
+                    bad += ((ly[i] & 7) != LAYER_OBJ && (ly[i] & 7) != LAYER_3D) || abs((int)((c >> 16) & 255) - (int)((e >> 16) & 255)) > 8 ||
+                           abs((int)((c >> 8) & 255) - (int)((e >> 8) & 255)) > 8 || abs((int)(c & 255) - (int)(e & 255)) > 8;
                 }
                 if (bad < 3 && n > 40) return k;
             }
@@ -1374,15 +1388,30 @@ static void card_slots(const uint32_t* tp) {
         g_eq_slot[i] = (uint8_t)(other < 40 ? 0 : plate > 40 ? 2 : 1);
     }
 }
-static int bar_faded(const uint32_t* px) {                        /* the bar, the screen fading: its white edge grey, its blue darker */
-    int n = 0, m = 0;
+/* the bar's coloured edge (rows 161 and 174, inside its white one): the shown
+ * character's own colour (the hero's blue, red, purple, pink...), the same all
+ * along both rows; sat: how far from grey it must be (lower while fading) */
+static int bar_colour(const uint32_t* px, int sat) {
+    uint32_t c = px[161 * 256 + 6] & 0xFFFFFF;
+    int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255, hi = r > g ? (r > b ? r : b) : (g > b ? g : b), lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    if (hi - lo < sat) return 0;
+    int n = 0;
+    for (int i = 0; i < 15; i++) n += (px[161 * 256 + 6 + 8 * i] & 0xFFFFFF) == c && (px[174 * 256 + 6 + 8 * i] & 0xFFFFFF) == c;
+    return n >= 13;
+}
+static int bar_faded(const uint32_t* px) {                        /* the bar, the screen fading: its white edge grey, its colour darker */
+    int n = 0;
     for (int i = 0; i < 15; i++) {
-        uint32_t a = px[160 * 256 + 6 + 8 * i], b = px[161 * 256 + 6 + 8 * i];
-        int ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255, br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+        uint32_t a = px[160 * 256 + 6 + 8 * i];
+        int ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
         n += abs(ar - ag) < 10 && abs(ag - ab) < 10 && ar > 24;
-        m += bb > br + 16 && bb > bg + 8 && bb > ar / 2;
     }
-    return n >= 13 && m >= 13;
+    return n >= 13 && bar_colour(px, 12);
+}
+static int hd_row(const uint8_t* m, int y, int x0, int x1) {   /* how many of a row's pixels are in a letter's box (the HD text's mask) */
+    int n = 0;
+    for (int x = x0; x < x1; x++) n += m[y * 256 + x] != 0;
+    return n;
 }
 static void equip_update(int a_on_top) {
     int was = g_equip;
@@ -1391,10 +1420,11 @@ static void equip_update(int a_on_top) {
     if (g_winstyle != 2 || !WIDE_GL || !g_wide) return;
     int bot = a_on_top ? 1 : 0, top = !bot;
     const uint32_t* px = g_engine_out[bot];
-    /* the bar under the character: its white edges (rows 160 and 175), its blue
-     * (row 161), on the left half; the L sign over it */
+    /* the bar under the character: its white edges (rows 160 and 175), its
+     * colour inside them (rows 161 and 174: the character's, bar_colour()), on
+     * the left half; the L sign over it */
     if (px_share(px, 6, 160, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 || px_share(px, 6, 175, 8, 0, 15, 240, 255, 240, 255, 240, 255) < 9 ||
-        px_share(px, 6, 161, 8, 0, 15, 14, 34, 87, 107, 185, 205) < 9 || px_share(px, 6, 149, 2, 0, 5, 70, 92, 100, 125, 150, 175) < 4) {
+        !bar_colour(px, 48) || px_share(px, 6, 149, 2, 0, 5, 70, 92, 100, 125, 150, 175) < 4) {
         if (was && g_frame - seen < 60 && bar_faded(px)) g_equip = was;   /* (fading in or out: as it was, not the DS's screens a moment) */
         return;
     }
@@ -1421,21 +1451,68 @@ static void equip_update(int a_on_top) {
     g_eq_card = card_page(tp) && !g_card_item;
     if (!g_eq_card) { g_icon[2] = 0; return; }
     item_icon(tp, g_engine_layer[top]);
+    /* (with the HD text on, the letters are left out of the screen's picture:
+     * where they are from the boxes they show in, hdtext.h's mask; only rows
+     * a line of letters crosses, not a stray pixel or two at the edges) */
+    const uint8_t* hm = g_hdtext_on ? g_hdtext_mask[top] : NULL;
+#define HD_ROW(y, xa, xb) (hm && hd_row(hm, y, xa, xb) >= 6)
     int x0 = 256, y0 = 192, x1 = -1, y1 = -1;                    /* the description's dark letters */
-    for (int y = 30; y < 96; y++) for (int x = 60; x < 172; x++) {
-        uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
-        if (L < 92) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    for (int y = 30; y < 96; y++) {
+        int row = HD_ROW(y, 60, 176);
+        for (int x = 60; x < 176; x++) {
+            uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
+            if ((x < 172 && L < 92) || (row && hm[y * 256 + x])) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
     }
     if (x1 < 0) { x0 = 60; x1 = 60; y0 = 36; y1 = 36; }
+    else if (hm && x1 < 175) x1 = x1 + 8 < 175 ? x1 + 8 : 175;   /* (the PC font's words can be wider than the game's) */
     g_eq_desc[0] = x0; g_eq_desc[1] = y0; g_eq_desc[2] = x1 + 1; g_eq_desc[3] = y1 + 1;
     y0 = 192; y1 = -1;                                            /* the stats' light letters */
-    for (int y = 105; y < 175; y++) for (int x = 19; x < 174; x++) {
-        uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
-        if (L > 158) { if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    for (int y = 105; y < 175; y++) {
+        if (HD_ROW(y, 19, 174)) { if (y < y0) y0 = y; if (y > y1) y1 = y; continue; }
+        for (int x = 19; x < 174; x++) {
+            uint32_t c = tp[y * 256 + x]; int L = (int)(((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000;
+            if (L > 158) { if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
     }
+#undef HD_ROW
     if (y1 < 0) { y0 = 108; y1 = 108; }
     g_eq_stat[0] = y0; g_eq_stat[1] = y1 + 1;
     card_slots(tp);
+}
+
+/* Equip, modern: the controller's triggers change the character shown, the
+ * right one to the next, the left one to the one before (the game has only
+ * Y, the next one: pressed for it, once, or once less than the party's size).
+ * Not when Game > Controls gives a trigger to one of the DS's buttons. Each
+ * press waits for the game to have changed the character (about 30 frames). */
+static int trigger_free(int pad) {
+    for (int a = 0; a < CA_N; a++) if (g_ctl_pad[a] == pad) return 0;
+    return 1;
+}
+static int equip_trig_keys(void) { return g_equip == 1 && g_pad && trigger_free(CTL_PAD_LT) && trigger_free(CTL_PAD_RT); }   /* (the list: not the bag's grid) */
+static void equip_triggers(void) {
+    static int was_l, was_r, taps, wait;
+    static const char* test; static int test_init;                /* tests: DQIX_TEST_TRIGGERS="frame:L,frame:R" */
+    if (!test_init) { test_init = 1; test = getenv("DQIX_TEST_TRIGGERS"); }
+    int l = 0, r = 0;
+    if (equip_trig_keys()) { l = controls_pad_down(g_pad, CTL_PAD_LT); r = controls_pad_down(g_pad, CTL_PAD_RT); }
+    if (test && g_equip == 1) {
+        char at[32]; snprintf(at, sizeof at, "%llu:", (unsigned long long)g_frame);
+        for (const char* t = strstr(test, at); t; t = NULL) { char c = t[strlen(at)]; l |= c == 'L'; r |= c == 'R'; }
+    }
+    if (g_equip != 1) { taps = 0; wait = 0; }
+    else {
+        if (r && !was_r) taps += 1;
+        if (l && !was_l) {
+            int n = g_main_ram[0x0F6D58];                         /* the party's size (1 to 4) */
+            if (n >= 2 && n <= 4) taps += n - 1;
+        }
+    }
+    was_l = l; was_r = r;
+    if (wait > 0) wait--;
+    if (taps > 0 && wait == 0) { taps--; wait = 36; }
+    if (wait > 32) g_fe_keys |= (uint16_t)(1u << g_ctl[CA_Y].ds_bit);   /* (Y held 4 frames) */
 }
 
 /* pictures: ui/equip-shop.png and ui/jobs/<job>.png, loaded once (straight
@@ -1592,9 +1669,17 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
         bestiary_piece(v, 4, 80, 161, 44, 13, 11, x, by + (bh - 13 * KB) / 2, KB);
         float kh = 40 * C;                                        /* the player's keys for the other characters, either side */
-        bestiary_key(v, GL_LAYER_KEY0, CA_L, 0, by + (bh - kh) / 2, kh);
-        { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
-        bestiary_key(v, GL_LAYER_KEY1, CA_R, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
+        int on_pad = g_hint_pad < 0 ? g_pad != NULL : g_hint_pad && g_pad;   /* (as bestiary_key() shows keys) */
+        if (g_equip != 1) {                                       /* the bag's grid: L and R as they were */
+            bestiary_key(v, GL_LAYER_KEY0, CA_L, 0, by + (bh - kh) / 2, kh);
+            { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
+            bestiary_key(v, GL_LAYER_KEY1, CA_R, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
+        } else if (on_pad && equip_trig_keys()) {                    /* the list: the triggers (equip_triggers()), the one before and the next */
+            g_key_pad = CTL_PAD_LT; bestiary_key(v, GL_LAYER_KEY0, CA_Y, 0, by + (bh - kh) / 2, kh);
+            { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
+            g_key_pad = CTL_PAD_RT; bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
+            g_key_pad = 0;
+        } else bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);   /* (else Y: the next one) */
     }
     /* the list (or the bag's grid) at the right */
     const float WY = MY(170), WH = 730 * C, WW = 520 * C;
@@ -2021,11 +2106,13 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             if (g_pop_win[2] && g_quest_page && v->npiece + 6 <= GL_MAX_PIECES) quest_pieces(v);
             else if (g_pop_win[2] && g_card_page && v->npiece + 13 <= GL_MAX_PIECES) card_pieces(v);
             else if (g_pop_win[2] && g_accolade_page && v->npiece + 3 <= GL_MAX_PIECES) accolade_plate(v);
-            else if (g_pop_win[2] && g_pop_modern && v->npiece + 6 <= GL_MAX_PIECES) {
+            else if (g_pop_win[2] && g_pop_modern && v->npiece + 8 <= GL_MAX_PIECES) {
                 /* one modern window: see-through, a thin grey line, its insides
-                 * without their panel (like the windows over the field) */
+                 * without their panel (like the windows over the field). A panel
+                 * page (pop_update()) lies over the dialogue: darker, not to read
+                 * the two texts through each other */
                 float k = g_pop_at[2], x = g_pop_at[0], y = g_pop_at[1], w = (float)g_pop_win[2] * k, h = (float)g_pop_win[3] * k, t = 0.75f;
-                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, w, h);
+                for (int i = g_pop_panel ? 3 : 1; i > 0; i--) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, w, h);
                 bestiary_piece(v, 0, g_pop_win[0] + 2, g_pop_win[1] + 2, g_pop_win[2] - 4, g_pop_win[3] - 4, 17, x + 2 * k, y + 2 * k, k);
                 set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, w, t);
                 set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y + h - t, w, t);
@@ -2267,6 +2354,7 @@ static void settings_load(void) {
         else if (!strcmp(key, "autosave")) g_autosave = atoi(val) != 0;
         else if (!strcmp(key, "cheats")) cheats_from_list(val);
         else if (!strcmp(key, "map_monsters")) g_mapmarks_monsters = atoi(val) != 0;
+        else if (!strcmp(key, "map_gathering")) g_mapmarks_gather = atoi(val) != 0;
         else if (!strcmp(key, "interior_maps")) g_interior_maps = atoi(val) != 0;
         else if (!strcmp(key, "map_legend")) g_map_legend = atoi(val) != 0;
         else if (!strcmp(key, "name_typing")) g_name_typing = atoi(val) != 0;
@@ -2385,6 +2473,8 @@ static void settings_save(void) {
         fprintf(f, "cheats = %s\n", on); }
     fprintf(f, "# Modern > Map: the monsters walking nearby, as red dots: 0 or 1\n");
     fprintf(f, "map_monsters = %d\n", g_mapmarks_monsters);
+    fprintf(f, "# Modern > Map: a star on the fields' gathering spots (alchemy ingredients), grey while nothing sparkles there: 0 or 1\n");
+    fprintf(f, "map_gathering = %d\n", g_mapmarks_gather);
     fprintf(f, "# Modern > Map: inside buildings, a plan of the room drawn from its walls (the game shows the town): 0 or 1\n");
     fprintf(f, "interior_maps = %d\n", g_interior_maps);
     fprintf(f, "# the map: a legend of its marks, under the place's name: 0 or 1\n");
@@ -3300,8 +3390,9 @@ static void pop_place(void) {
     int side = 0, field = gl_wide_shown(&side) == 1 && g_comp_has3d, d[4], dlg = field && gl_dialog_box(d);
     for (int y = 0; y < 192; y++)
         for (int x = 0, row = 0; x < 256; x++) {
-            row += !field ? 0 : dlg && x >= d[0] - 2 && x < d[2] + 2 && y >= d[1] - 2 && y < d[3] + 2 ? 40   /* (the dialogue window is 3D; never over it: it is read with the page) */
-                 : (g_comp_info[(y * 256 + x) * 4] & 3) != 1;
+            row += !field ? 0 : dlg && x >= d[0] - 2 && x < d[2] + 2 && y >= d[1] - 2 && y < d[3] + 2 ? (g_pop_panel ? 1 : 40)   /* (the dialogue window is 3D; never over it: it is read with the page. A
+                  * panel page (a companion's stats, while choosing one) goes over it rather than over the list it is chosen from) */
+                 : ((g_comp_info[(y * 256 + x) * 4] & 3) != 1) * (g_pop_panel ? 2 : 1);
             g_pop_sum[y + 1][x + 1] = g_pop_sum[y][x + 1] + row;
         }
     float k0 = fminf(1.0f, fminf(0.8f * cw / w, 0.8f * 192.0f / h));
@@ -3606,7 +3697,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
  * around them, and what touches the edge (the sky, the torn border), go. */
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
-    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = 0;
+    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = g_pop_panel = 0;
     bestiary_update(a_on_top);
     equip_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
@@ -3654,7 +3745,34 @@ static void pop_update(int a_on_top) {
     int n[8] = { 0 }, big = 0;
     for (int i = 0; i < N; i++) n[ly[i] & 7]++;
     for (int L = 1; L < 4; L++) if (n[L] > n[big]) big = L;
-    if (n[big] < N * 9 / 10) {
+    /* a page drawn as one big plain panel (the most pixels, nearly all one
+     * colour) on a backdrop of its own that frames it, round the screen's edge
+     * (a companion's stats at Patty's, while inviting one: a black panel on
+     * blue swirls): the panel is the window, the backdrop goes */
+    int edge = -1, panel_c = -1;
+    if (n[big] < N * 9 / 10 && !g_shop) {
+        int ring[4] = { 0 }, most = 0, nc = 0;
+        for (int i = 0; i < N; i++) {
+            int x = i % 256, y = i / 256, L = ly[i] & 7;
+            if ((x == 0 || x == 255 || y == 0 || y == 191) && L < 4) ring[L]++;
+        }
+        for (int L = 0; L < 4; L++) if (L != big && ring[L] > ring[big] && (edge < 0 || ring[L] > ring[edge])) edge = L;
+        if (edge >= 0) {                                          /* the panel's colour: the commonest of a few samples of its layer, */
+            uint32_t smp[64]; int ns = 0;
+            for (int i = 0; i < N && ns < 64; i += N / 256) if (ly[i] == big) smp[ns++] = px[i] & 0xFFFFFF;
+            for (int a = 0, best = 0; a < ns; a++) {
+                int m = 0;
+                for (int b = 0; b < ns; b++) m += smp[b] == smp[a];
+                if (m > best) { best = m; panel_c = (int)smp[a]; }
+            }
+            for (int i = 0; i < N; i++) if (ly[i] == big) { nc++; most += (int)(px[i] & 0xFFFFFF) == panel_c; }   /* ...and most of it */
+            if (most * 5 < nc * 4) edge = panel_c = -1;            /* (not plain: a picture) */
+        }
+    }
+    if (edge >= 0) {
+        for (int i = 0; i < N; i++) bg[i] = ly[i] == edge || ly[i] == LAYER_BACKDROP;
+        g_pop_panel = 1;
+    } else if (n[big] < N * 9 / 10) {
         for (int i = 0; i < N; i++) bg[i] = ly[i] == big || ly[i] == LAYER_BACKDROP;
     } else {
         /* parts: neighbours within 24 levels of each other; the parchment is
@@ -3699,6 +3817,8 @@ static void pop_update(int a_on_top) {
     for (int i = 0; i < N; i++)
         if (!bg[i]) { int x = i % 256, y = i / 256; kept++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (kept * (g_shop ? 400 : 50) < N) return;                   /* (nothing much left: not a page with windows) */
+    if (g_pop_panel && g_winstyle == 2)                           /* the modern style: its panel see-through, as the other windows' (drawn below) */
+        for (int i = 0; i < N; i++) if (ly[i] == big && (int)(px[i] & 0xFFFFFF) == panel_c) bg[i] = 1;
     for (int i = 0; i < N; i++) px[i] = (px[i] & 0xFFFFFF) | (bg[i] ? 1u << 24 : 0);
     g_pop_win[0] = x0; g_pop_win[1] = y0; g_pop_win[2] = x1 - x0 + 1; g_pop_win[3] = y1 - y0 + 1;
     /* one window of the modern style (its light line at its edge, its dark
@@ -3707,9 +3827,9 @@ static void pop_update(int a_on_top) {
     {
         int my = (y0 + y1) / 2, mx = (x0 + x1) / 2;
 #define GREYISH(c, lo, hi) (abs((int)(((c) >> 16) & 255) - (int)(((c) >> 8) & 255)) < 8 && abs((int)(((c) >> 8) & 255) - (int)((c) & 255)) < 8 && (int)((c) & 255) >= lo && (int)((c) & 255) <= hi)
-        g_pop_modern = g_winstyle == 2 && !g_shop && x1 - x0 > 40 && y1 - y0 > 30
-            && GREYISH(px[my * 256 + x0], 180, 255) && GREYISH(px[y0 * 256 + mx], 180, 255)        /* (its line, then a darker grey, then the panel (40, 40, 40)) */
-            && GREYISH(px[my * 256 + x0 + 3], 25, 60) && GREYISH(px[(y1 - 3) * 256 + mx], 25, 60);
+        g_pop_modern = g_winstyle == 2 && !g_shop && x1 - x0 > 40 && y1 - y0 > 30 && (g_pop_panel
+            || (GREYISH(px[my * 256 + x0], 180, 255) && GREYISH(px[y0 * 256 + mx], 180, 255)        /* (its line, then a darker grey, then the panel (40, 40, 40)) */
+            && GREYISH(px[my * 256 + x0 + 3], 25, 60) && GREYISH(px[(y1 - 3) * 256 + mx], 25, 60)));
 #undef GREYISH
     }
     if (!g_shop) pop_place();
@@ -4355,6 +4475,7 @@ static void menu_sync(void) {
     menu_check(MI_MAPMARKS_OPENED, g_mapmarks_opened); menu_enable(MI_MAPMARKS_OPENED, g_gl && g_mapmarks);
     menu_check(MI_MAPMONSTERS, g_mapmarks_monsters); menu_enable(MI_MAPMONSTERS, g_gl && g_mapmarks);
     menu_check(MI_ROUND_MAP, g_round_map); menu_enable(MI_ROUND_MAP, g_gl);
+    menu_check(MI_MAPGATHER, g_mapmarks_gather); menu_enable(MI_MAPGATHER, g_gl && g_mapmarks);
     menu_check(MI_INTERIOR_MAPS, g_interior_maps); menu_enable(MI_INTERIOR_MAPS, g_gl);
     menu_check(MI_MAP_LEGEND, g_map_legend); menu_enable(MI_MAP_LEGEND, g_gl && g_mapmarks);
     menu_check(MI_NAME_TYPING, g_name_typing); menu_enable(MI_NAME_TYPING, g_gl);
@@ -4992,6 +5113,7 @@ static void do_action(int id) {
     case MI_MAPMARKS_OPENED: g_mapmarks_opened = !g_mapmarks_opened; break;
     case MI_MAPMONSTERS: g_mapmarks_monsters = !g_mapmarks_monsters; break;
     case MI_ROUND_MAP: g_round_map = !g_round_map; break;
+    case MI_MAPGATHER: g_mapmarks_gather = !g_mapmarks_gather; break;
     case MI_INTERIOR_MAPS: g_interior_maps = !g_interior_maps; break;
     case MI_MAP_LEGEND: g_map_legend = !g_map_legend; break;
     case MI_NAME_TYPING: g_name_typing = !g_name_typing; break;
@@ -5615,6 +5737,7 @@ void frontend_frame(void) {
             for (int i = 0; i < SDL_NUM_SCANCODES; i++) if (text_key((SDL_Scancode)i)) kc[i] = 0;
             g_fe_keys = key_bits(kc) | pad_bits();
         } else g_fe_keys = key_bits(ks) | pad_bits();
+        equip_triggers();
         static int always_fast = -1; if (always_fast < 0) always_fast = getenv("DQIX_FAST") != NULL;   /* tests */
         g_fast = controls_key_held(CA_FAST, ks) || controls_pad_held(CA_FAST, g_pad) || always_fast || g_turbo || (g_farm_on && g_farm_fast) || bootskip_active();
         {   /* the controller's own shortcuts (stick clicks, triggers...): when pressed */

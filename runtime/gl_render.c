@@ -1260,6 +1260,14 @@ static int sprite_piece(const uint8_t* rgba, int w, int h) {
     return 0;
 }
 
+/* The pack leaves the tiniest textures alone (256 texels or fewer: 16 x 16,
+ * 8 x 16, 32 x 8...), xBR enlarges them instead. They are the far, simple
+ * models' (the monsters seen walking on the map, the party's), and from so
+ * few pixels Real-ESRGAN makes flat smudges in the wrong colours: a Funghoul's
+ * green spots come out blue, its face goes. The battles' models (32 x 32 and
+ * up) keep their HD textures. */
+#define PACK_MIN_TEXELS 256
+
 static int g_tex_frame;                                        /* texture_for's last texture: TexEntry.frame */
 static GLuint texture_for(uint32_t ti, uint32_t pl, int* w, int* h, int* hd) {
     TexEntry* e = tex_lookup(ti, pl);
@@ -1285,7 +1293,7 @@ static GLuint texture_for(uint32_t ti, uint32_t pl, int* w, int* h, int* hd) {
                     if (g_pack_on) pack_load_list();
                     uint64_t key = tex_key(g_decode, *w, *h);
                     if (g_dump_on) dump_texture(key, g_decode, *w, *h);
-                    if (g_pack_on && g_pack_n && !piece) e->hd = pack_texture(key);
+                    if (g_pack_on && g_pack_n && !piece && *w * *h > PACK_MIN_TEXELS) e->hd = pack_texture(key);
                 }
                 static int pxbr = -1; if (pxbr < 0) pxbr = !getenv("DQIX_PIECE_XBR") || atoi(getenv("DQIX_PIECE_XBR")) != 0;   /* tests */
                 if (!e->hd && g_texup && *w * *h <= 256 * 256 && (!piece || pxbr)) {   /* upscaled: 4x (2x for the big ones) */

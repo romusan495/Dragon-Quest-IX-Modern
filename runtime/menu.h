@@ -32,6 +32,7 @@ enum {
     MI_HUD = 320, MI_MINIMAP,                                           /* widescreen battles: the HUD over the 3D; the map in the corner (one window) */
     MI_WINSTYLE0 = 330,                                                 /* windows: like the DS, minimal, modern (+0..2) */
     MI_MAPMARKS = 340, MI_MAPMARKS_OPENED, MI_MAPMONSTERS, MI_INTERIOR_MAPS,   /* the map: chests, pots and barrels marked, the monsters nearby, houses' plans (mapmarks.c) */
+    MI_MAPGATHER = 344,                                                 /* the map: the fields' gathering spots as stars (mapmarks.c) */
     MI_MAP_LEGEND = 345,                                                /* the map: a legend of its marks (mapmarks.c) */
     MI_ROUND_MAP = 815,                                                 /* the map in the corner: round, centred on the hero */
     MI_HINTS = 346, MI_CONFIRM_BOTTOM,                                  /* the game's DS buttons as the player's own (hints.c); the controller's A on its bottom button */

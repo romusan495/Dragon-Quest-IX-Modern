@@ -7,8 +7,9 @@
 extern int g_mapmarks;             /* show them */
 extern int g_mapmarks_opened;      /* ...also the ones already emptied or done (greyed) */
 extern int g_mapmarks_monsters;    /* the monsters walking nearby, as red dots */
-extern int g_map_legend;
-extern int g_mapmarks_round;       /* the map shown round around the hero (no legend then: out of its view) */           /* a legend of the marks shown, under the place's name */
+extern int g_mapmarks_gather;      /* the fields' gathering spots (alchemy ingredients), as stars */
+extern int g_map_legend;           /* a legend of the marks shown, under the place's name */
+extern int g_mapmarks_round;       /* the map shown round around the hero (no legend then: out of its view) */
 extern int g_interior_maps;        /* inside a house (the game shows the town): the room's plan instead, from its walls */
 
 #define MAPMARKS_R 3               /* overlay pixels per DS pixel */

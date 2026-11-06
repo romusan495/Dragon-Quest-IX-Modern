@@ -326,6 +326,9 @@ de = Karte: auch bereits &geleerte oder erledigte markieren (grau)
 en = Map: show the m&onsters walking nearby (a colour and a name for each kind)
 de = Karte: &Monster in der Nähe zeigen (eine Farbe und ein Name je Art)
 
+en = Map: a star on the &gathering spots (alchemy ingredients)
+de = Karte: ein Stern auf den &Sammelstellen (Alchemie-Zutaten)
+
 en = Map: a plan of the &rooms inside buildings (drawn from their walls)
 de = Karte: ein Plan der &Räume in Gebäuden (aus ihren Wänden gezeichnet)
 
