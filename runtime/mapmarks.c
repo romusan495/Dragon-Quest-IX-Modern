@@ -62,6 +62,7 @@ int g_mapmarks_opened = 1;
 int g_mapmarks_monsters = 1;
 int g_interior_maps = 1;
 int g_map_legend = 1;
+int g_mapmarks_round;
 float g_map_hero[2];
 int g_map_hero_ok;
 
@@ -1945,7 +1946,7 @@ int mapmarks_update(const uint8_t** rgba) {
     key = (key ^ (uint32_t)g_here) * 16777619u;
     key = (key ^ (uint32_t)(g_in_grotto ? g_gen : -1)) * 16777619u;
     key = (key ^ (uint32_t)g_plan_on) * 16777619u;
-    key = (key ^ (uint32_t)g_map_legend) * 16777619u;
+    key = (key ^ (uint32_t)(g_map_legend && !g_mapmarks_round)) * 16777619u;
     if (!g_nmark && !g_plan_on) { int changed = had; had = 0; last_key = 0; return changed; }
     if (had && key == last_key) return 0;
     had = 1; last_key = key;
@@ -1953,7 +1954,7 @@ int mapmarks_update(const uint8_t** rgba) {
     else memset(g_img, 0, sizeof g_img);
     for (int pass = 0; pass < 2; pass++)                          /* the monsters first, under the rest */
         for (int i = 0; i < g_nmark; i++) if (i != g_hover && (g_mark[i].door == -2) == !pass) draw_mark(&g_mark[i], 0);
-    if (g_map_legend) draw_legend();
+    if (g_map_legend && !g_mapmarks_round) draw_legend();       /* (the round minimap shows only around the hero: not there) */
     if (g_hover >= 0) { draw_mark(&g_mark[g_hover], 1); draw_tooltip(&g_mark[g_hover]); }
     *rgba = g_img;
     return 1;
@@ -2114,8 +2115,8 @@ int mapmarks_shop(uint32_t* px, uint8_t* info, int desc_y, const uint8_t** rgba,
 }
 
 /* ---------------------------------------------------------------- shared readers (romdata.h) */
-/* The round minimap's list of the monsters near: a dark box, a line each
- * (a dot of its colour, its name, how many). */
+/* The round minimap's list of the monsters near: a line each (a dot of its
+ * colour, its name, how many), on nothing (its window drawn apart). */
 int mapmarks_species(const uint8_t** rgba, int* w, int* h) {
     static uint8_t img[MAPMARKS_W * 160 * 4]; static uint32_t last = 1; static int iw, ih;
     uint32_t key = 2166136261u;
@@ -2139,7 +2140,7 @@ int mapmarks_species(const uint8_t** rgba, int* w, int* h) {
     memset(img, 0, sizeof img);
     uint8_t* keep = g_dst; int kw = g_dw, kh = g_dh;
     g_dst = img; g_dw = iw; g_dh = ih;
-    rbox(iw / 2.0f, ih / 2.0f, iw / 2.0f, ih / 2.0f, 2.0f * R, 0x101418, 0.85f);
+    /* (no box: the round minimap puts it in a modern window) */
     for (int i = 0; i < g_nsp && i < g_nline; i++) {
         float cy = (float)LINES_PAD + (float)i * (float)lh + (float)lh * 0.45f;
         rbox(LINES_PAD + 1.6f * R, cy, 1.6f * R, 1.6f * R, 1.6f * R, 0xFFF8E0, 0.8f);

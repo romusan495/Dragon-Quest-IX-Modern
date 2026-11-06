@@ -1683,7 +1683,7 @@ static void round_ring(int D, float R, float T) {
  * part around the hero in a circle (gl_render.c draw_round()), the gold ring
  * over it, the place's name in a little modern window under it. */
 static void round_minimap(GlPresent* v, const float* small, int z) {
-    static const float RAD[3] = { 22, 29, 40 }, SRC = 60;          /* (canvas; DS pixels of the map shown from its centre to its edge) */
+    static const float RAD[3] = { 19, 25, 34 }, SRC = 60;          /* (canvas; DS pixels of the map shown from its centre to its edge) */
     static float hx = 128, hy = 96; static int was;
     float R = RAD[z < 0 || z > 2 ? 1 : z], T = R * 0.09f + 0.8f, m = 3 + T, lab = 10;
     int c = g_small_corner & 3;
@@ -1717,6 +1717,14 @@ static void round_minimap(GlPresent* v, const float* small, int z) {
             float* q = v->layer[GL_LAYER_SPECIES]; q[0] = cx - sw / 2; q[1] = ly + lh + 1.5f; q[2] = sw; q[3] = sh;
             if (q[0] + sw > v->cw - 2) q[0] = v->cw - 2 - sw;
             if (q[0] < 2) q[0] = 2;
+            if (v->npiece + 5 <= GL_MAX_PIECES) {                 /* (in a modern window, as the name's) */
+                float wx = q[0] - 1, wy = q[1] - 0.5f, ww2 = sw + 1, wh2 = sh + 0.5f;
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), wx, wy, ww2, wh2);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy, ww2, 0.6f);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy + wh2 - 0.6f, ww2, 0.6f);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy, 0.6f, wh2);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx + ww2 - 0.6f, wy, 0.6f, wh2);
+            }
         }
     }
     (void)small;
@@ -3832,6 +3840,7 @@ static void present_gl(void) {
     }
     {   /* the map's markers: drawn when they change */
         const uint8_t* rgba;
+        g_mapmarks_round = g_minimap && g_round_map;
         if (mapmarks_update(&rgba)) gl_set_overlay(rgba, MAPMARKS_W, MAPMARKS_H);
         int sw, sh;                                               /* the round minimap's list of the monsters near */
         if (mapmarks_species(&rgba, &sw, &sh)) { gl_set_layer(GL_LAYER_SPECIES, rgba, sw, sh); g_species_w = rgba ? sw : 0; g_species_h = rgba ? sh : 0; }
