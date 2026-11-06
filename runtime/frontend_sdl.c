@@ -3982,6 +3982,7 @@ static void bag_update(int a_on_top) {
  * name's, the bottom) and no other window is up but the box at the bottom
  * (what isn't one of these menus: the game's layout kept). The menus before
  * it (greyed) give the path: their names, above it. */
+#define XM_INK2(c) (xm_light(c) || ((((c) >> 16) & 255) > 180 && (((c) >> 8) & 255) > 140 && ((c) & 255) < 100 && (((c) >> 8) & 255) < 235))
 static int xm_light(uint32_t c) { return ((c >> 16) & 255) > 170 && ((c >> 8) & 255) > 170 && (c & 255) > 170; }
 static void xmenu_update(int a_on_top) {
     const uint32_t* px = g_engine_out[0];
@@ -4038,7 +4039,7 @@ static void xmenu_update(int a_on_top) {
     }
     g_xm_win[0] = X0; g_xm_win[1] = top; g_xm_win[2] = X1; g_xm_win[3] = bot; g_xm_sep = sep;
     g_xm_hand[0] = hx0 - 4 < 0 ? 0 : hx0 - 4; g_xm_hand[1] = hy0 - 3; g_xm_hand[2] = hx1 + 3 - g_xm_hand[0]; g_xm_hand[3] = hy1 + 4 - g_xm_hand[1];
-    {   /* the chosen line: from the hand (the window's left in the first column) to its column's end (the
+    {   /* the chosen line: from after the hand to its column's end (the
          * first gap of 10 columns empty in all its lines after the text), over its letters' rows (but the
          * accents': 3 letter pixels a row) with 4 pixels round; the chosen line's letters may be yellow */
         int ly0 = (sep ? sep : top) + 2, ly1 = bot - 2, end = X1 - 2, seen = 0, gap = 0;
@@ -4060,7 +4061,10 @@ static void xmenu_update(int a_on_top) {
         }
         #undef XM_INK
         if (t0 < 0) { t0 = hy - 3; t1 = hy + 3; }
-        g_xm_band[0] = hx0 - 1 > X0 + 2 ? hx0 - 1 : X0 + 2; g_xm_band[2] = end;
+        int tx = hx1 + 1;                                         /* (from 2 before its letters: the hand stays out, the band still while the hand moves) */
+        for (int found = 0; tx < end && !found; tx++)
+            for (int y = t0; y <= t1 && !found; y++) found = XM_INK2(px[y * 256 + tx]);
+        g_xm_band[0] = tx - 3; g_xm_band[2] = end;
         g_xm_band[1] = t0 - 4; g_xm_band[3] = t1 + 5;
         if (g_xm_band[1] < ly0 - 1) g_xm_band[1] = ly0 - 1;
         if (g_xm_band[3] > ly1 + 1) g_xm_band[3] = ly1 + 1;
