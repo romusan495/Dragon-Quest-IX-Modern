@@ -25,8 +25,9 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Menus PC en français, accessibilité | Langues | [Langues] Menus PC en français et accessibilité | `claude/project-thread-7yyjwb` | en cours | PR #33 | Rebaser après la fusion de #33 |
 | Caméra dézoomée en combat | Dev | — | — | à faire | — | Plan avant de coder (ne pas toucher aux boîtes de combat) |
 | BUILD : « cmp: commande introuvable » (`tools/build-game.sh`) | Intégration | — | — | à faire | — | Installer `diffutils` dans MSYS2 ou éviter `cmp` ; le build réussit quand même |
-| Textures des monstres sur la carte (pack HD) | Graph | [Graph] Corriger les textures des monstres sur la carte | `claude/project-thread-3zdjvn` | en cours | — (commit local d08c9ce, pas poussé) | Touche `runtime/gl_render.c` (`texture_for` : le pack HD ignore les textures ≤ 256 texels, `PACK_MIN_TEXELS`) et `tools/textures-hd.c` ; rebaser sur `main` avant la PR |
-| Écran Équiper de Tsu (corrections) | Graph | [Graph] Corriger le nouvel écran Équiper | `claude/project-thread-v4a74b` | en cours | — (commit local 82b2aba, pas poussé) | Touche `runtime/frontend_sdl.c` (`equip_update`, `equip_job`, `equip_pieces`, nouvelle `equip_triggers`, `g_key_pad` dans `bestiary_key`) ; conflits possibles avec les fils Archives et Tulipe ; rebaser sur `main` avant la PR |
+| Textures des monstres sur la carte (pack HD) | Graph | [Graph] Corriger les textures des monstres sur la carte | `claude/project-thread-3zdjvn` | fusionné | PR #115 | — |
+| Écran Équiper de Tsu (corrections) | Graph | [Graph] Corriger le nouvel écran Équiper | `claude/project-thread-v4a74b` | fusionné | PR #117 | — |
+| Étoiles des points de collecte sur la carte | Dev | [Dev] Étoiles des points de collecte sur la carte | `claude/project-thread-rila1e` | en cours | — (pas poussée) | Touche `runtime/frontend_sdl.c` (réglage `map_gathering`, `MI_MAPGATHER` = 344), `runtime/menu_win32.c` (une ligne du menu Moderne), `mapmarks.c/h`, `menu.h`, `lang/*.txt` ; rebaser sur `main` avant la PR |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
 #33 est fusionnée : chaque fil rebase sur `main` avant sa PR, et les PR passent
@@ -34,14 +35,14 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne | ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami)
-| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats |
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne | ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`)
+| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats | ; Étoiles des points de collecte
 | `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin | ; Textures des monstres sur la carte (`texture_for`, 2026-11-06)
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
 | `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) |
-| `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) |
+| `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) | ; Étoiles des points de collecte
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
 #2, réglages par défaut #15, mini-carte et suppression des dispositions #21 #23
