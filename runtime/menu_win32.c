@@ -235,6 +235,7 @@ static void build(int all, const char* const* shell_names, int n_shells) {
     item(modern, MI_MAPMARKS, L"&Map: mark the chests, bookshelves and quests (the mouse over one: what it holds)");
     item(modern, MI_MAPMARKS_OPENED, L"Map: also mark the ones already &emptied or done (greyed)");
     item(modern, MI_MAPMONSTERS, L"Map: show the m&onsters walking nearby (red dots)");
+    item(modern, MI_MAPGATHER, L"Map: a star on the &gathering spots (alchemy ingredients)");
     item(modern, MI_INTERIOR_MAPS, L"Map: a plan of the &rooms inside buildings (drawn from their walls)");
     item(modern, MI_MAP_LEGEND, L"Map: a &legend of the marks (under the place's name)");
     sep(modern);

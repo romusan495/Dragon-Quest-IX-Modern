@@ -326,6 +326,9 @@ fr = Carte : marquer aussi ceux déjà &vidés ou finis (en gris)
 en = Map: show the m&onsters walking nearby (red dots)
 fr = Carte : montrer les m&onstres qui rôdent (points rouges)
 
+en = Map: a star on the &gathering spots (alchemy ingredients)
+fr = Carte : une étoile sur les points de &collecte (ingrédients d'alchimie)
+
 en = Map: a plan of the &rooms inside buildings (drawn from their walls)
 fr = Carte : un plan des &pièces dans les bâtiments (tracé d'après leurs murs)
 

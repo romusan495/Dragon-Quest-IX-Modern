@@ -46,6 +46,17 @@
  *    origin in the middle of its picture, scrolled by BG0HOFS/VOFS (not the
  *    same in every field); the game's own mark of the hero (an 8x8 sprite,
  *    see field_origin()) says exactly where it puts things.
+ *  - the gathering spots of a field (the sparkles where alchemy ingredients
+ *    are picked up): data/scenario/flditem.pac (NARC, F02flditem.bin...),
+ *    tag 0x66 per spot: its number (1..99), the item, then up to 8 places
+ *    it can sparkle at. The game keeps the field's own in a list (0x02108FE4:
+ *    the field's code, +4 the first one, func_0208e530): per spot u32 +0
+ *    item | number << 16, +4 how many places << 17, +8 the spot's word in
+ *    the save (0 while the spot is off), +0x0C the places (x, height, z,
+ *    20.12, the monsters' units), +0x6C the next one. The save's word
+ *    (func_0208ec88 keeps it): bit 31 on, bits 29-30 what it waits for (2:
+ *    flag 0x798, 3: flag 0x796), bits 17-24 the places sparkling now (one
+ *    bit each), bits 0-8 the time until it sparkles again.
  *
  * Read only: the game never sees any of it. */
 #include <stdio.h>
@@ -60,6 +71,7 @@
 int g_mapmarks = 1;
 int g_mapmarks_opened = 1;
 int g_mapmarks_monsters = 1;
+int g_mapmarks_gather = 1;
 int g_interior_maps = 1;
 int g_map_legend = 1;
 
@@ -72,6 +84,8 @@ int g_map_legend = 1;
 #define FLAG_OTHER  0x79E
 #define MON_FIRST   0x70           /* the monsters walking around: field characters 0x70..0x7B (farm.c) */
 #define MON_COUNT   12
+#define GATHER      0x108FE4       /* the field's gathering spots (func_0208e530) */
+#define GATHER_MAX  32
 
 static uint32_t rd32(uint32_t a) { uint32_t v; memcpy(&v, &g_main_ram[a & (MAIN_RAM_SIZE - 1)], 4); return v; }
 static uint16_t rd16(uint32_t a) { uint16_t v; memcpy(&v, &g_main_ram[a & (MAIN_RAM_SIZE - 1)], 2); return v; }
@@ -822,8 +836,9 @@ static const Pic* pic_for(int pi, const char* shown) {
 /* ---------------------------------------------------------------- what is shown */
 typedef struct {
     float sx, sy;
-    int door;                       /* -1: a spot of this place (spot), -2: a monster, -3: the hero, else a building's door on the picture */
-    int spot, opened;               /* a spot: which, emptied */
+    int door;                       /* -1: a spot of this place (spot), -2: a monster, -3: the hero, -4: a gathering spot
+                                     * (spot: the item), else a building's door on the picture */
+    int spot, opened;               /* a spot: which, emptied (a gathering spot: nothing sparkling there now) */
     int closed, emptied, shelves, recipes, quests;   /* a door: what its rooms hold (closed, emptied: chests) */
     int jars, jars_done, barrels;   /* a door: its pots and barrels, closed, emptied, how many are barrels */
     int furn, furn_done;            /* a door: its wardrobes and drawers, not searched, searched */
@@ -967,6 +982,34 @@ static void glyph_quest(float cx, float cy, float R, int state, float a) {
     }
 }
 
+/* A five-pointed star (a gathering spot: the sparkle on the ground), its
+ * edge then its inside; smoothed by sampling each pixel 4 x 4. */
+static void star(float cx, float cy, float r, uint32_t rgb, float a) {
+    float vx[10], vy[10];
+    for (int i = 0; i < 10; i++) {
+        float t = -1.5707963f + 0.6283185f * (float)i, rr = i & 1 ? r * 0.45f : r;
+        vx[i] = cx + rr * cosf(t); vy[i] = cy + rr * sinf(t) + r * 0.08f;   /* (a little lower: its middle where the spot is) */
+    }
+    for (int y = (int)floorf(cy - r - 1); y <= (int)ceilf(cy + r + 1); y++)
+        for (int x = (int)floorf(cx - r - 1); x <= (int)ceilf(cx + r + 1); x++) {
+            int in = 0;
+            for (int sy = 0; sy < 4; sy++)
+                for (int sx = 0; sx < 4; sx++) {
+                    float px = (float)x + (sx + 0.5f) / 4, py = (float)y + (sy + 0.5f) / 4;
+                    int c = 0;
+                    for (int i = 0, j = 9; i < 10; j = i++)
+                        if ((vy[i] > py) != (vy[j] > py) && px < (vx[j] - vx[i]) * (py - vy[i]) / (vy[j] - vy[i]) + vx[i]) c = !c;
+                    in += c;
+                }
+            if (in) blend(x, y, rgb, a * (float)in / 16);
+        }
+}
+static void glyph_star(float cx, float cy, float R, int waiting, float a) {
+    star(cx, cy, 3.4f * R, EDGE, a);
+    star(cx, cy, 3.4f * R - 2.2f, waiting ? 0x9A9A9A : 0xFFD84A, a);
+    if (!waiting) rbox(cx - 0.5f * R, cy - 0.3f * R, 0.45f * R, 0.45f * R, 0.45f * R, 0xFFFBE0, a);   /* a glint */
+}
+
 static uint32_t book_color(int recipes, int dull) { return dull ? 0x9A9A9A : recipes ? 0xA040F0 : 0x2DB84A; }   /* recipes violet, stories green, nothing to read grey */
 
 /* A chest's rank: its letter on a small dark badge (S and A in gold). */
@@ -997,6 +1040,13 @@ static void draw_mark(const Mark* m, int hover) {
     if (m->door == -2) {                                         /* a monster: a red dot */
         rbox(cx, cy, 1.9f * R, 1.9f * R, 1.9f * R, 0xFFF8E0, 0.8f);
         rbox(cx, cy, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 0xE0302A, 1);
+        return;
+    }
+    if (m->door == -4) {                                         /* a gathering spot: a star, grey while nothing sparkles there */
+        float a = m->opened ? 0.7f : 1.0f;
+        if (hover) rbox(cx, cy, 4.2f * R, 4.2f * R, 4.2f * R, 0xFFFFFF, 0.95f);
+        else rbox(cx, cy, 3.9f * R, 3.9f * R, 3.9f * R, 0xFFF8E0, 0.45f * a);
+        glyph_star(cx, cy, R, m->opened, a);
         return;
     }
     if (m->door >= 0) {                                          /* a building: its contents on a dark badge */
@@ -1242,9 +1292,25 @@ static void lines_draw(int x0, int y0, int tw, int th, int lh) {
         }
 }
 
+/* A gathering spot: what is picked up there, and whether it sparkles now. */
+static void gather_lines(const Mark* m) {
+    static const char* const head[5] = { "Gathering spot", "Point de collecte", "Sammelstelle", "Punto di raccolta", "Punto de recolecci\xC3\xB3n" };
+    static const char* const now[5] = { "Sparkling now", "Brille en ce moment", "Glitzert gerade", "Brilla ora", "Brilla ahora" };
+    static const char* const later[5] = { "Nothing there now, comes back later", "Rien pour l'instant, reviendra plus tard",
+                                          "Gerade nichts, kommt sp\xC3\xA4ter wieder", "Niente per ora, torner\xC3\xA0 pi\xC3\xB9 tardi", "Nada por ahora, volver\xC3\xA1 m\xC3\xA1s tarde" };
+    char line[140];
+    const char* nm = item_name((uint16_t)m->spot);
+    int L = lang_index();
+    if (nm) snprintf(line, sizeof line, "%s: %s", head[L], nm);
+    else snprintf(line, sizeof line, "%s", head[L]);
+    add_line(C_TEXT, line);
+    add_line(m->opened ? C_DONE : C_TODO, m->opened ? later[L] : now[L]);
+}
+
 static void draw_tooltip(const Mark* m) {
     g_nline = 0;
-    if (m->door >= 0) door_lines(m);
+    if (m->door == -4) gather_lines(m);
+    else if (m->door >= 0) door_lines(m);
     else spot_lines(g_here, mark_spot(m->spot), m->opened, 0);
     if (!g_nline) return;
     int tw, th, lh = lines_size(&tw, &th, 7.5f * MAPMARKS_R);
@@ -1260,7 +1326,7 @@ static void draw_tooltip(const Mark* m) {
 /* ---------------------------------------------------------------- the legend
  * Under the place's name (top right): a sample of each kind of mark the map
  * shows now, and its name. */
-enum { L_HERE, L_MONSTER, L_CHEST, L_BLUE, L_POT, L_BARREL, L_FURN, L_EMPTIED, L_SHELF, L_RECIPES, L_QUEST1, L_QUEST2, L_QUEST3, L_BUILDING, L_N };
+enum { L_HERE, L_MONSTER, L_GATHER, L_GATHER_WAIT, L_CHEST, L_BLUE, L_POT, L_BARREL, L_FURN, L_EMPTIED, L_SHELF, L_RECIPES, L_QUEST1, L_QUEST2, L_QUEST3, L_BUILDING, L_N };
 #define LEG_TOP 17                 /* top-screen pixels: under the place's name */
 #define LEG_RIGHT 254
 #define LEG_ROW 8
@@ -1269,6 +1335,8 @@ static const char* legend_name(int l) {
     static const char* const t[L_N][5] = {
         { "You are here", "Vous \xC3\xAAtes ici", "Du bist hier", "Sei qui", "Est\xC3\xA1s aqu\xC3\xAD" },
         { "Monster", "Monstre", "Monster", "Mostro", "Monstruo" },
+        { "Gathering spot", "Point de collecte", "Sammelstelle", "Punto di raccolta", "Punto de recolecci\xC3\xB3n" },
+        { "Comes back later", "Reviendra plus tard", "Kommt sp\xC3\xA4ter wieder", "Torner\xC3\xA0 pi\xC3\xB9 tardi", "Volver\xC3\xA1 m\xC3\xA1s tarde" },
         { 0 }, { 0 }, { 0 }, { 0 }, { 0 },                       /* kind_name() */
         { "Already emptied", "D\xC3\xA9j\xC3\xA0 vid\xC3\xA9", "Schon geleert", "Gi\xC3\xA0 svuotato", "Ya vaciado" },
         { 0 },
@@ -1278,7 +1346,7 @@ static const char* legend_name(int l) {
         { "Quest completed", "Qu\xC3\xAA" "te termin\xC3\xA9" "e", "Auftrag erledigt", "Missione completata", "Misi\xC3\xB3n completada" },
         { "In the building", "Dans le b\xC3\xA2timent", "Im Geb\xC3\xA4" "ude", "Nell'edificio", "En el edificio" },
     };
-    static const int kind[L_N] = { 0, 0, K_CHEST, K_BLUE, K_POT, K_BARREL, K_FURN, 0, K_SHELF };
+    static const int kind[L_N] = { 0, 0, 0, 0, K_CHEST, K_BLUE, K_POT, K_BARREL, K_FURN, 0, K_SHELF };
     return t[l][0] ? t[l][lang_index()] : kind_name(kind[l]);
 }
 
@@ -1292,6 +1360,7 @@ static void legend_sample(int l, float cx, float cy, float R) {
         rbox(cx, cy, 1.9f * R, 1.9f * R, 1.9f * R, 0xFFF8E0, 0.8f);
         rbox(cx, cy, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 1.9f * R - 1.5f, 0xE0302A, 1);
         break;
+    case L_GATHER: case L_GATHER_WAIT: glyph_star(cx, cy, R, l == L_GATHER_WAIT, l == L_GATHER_WAIT ? 0.7f : 1); break;
     case L_CHEST: glyph_chest(cx, cy, R, 0xD0402E, 0xF2C94C, 1); break;
     case L_BLUE: glyph_chest(cx, cy, R, 0x3C78E0, 0xF2C94C, 1); break;
     case L_POT: glyph_pot(cx, cy, R, 0, 1); break;
@@ -1315,6 +1384,7 @@ static void draw_legend(void) {
         const Mark* m = &g_mark[i];
         if (m->door == -3) has[L_HERE] = 1;
         else if (m->door == -2) has[L_MONSTER] = 1;
+        else if (m->door == -4) has[m->opened ? L_GATHER_WAIT : L_GATHER] = 1;
         else if (m->door >= 0) {                                 /* a badge: what it holds too */
             has[L_BUILDING] = 1;
             if (m->closed) has[L_CHEST] = 1;
@@ -1850,6 +1920,38 @@ int mapmarks_update(const uint8_t** rgba) {
             }
         }
     }
+    /* a field's gathering spots: a star where something sparkles now; where
+     * nothing does (picked up), a grey one amid its places, if the emptied
+     * ones are shown. The list is the field's (its code first). */
+    if (ok && field && g_mapmarks && g_mapmarks_gather) {
+        float scale = (float)(int32_t)rd32(mp + 0x38) / 4096.0f, cx = 0, cy = 0;
+        field_origin(top, scale, &cx, &cy);
+        int fi = place_index(rd16(MAP_NUM));
+        const char* code = fi >= 0 ? g_places[fi].code : "";
+        uint32_t p = rd32(GATHER + 4);
+        if (scale > 0.1f && scale < 64 && code[0] && !strncmp((const char*)&g_main_ram[GATHER], code, 4)) {
+            load_names(g_fw_language);
+            for (int k = 0; k < GATHER_MAX && p >= 0x02000000 && p < 0x02400000; k++, p = rd32(p + 0x6C)) {
+                uint32_t w0 = rd32(p), w1 = rd32(p + 4), sv = rd32(p + 8);
+                if (sv < 0x02000000 || sv >= 0x02400000) continue;            /* off (not yet in the story...) */
+                uint32_t st = rd32(sv), wait = (st >> 29) & 3, mask = (st >> 17) & 0xFF;
+                int n = (int)((w1 >> 17) & 15);
+                if (!(st >> 31) || n < 1 || n > 8) continue;
+                if (!mask && ((wait == 2 && !flag_set(0x798)) || (wait == 3 && !flag_set(0x796)))) continue;   /* won't come back yet */
+                float sx = 0, sz = 0;
+                for (int i = 0; i < n; i++) {
+                    float x = (float)(int32_t)rd32(p + 0x0C + 12u * (uint32_t)i) / 4096.0f, z = (float)(int32_t)rd32(p + 0x14 + 12u * (uint32_t)i) / 4096.0f;
+                    sx += x; sz += z;
+                    Mark m = { x * scale - cx + 128, z * scale - cy + 96, -4, (int)(w0 & 0xFFFF), 0, 0, 0, 0, 0, 0 };
+                    if ((mask >> i) & 1 && on_screen(m.sx, m.sy)) add_mark(&m);
+                }
+                if (!mask && g_mapmarks_opened) {
+                    Mark m = { sx / (float)n * scale - cx + 128, sz / (float)n * scale - cy + 96, -4, (int)(w0 & 0xFFFF), 1, 0, 0, 0, 0, 0 };
+                    if (on_screen(m.sx, m.sy)) add_mark(&m);
+                }
+            }
+        }
+    }
     /* the monsters walking around: a town's picture scrolls (its centre at
      * +0x44/+0x48), a field's shows the whole field around its origin */
     if (ok && g_mapmarks && g_mapmarks_monsters && !g_plan_on) {
@@ -1870,7 +1972,7 @@ int mapmarks_update(const uint8_t** rgba) {
     float best = 64;                                             /* within 8 pixels */
     for (int i = 0; i < g_nmark; i++) {
         float dx = g_mark[i].sx - g_hx, dy = g_mark[i].sy - g_hy;
-        if (g_hx >= 0 && g_mark[i].door > -2 && dx * dx + dy * dy < best) { best = dx * dx + dy * dy; g_hover = i; }
+        if (g_hx >= 0 && (g_mark[i].door > -2 || g_mark[i].door == -4) && dx * dx + dy * dy < best) { best = dx * dx + dy * dy; g_hover = i; }
     }
     /* redraw only when something changed */
     uint32_t key = 2166136261u;
