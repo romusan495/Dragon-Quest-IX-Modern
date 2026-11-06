@@ -770,16 +770,22 @@ static int titles_list(const uint32_t* list, const uint32_t* top) {
     g_titles_dim = f > 1.12f;
     return 1;
 }static int g_rows[2] = { 8, 8 };
+/* (with HD text, the letters are left out of the screen's pixels and drawn at
+ * full resolution: the list's screen's letters whose ink shows count too) */
+static int g_list_eng = -1;
 static int list_rows_n(const uint32_t* px, int x0, int x1, int row0, float rh, int rows) {
     int n = 0;
+    const HdGlyph* gl = NULL; int ng = g_list_eng >= 0 ? hdtext_glyphs(g_list_eng, &gl) : 0;
     for (int r = 0; r < rows; r++) {
-        int ink = 0;
-        for (int y = row0 + (int)(r * rh) + 2; y < row0 + (int)((r + 1) * rh) - 2; y++)
+        int ink = 0, ya = row0 + (int)(r * rh) + 2, yb = row0 + (int)((r + 1) * rh) - 2;
+        for (int y = ya; y < yb; y++)
             for (int x = x0; x < x1; x++) {
                 uint32_t c = px[y * 256 + x]; int R = (c >> 16) & 255, G = (c >> 8) & 255, B = c & 255;
                 int mn = R < G ? (R < B ? R : B) : (G < B ? G : B), mx = R > G ? (R > B ? R : B) : (G > B ? G : B);
                 ink += (mn > 95 && mx - mn < 50) || (R > 200 && G > 150 && B < 110) || (G > 150 && G - (R > B ? R : B) > 60);   /* (light or grey letters, a chosen line's yellow or green) */
             }
+        for (int i = 0; i < ng && ink < 3; i++)                  /* (a letter's middle in the row, its ink seen) */
+            if (gl[i].has_color && gl[i].x + gl[i].w / 2 >= x0 && gl[i].x + gl[i].w / 2 < x1 && gl[i].y + 6 >= ya && gl[i].y + 6 < yb) ink = 3;
         if (ink >= 3) n = r + 1;
     }
     return n;
@@ -794,6 +800,7 @@ static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
     logo_load();
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
+    g_list_eng = a_on_top ? 1 : 0;
     int m = BM_NONE, page = top_page_mode();
     if (page == 2) g_page2_at = g_frame;
     /* a frame or two where the top screen isn't told a menu's page (its 3D
