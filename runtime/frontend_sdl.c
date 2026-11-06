@@ -1167,6 +1167,7 @@ enum { AC_X = 9, AC_Y = 24, AC_W = 238, AC_H = 160,                /* the plate 
        AC_PX = 24, AC_PW = 208, AC_PH = 56 };                      /* the plate (its dark outer edge) */
 static int g_accolade_page, g_accolade_small;
 static int g_pop_modern;                                          /* the popped up page is one modern window (pop_update()) */
+static int g_pop_panel;                                           /* the page is one big plain panel over a backdrop of its own (pop_update()) */
 static int accolade_page(const uint32_t* px) {
     return px_share(px, 2, 4, 0, 8, 12, 100, 255, 0, 30, 0, 30) >= 8          /* the curtain at the left edge (203, 0, 0 to 121, 0, 0) */
         && px_share(px, 128, 4, 0, 0, 1, 100, 255, 0, 30, 0, 30) >= 10        /* ...and above the plate */
@@ -1878,11 +1879,13 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             if (g_pop_win[2] && g_quest_page && v->npiece + 6 <= GL_MAX_PIECES) quest_pieces(v);
             else if (g_pop_win[2] && g_card_page && v->npiece + 13 <= GL_MAX_PIECES) card_pieces(v);
             else if (g_pop_win[2] && g_accolade_page && v->npiece + 3 <= GL_MAX_PIECES) accolade_plate(v);
-            else if (g_pop_win[2] && g_pop_modern && v->npiece + 6 <= GL_MAX_PIECES) {
+            else if (g_pop_win[2] && g_pop_modern && v->npiece + 8 <= GL_MAX_PIECES) {
                 /* one modern window: see-through, a thin grey line, its insides
-                 * without their panel (like the windows over the field) */
+                 * without their panel (like the windows over the field). A panel
+                 * page (pop_update()) lies over the dialogue: darker, not to read
+                 * the two texts through each other */
                 float k = g_pop_at[2], x = g_pop_at[0], y = g_pop_at[1], w = (float)g_pop_win[2] * k, h = (float)g_pop_win[3] * k, t = 0.75f;
-                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, w, h);
+                for (int i = g_pop_panel ? 3 : 1; i > 0; i--) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, w, h);
                 bestiary_piece(v, 0, g_pop_win[0] + 2, g_pop_win[1] + 2, g_pop_win[2] - 4, g_pop_win[3] - 4, 17, x + 2 * k, y + 2 * k, k);
                 set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, w, t);
                 set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y + h - t, w, t);
@@ -3116,8 +3119,9 @@ static void pop_place(void) {
     int side = 0, field = gl_wide_shown(&side) == 1 && g_comp_has3d, d[4], dlg = field && gl_dialog_box(d);
     for (int y = 0; y < 192; y++)
         for (int x = 0, row = 0; x < 256; x++) {
-            row += !field ? 0 : dlg && x >= d[0] - 2 && x < d[2] + 2 && y >= d[1] - 2 && y < d[3] + 2 ? 40   /* (the dialogue window is 3D; never over it: it is read with the page) */
-                 : (g_comp_info[(y * 256 + x) * 4] & 3) != 1;
+            row += !field ? 0 : dlg && x >= d[0] - 2 && x < d[2] + 2 && y >= d[1] - 2 && y < d[3] + 2 ? (g_pop_panel ? 1 : 40)   /* (the dialogue window is 3D; never over it: it is read with the page. A
+                  * panel page (a companion's stats, while choosing one) goes over it rather than over the list it is chosen from) */
+                 : ((g_comp_info[(y * 256 + x) * 4] & 3) != 1) * (g_pop_panel ? 2 : 1);
             g_pop_sum[y + 1][x + 1] = g_pop_sum[y][x + 1] + row;
         }
     float k0 = fminf(1.0f, fminf(0.8f * cw / w, 0.8f * 192.0f / h));
@@ -3422,7 +3426,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
  * around them, and what touches the edge (the sky, the torn border), go. */
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
-    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = 0;
+    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = g_pop_panel = 0;
     bestiary_update(a_on_top);
     equip_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
@@ -3470,7 +3474,34 @@ static void pop_update(int a_on_top) {
     int n[8] = { 0 }, big = 0;
     for (int i = 0; i < N; i++) n[ly[i] & 7]++;
     for (int L = 1; L < 4; L++) if (n[L] > n[big]) big = L;
-    if (n[big] < N * 9 / 10) {
+    /* a page drawn as one big plain panel (the most pixels, nearly all one
+     * colour) on a backdrop of its own that frames it, round the screen's edge
+     * (a companion's stats at Patty's, while inviting one: a black panel on
+     * blue swirls): the panel is the window, the backdrop goes */
+    int edge = -1, panel_c = -1;
+    if (n[big] < N * 9 / 10 && !g_shop) {
+        int ring[4] = { 0 }, most = 0, nc = 0;
+        for (int i = 0; i < N; i++) {
+            int x = i % 256, y = i / 256, L = ly[i] & 7;
+            if ((x == 0 || x == 255 || y == 0 || y == 191) && L < 4) ring[L]++;
+        }
+        for (int L = 0; L < 4; L++) if (L != big && ring[L] > ring[big] && (edge < 0 || ring[L] > ring[edge])) edge = L;
+        if (edge >= 0) {                                          /* the panel's colour: the commonest of a few samples of its layer, */
+            uint32_t smp[64]; int ns = 0;
+            for (int i = 0; i < N && ns < 64; i += N / 256) if (ly[i] == big) smp[ns++] = px[i] & 0xFFFFFF;
+            for (int a = 0, best = 0; a < ns; a++) {
+                int m = 0;
+                for (int b = 0; b < ns; b++) m += smp[b] == smp[a];
+                if (m > best) { best = m; panel_c = (int)smp[a]; }
+            }
+            for (int i = 0; i < N; i++) if (ly[i] == big) { nc++; most += (int)(px[i] & 0xFFFFFF) == panel_c; }   /* ...and most of it */
+            if (most * 5 < nc * 4) edge = panel_c = -1;            /* (not plain: a picture) */
+        }
+    }
+    if (edge >= 0) {
+        for (int i = 0; i < N; i++) bg[i] = ly[i] == edge || ly[i] == LAYER_BACKDROP;
+        g_pop_panel = 1;
+    } else if (n[big] < N * 9 / 10) {
         for (int i = 0; i < N; i++) bg[i] = ly[i] == big || ly[i] == LAYER_BACKDROP;
     } else {
         /* parts: neighbours within 24 levels of each other; the parchment is
@@ -3515,6 +3546,8 @@ static void pop_update(int a_on_top) {
     for (int i = 0; i < N; i++)
         if (!bg[i]) { int x = i % 256, y = i / 256; kept++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (kept * (g_shop ? 400 : 50) < N) return;                   /* (nothing much left: not a page with windows) */
+    if (g_pop_panel && g_winstyle == 2)                           /* the modern style: its panel see-through, as the other windows' (drawn below) */
+        for (int i = 0; i < N; i++) if (ly[i] == big && (int)(px[i] & 0xFFFFFF) == panel_c) bg[i] = 1;
     for (int i = 0; i < N; i++) px[i] = (px[i] & 0xFFFFFF) | (bg[i] ? 1u << 24 : 0);
     g_pop_win[0] = x0; g_pop_win[1] = y0; g_pop_win[2] = x1 - x0 + 1; g_pop_win[3] = y1 - y0 + 1;
     /* one window of the modern style (its light line at its edge, its dark
@@ -3523,9 +3556,9 @@ static void pop_update(int a_on_top) {
     {
         int my = (y0 + y1) / 2, mx = (x0 + x1) / 2;
 #define GREYISH(c, lo, hi) (abs((int)(((c) >> 16) & 255) - (int)(((c) >> 8) & 255)) < 8 && abs((int)(((c) >> 8) & 255) - (int)((c) & 255)) < 8 && (int)((c) & 255) >= lo && (int)((c) & 255) <= hi)
-        g_pop_modern = g_winstyle == 2 && !g_shop && x1 - x0 > 40 && y1 - y0 > 30
-            && GREYISH(px[my * 256 + x0], 180, 255) && GREYISH(px[y0 * 256 + mx], 180, 255)        /* (its line, then a darker grey, then the panel (40, 40, 40)) */
-            && GREYISH(px[my * 256 + x0 + 3], 25, 60) && GREYISH(px[(y1 - 3) * 256 + mx], 25, 60);
+        g_pop_modern = g_winstyle == 2 && !g_shop && x1 - x0 > 40 && y1 - y0 > 30 && (g_pop_panel
+            || (GREYISH(px[my * 256 + x0], 180, 255) && GREYISH(px[y0 * 256 + mx], 180, 255)        /* (its line, then a darker grey, then the panel (40, 40, 40)) */
+            && GREYISH(px[my * 256 + x0 + 3], 25, 60) && GREYISH(px[(y1 - 3) * 256 + mx], 25, 60)));
 #undef GREYISH
     }
     if (!g_shop) pop_place();
