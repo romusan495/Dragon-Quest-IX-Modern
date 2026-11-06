@@ -326,6 +326,9 @@ es = Mapa: marcar también los ya &vaciados o hechos (en gris)
 en = Map: show the m&onsters walking nearby (red dots)
 es = Mapa: mostrar los m&onstruos cercanos (puntos rojos)
 
+en = Map: a star on the &gathering spots (alchemy ingredients)
+es = Mapa: una estrella en los puntos de &recolección (ingredientes de alquimia)
+
 en = Map: a plan of the &rooms inside buildings (drawn from their walls)
 es = Mapa: un plano de las &salas de los edificios (trazado según sus paredes)
 

@@ -2129,6 +2129,7 @@ static void settings_load(void) {
         else if (!strcmp(key, "autosave")) g_autosave = atoi(val) != 0;
         else if (!strcmp(key, "cheats")) cheats_from_list(val);
         else if (!strcmp(key, "map_monsters")) g_mapmarks_monsters = atoi(val) != 0;
+        else if (!strcmp(key, "map_gathering")) g_mapmarks_gather = atoi(val) != 0;
         else if (!strcmp(key, "interior_maps")) g_interior_maps = atoi(val) != 0;
         else if (!strcmp(key, "map_legend")) g_map_legend = atoi(val) != 0;
         else if (!strcmp(key, "name_typing")) g_name_typing = atoi(val) != 0;
@@ -2246,6 +2247,8 @@ static void settings_save(void) {
         fprintf(f, "cheats = %s\n", on); }
     fprintf(f, "# Modern > Map: the monsters walking nearby, as red dots: 0 or 1\n");
     fprintf(f, "map_monsters = %d\n", g_mapmarks_monsters);
+    fprintf(f, "# Modern > Map: a star on the fields' gathering spots (alchemy ingredients), grey while nothing sparkles there: 0 or 1\n");
+    fprintf(f, "map_gathering = %d\n", g_mapmarks_gather);
     fprintf(f, "# Modern > Map: inside buildings, a plan of the room drawn from its walls (the game shows the town): 0 or 1\n");
     fprintf(f, "interior_maps = %d\n", g_interior_maps);
     fprintf(f, "# the map: a legend of its marks, under the place's name: 0 or 1\n");
@@ -3949,6 +3952,7 @@ static void menu_sync(void) {
     menu_check(MI_MAPMARKS, g_mapmarks); menu_enable(MI_MAPMARKS, g_gl);
     menu_check(MI_MAPMARKS_OPENED, g_mapmarks_opened); menu_enable(MI_MAPMARKS_OPENED, g_gl && g_mapmarks);
     menu_check(MI_MAPMONSTERS, g_mapmarks_monsters); menu_enable(MI_MAPMONSTERS, g_gl && g_mapmarks);
+    menu_check(MI_MAPGATHER, g_mapmarks_gather); menu_enable(MI_MAPGATHER, g_gl && g_mapmarks);
     menu_check(MI_INTERIOR_MAPS, g_interior_maps); menu_enable(MI_INTERIOR_MAPS, g_gl);
     menu_check(MI_MAP_LEGEND, g_map_legend); menu_enable(MI_MAP_LEGEND, g_gl && g_mapmarks);
     menu_check(MI_NAME_TYPING, g_name_typing); menu_enable(MI_NAME_TYPING, g_gl);
@@ -4585,6 +4589,7 @@ static void do_action(int id) {
     case MI_MAPMARKS: g_mapmarks = !g_mapmarks; break;
     case MI_MAPMARKS_OPENED: g_mapmarks_opened = !g_mapmarks_opened; break;
     case MI_MAPMONSTERS: g_mapmarks_monsters = !g_mapmarks_monsters; break;
+    case MI_MAPGATHER: g_mapmarks_gather = !g_mapmarks_gather; break;
     case MI_INTERIOR_MAPS: g_interior_maps = !g_interior_maps; break;
     case MI_MAP_LEGEND: g_map_legend = !g_map_legend; break;
     case MI_NAME_TYPING: g_name_typing = !g_name_typing; break;
