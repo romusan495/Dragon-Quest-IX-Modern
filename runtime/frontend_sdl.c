@@ -1085,8 +1085,11 @@ static void coll_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
     bestiary_piece(v, 1, 12, 35, 100, 11, 6, x - 3 * k, y, k); y += 14 * k;               /* the kind shown (its tab's dark letters) */
     if (g_coll_quest) {                                           /* the quests: their signs and names, one column */
-        bestiary_piece(v, 1, 21, CL_ROW0, 14, 8 * CL_RH, 20, x - 2 + 17 * k, y, k);      /* the signs, as they are (not the panel's brown round them: 20) */
-        bestiary_piece(v, 1, 35, CL_ROW0, 142, 8 * CL_RH, 13, x - 2 + 31 * k, y, k);   /* (not the panel's scroll bar at its right) */
+        int nq = g_rows[0];                                       /* (the rows with a quest: the empty ones' panel brown not kept as specks) */
+        if (nq) {
+            bestiary_piece(v, 1, 21, CL_ROW0, 14, nq * CL_RH, 20, x - 2 + 17 * k, y, k);     /* the signs, as they are (not the panel's brown round them: 20) */
+            bestiary_piece(v, 1, 35, CL_ROW0, 142, nq * CL_RH, 13, x - 2 + 31 * k, y, k);   /* (not the panel's scroll bar at its right) */
+        }
         if (g_cur[2]) bestiary_cursor_at(v, 3, CL_ROW0, x - 2, y, k);
         y += 8 * CL_RH * k + 4 * k;
     } else {
