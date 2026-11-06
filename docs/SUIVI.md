@@ -35,14 +35,14 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne | ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`)
-| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats | ; Étoiles des points de collecte
-| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin | ; Textures des monstres sur la carte (`texture_for`, 2026-11-06)
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) |
+| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte |
+| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
 | `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) |
-| `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) | ; Étoiles des points de collecte
+| `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
 #2, réglages par défaut #15, mini-carte et suppression des dispositions #21 #23
