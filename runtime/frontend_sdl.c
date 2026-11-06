@@ -128,6 +128,7 @@ enum { SHOP_TX = 60, SHOP_TY = 33, SHOP_TW = 113, SHOP_TH = 58, SHOP_PAD = 3, SH
  * led there hidden (bag_update()) */
 static int g_bag;                                                 /* the list's lines shown (0: not up) */
 static int g_bag_sel = -1;                                        /* ...the chosen one */
+static uint16_t g_bag_keys[8]; static int g_bag_keys_n;          /* ...their items */
 static int g_bag_box[4];                                          /* ...the box under it: x, y, w, h (w 0: none) */
 static int g_bag_ink[2];                                          /* ...the card's description's rows on the top screen (y0, y1; y1 < y0: none) */
 static int g_bag_word[3][4];                                      /* ...the path's words: the menus' names ("Items", "Current items") and the chosen line ("Bag", a name); w 0: none */
@@ -146,6 +147,40 @@ enum { BAG_X0 = 113, BAG_Y0 = 9, BAG_X1 = 254, BAG_Y1 = 134,     /* the list's w
 static float bag_x0(float cw) { return (cw - BAG_W) / 2; }
 static float bag_mx(float cw, float dx) { return bag_x0(cw) + 16.5f + (dx - BAG_TX) * BAG_K; }
 static float bag_my(float dy) { return BAG_RY + (dy - BAG_LY) * BAG_K; }
+/* The menus' path above their window (the bag's, the X menu's: path_set()):
+ * "Menu" (mapmarks_menu()), then the menus' names on the DS (their light
+ * letters' boxes), small, with "›" between; on the canvas from x, middle y */
+#define PATH_K  0.6f                                              /* the names' scale */
+#define PATH_H  5.5f                                              /* "Menu"'s height */
+static int   g_path_n;                                            /* the names */
+static int   g_path_word[4][4];                                   /* ...their boxes on the DS */
+static float g_path_x[5], g_path_y, g_path_chev[8];               /* ...where they go ([0]: "Menu"), the marks (x, y) */
+static void path_set(float x, float y, const int (*word)[4], int n) {
+    g_path_n = 0; g_path_y = y; g_path_x[0] = x;
+    x += mapmarks_text_w(T("Menu"), PATH_H);
+    for (int i = 0; i < n && g_path_n < 4; i++) {
+        if (!word[i][2]) continue;
+        g_path_chev[2 * g_path_n] = x + 3; g_path_chev[2 * g_path_n + 1] = y;
+        memcpy(g_path_word[g_path_n], word[i], sizeof word[i]);
+        g_path_x[++g_path_n] = x + 8.5f;
+        x += 8.5f + word[i][2] * PATH_K;
+    }
+}
+/* modern: the X menu's windows (the menu, Items, Current items: one at a
+ * time) on the field, laid out again (xmenu_pieces()): the one the hand is
+ * in alone, in the middle (the path above it, its name, its lines, the one
+ * chosen lit no further than its column), the box at the bottom (the gold)
+ * where it was; the others hidden (xmenu_update()) */
+static int g_xmenu;                                               /* up */
+static int g_xm_win[4];                                           /* ...the window on the DS: x0, y0 (its top line), x1, y1 (its bottom one) */
+static int g_xm_sep;                                              /* ...the line under its name (0: none, the menu) */
+static int g_xm_band[4];                                          /* ...the chosen line's: x0, y0, x1, y1 (x1 < x0: none) */
+static int g_xm_box[4];                                           /* ...the box at the bottom: x, y, w, h (w 0: none) */
+static int g_xm_word[4][4], g_xm_nword;                           /* ...the path: the menus' names before, and its own */
+static void xm_place(float cw, float* wx, float* wy) {
+    *wx = floorf(cw / 2 - (g_xm_win[2] - g_xm_win[0] + 1) / 2.0f);
+    *wy = floorf(85 - (g_xm_win[3] - g_xm_win[1] + 1) / 2.0f);
+}
 static int g_hud_list;                                            /* ...a list open (spells, items, targets): modern, the chooser alone */
 static int g_hud_win[4];                                          /* ...or a window alone there (experience, level up): x, y, w, h (w 0: none) */
 static int g_volume = 100, g_mute;                                /* Game > Volume */
@@ -1756,6 +1791,13 @@ static void round_minimap(GlPresent* v, const float* small, int z) {
     (void)small;
 }
 
+static void path_pieces(GlPresent* v) {
+    for (int i = 0; i < g_path_n; i++) {
+        const int* w = g_path_word[i];
+        bestiary_piece(v, 3, w[0], w[1], w[2], w[3], 3, g_path_x[i + 1], g_path_y - w[3] * PATH_K / 2, PATH_K);
+    }
+}
+
 /* second: the layout of the second window (two windows) */
 /* The bag's list, laid out again over the field (the 2D apart: gl_set_split(),
  * none of it shown but these pieces): see g_bag. The list's letters (light,
@@ -1767,15 +1809,7 @@ static void bag_pieces(GlPresent* v) {
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X, Y, W, t); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X, (Y) + (H) - t, W, t); \
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X, Y, t, H); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), (X) + (W) - t, Y, t, H); } while (0)
     BAG_WIN(x0, BAG_WY, BAG_W, y1 - BAG_WY);
-    {   /* the path: the menus' names, then the chosen line's, small (the marks between: mapmarks_bag()) */
-        float x = x0 + 1;
-        for (int i = 0; i < 3; i++) {
-            const int* w = g_bag_word[i];
-            if (!w[2]) continue;
-            bestiary_piece(v, 3, w[0], w[1], w[2], w[3], 3, x, 14 - w[3] * BAG_CK / 2, BAG_CK);
-            x += w[2] * BAG_CK + 9;
-        }
-    }
+    path_pieces(v);                                               /* the path ("Menu", the marks: mapmarks_bag()) */
     if (g_bag_word[2][2]) {                                       /* its name, the chosen line's in the menu before */
         const int* w = g_bag_word[2];
         bestiary_piece(v, 3, w[0], w[1], w[2], w[3], 3, x0 + 8, (BAG_WY + 33) / 2 - w[3] * BAG_K / 2, BAG_K);
@@ -1804,6 +1838,7 @@ static void bag_pieces(GlPresent* v) {
     v->icons[0] = (cw - 256) / 2; v->icons[1] = 0; v->icons[2] = 256; v->icons[3] = 192;
 }
 
+static void xmenu_pieces(GlPresent* v);
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
     if (wh > 0) g_lay_s = (float)wh / 192.0f;
@@ -1959,6 +1994,9 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         } else if (page == 1 && g_bag && !second && v->npiece + 22 <= GL_MAX_PIECES) {
             small[0] = small[1] = small[2] = small[3] = 0;           /* (the card: its description under the list) */
             bag_pieces(v);
+        } else if (g_xmenu && !second && v->npiece + 30 <= GL_MAX_PIECES) {
+            small[0] = small[1] = small[2] = small[3] = 0;
+            xmenu_pieces(v);
         } else if (page == 1 && which < 0 && g_pop_win[2] && !g_quest_page && !g_card_page && !second) {
             /* a page on the top screen over a menu without the field (allocating
              * skill points: the skill's table over the list of skills, after a
@@ -3814,22 +3852,161 @@ static void bag_update(int a_on_top) {
         if (best >= 8) bag_word(px, 20, at - 3, 106, at + 10, word2);
         memcpy(g_bag_word[2], word2, sizeof word2);
     }
-    const uint8_t* rgba; int changed;
-    float cw = 256 + 2 * (float)wide_side_target(), X0 = (cw - 256) / 2, x0 = bag_x0(cw) - X0, wy = BAG_WY1 + 5;   /* (the overlay's units: the canvas' middle 256) */
-    float chev[4]; int nchev = 0;
-    {   float x = bag_x0(cw) + 1 - X0;                            /* (as bag_pieces() lays the path) */
-        for (int i = 0; i < 3; i++) {
-            if (!g_bag_word[i][2]) continue;
-            x += g_bag_word[i][2] * BAG_CK;
-            int more = 0;
-            for (int j = i + 1; j < 3; j++) more |= g_bag_word[j][2] != 0;
-            if (more && nchev < 2) { chev[2 * nchev] = x + 2.5f; chev[2 * nchev + 1] = 14; nchev++; }
-            x += 9;
+    g_bag_keys_n = ok ? n : 0;
+    if (ok) memcpy(g_bag_keys, keys, sizeof keys);
+}
+
+/* The X menu's windows (g_xmenu): up while the hand (yellow) is in a window
+ * of the menu's column (its grey line from x 9, one or two lines across: the
+ * name's, the bottom) and no other window is up but the box at the bottom
+ * (what isn't one of these menus: the game's layout kept). The menus before
+ * it (greyed) give the path: their names, above it. */
+static int xm_light(uint32_t c) { return ((c >> 16) & 255) > 170 && ((c >> 8) & 255) > 170 && (c & 255) > 170; }
+static void xmenu_update(int a_on_top) {
+    const uint32_t* px = g_engine_out[0];
+    const uint8_t* info = g_comp_info;
+    int side = 0, ok = g_gl && !a_on_top && g_comp_has3d && g_winstyle == 2 && !g_shop && !g_equip && !g_cc_n && !g_bag
+                    && gl_wide_shown(&side) == 1 && !party_in_battle();   /* (the field's menus only) */
+    g_xmenu = 0;
+    if (!ok) return;
+    #define GREY(x, y) ((px[(y) * 256 + (x)] & 0xFFFFFF) == 0x828282)
+    int hx0 = 256, hy0 = 192, hx1 = -1, hy1 = -1, hn = 0;          /* the hand */
+    for (int y = 0; y < 192; y++)
+        for (int x = 0; x < 256; x++) {
+            uint32_t c = px[y * 256 + x];
+            if (((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100 && (info[(y * 256 + x) * 4] & 3) != 1) {
+                hn++; if (x < hx0) hx0 = x; if (x > hx1) hx1 = x; if (y < hy0) hy0 = y; if (y > hy1) hy1 = y;
+            }
         }
+    static int dbg = -1; if (dbg < 0) dbg = getenv("DQIX_XMDBG") != NULL;
+    #define XMFAIL(c) do { if (dbg && g_frame % 30 == 0) fprintf(stderr, "xm f%llu fail %d hand %d %d-%d %d-%d\n", (unsigned long long)g_frame, c, hn, hx0, hx1, hy0, hy1); return; } while (0)
+    if (hn < 6 || hn > 120 || hx1 - hx0 > 24 || hy1 - hy0 > 14) XMFAIL(1);
+    int ry[32], rx0[32], rx1[32], nr = 0;                         /* the grey lines across (25 pixels or more) */
+    for (int y = 0; y < 192 && nr < 32; y++)
+        for (int x = 0; x < 256; ) {
+            if (!GREY(x, y)) { x++; continue; }
+            int e = x; while (e < 256 && GREY(e, y)) e++;
+            if (e - x >= 25 && nr < 32) { ry[nr] = y; rx0[nr] = x; rx1[nr] = e - 1; nr++; }
+            x = e;
+        }
+    int hy = (hy0 + hy1) / 2, below = -1;                         /* the window's line under the hand: the menu's column */
+    for (int i = 0; i < nr; i++) if (ry[i] > hy && rx0[i] <= 12 && rx1[i] > hx1 + 20) { below = i; break; }
+    if (below < 0) XMFAIL(2);
+    int X0 = rx0[below], X1 = rx1[below], top = ry[below], bot = ry[below];
+    for (int i = below - 1; i >= 0; i--) {                        /* ...its lines above, its side whole between them (but by the hand) */
+        if (abs(rx0[i] - X0) > 1 || abs(rx1[i] - X1) > 1) continue;
+        int whole = 1;
+        for (int y = ry[i]; y < top && whole; y++) whole = GREY(X0, y) || (y >= hy0 - 3 && y <= hy1 + 3);
+        if (!whole) break;
+        top = ry[i];
     }
-    int on = mapmarks_bag(keys, g_bag, x0 + 7, bag_my(BAG_LY) + (BAG_DY * BAG_K - BAG_IC) / 2 + 0.5f, BAG_DY * BAG_K, BAG_IC, sel,
-                          x0 + 6, wy + (BAG_DH - BAG_BIG) / 2, g_bag_ink[1] >= g_bag_ink[0] ? BAG_BIG : 0, chev, nchev, 5.0f, &rgba, &changed);
-    if (changed && !g_shop) gl_set_icons(on ? rgba : NULL, MAPMARKS_W, MAPMARKS_H);
+    if (top >= hy0 || X0 > 12) XMFAIL(3);
+    int sep = 0;
+    for (int i = 0; i < nr; i++) if (ry[i] > top && ry[i] < hy0 && abs(rx0[i] - X0) <= 1 && abs(rx1[i] - X1) <= 1) sep = ry[i];
+    int bx0 = 256, by0 = 192, bx1 = -1, by1 = -1;                 /* any other grey line: the box at the bottom, or not these menus */
+    for (int i = 0; i < nr; i++) {
+        if (abs(rx0[i] - X0) <= 1 && abs(rx1[i] - X1) <= 1 && ry[i] >= top && ry[i] <= bot) continue;
+        if (ry[i] < 140 || rx0[i] < 128) XMFAIL(100 + ry[i]);
+        if (rx0[i] < bx0) bx0 = rx0[i]; if (rx1[i] > bx1) bx1 = rx1[i]; if (ry[i] < by0) by0 = ry[i]; if (ry[i] > by1) by1 = ry[i];
+    }
+    g_xm_box[2] = 0;
+    if (bx1 >= bx0 && by1 > by0) {                                /* (not with a list shown greyed at the right (the bag's): its box) */
+        int list = 0;
+        for (int y = 0; y < 140 && !list; y++) list = (px[y * 256 + 200] & 0xFFFFFF) == 0xA2A2A2 && (px[y * 256 + 230] & 0xFFFFFF) == 0xA2A2A2;
+        if (!list) { g_xm_box[0] = bx0; g_xm_box[1] = by0; g_xm_box[2] = bx1 - bx0 + 1; g_xm_box[3] = by1 - by0 + 1; }
+    }
+    g_xm_win[0] = X0; g_xm_win[1] = top; g_xm_win[2] = X1; g_xm_win[3] = bot; g_xm_sep = sep;
+    {   /* the chosen line: the hand's, up to its column's end (the first gap of 10 empty columns in all its lines after its text) */
+        int ly0 = (sep ? sep : top) + 2, ly1 = bot - 2, end = X1 - 2, seen = 0, gap = 0;
+        for (int x = hx1 + 2; x < X1 - 1; x++) {
+            int any = 0;
+            for (int y = ly0; y <= ly1 && !any; y++) any = xm_light(px[y * 256 + x]);
+            if (any) { seen = 1; gap = 0; } else if (seen && ++gap >= 10) { end = x - 5; break; }
+        }
+        g_xm_band[0] = X0 + 2; g_xm_band[2] = end;
+        g_xm_band[1] = hy - 6; g_xm_band[3] = hy + 6;
+        if (g_xm_band[1] < ly0 - 1) g_xm_band[1] = ly0 - 1;
+        if (g_xm_band[3] > ly1 + 1) g_xm_band[3] = ly1 + 1;
+    }
+    g_xm_nword = 0;                                               /* the path: the greyed menus' names above it (one a line), then its own */
+    for (int y = 0; y < top && g_xm_nword < 3; ) {
+        int any = 0;
+        for (int x = X0 + 2; x < X1 - 1 && !any; x++) any = xm_light(px[y * 256 + x]);
+        if (!any) { y++; continue; }
+        int e = y; while (e < top) { int a2 = 0; for (int x = X0 + 2; x < X1 - 1 && !a2; x++) a2 = xm_light(px[e * 256 + x]); if (!a2 && e - y > 3) break; e++; }
+        int* wd = g_xm_word[g_xm_nword];
+        bag_word(px, X0 + 2, y, X1 - 1, e, wd);
+        if (wd[2]) {                                              /* (its first word's letters: a gap of 6 columns ends it (a menu behind showing)) */
+            int gap = 0, last = wd[0];
+            for (int x = wd[0]; x < wd[0] + wd[2]; x++) {
+                int any = 0;
+                for (int yy = wd[1]; yy < wd[1] + wd[3] && !any; yy++) any = xm_light(px[yy * 256 + x]);
+                if (any) { last = x; gap = 0; } else if (++gap >= 6 && last > wd[0]) break;
+            }
+            wd[2] = last - wd[0] + 2;
+            if (wd[0] <= X0 + 24) g_xm_nword++;                   /* (a name: at the window's left, not what a menu behind shows) */
+        }
+        y = e + 1;
+    }
+    if (sep && g_xm_nword < 4) { bag_word(px, X0 + 2, top + 1, X1 - 1, sep, g_xm_word[g_xm_nword]); if (g_xm_word[g_xm_nword][2]) g_xm_nword++; }
+    #undef GREY
+    if (dbg && g_frame % 30 == 0) fprintf(stderr, "xm f%llu ok win %d %d %d %d sep %d words %d\n", (unsigned long long)g_frame, X0, top, X1, bot, sep, g_xm_nword);
+    g_xmenu = 1;
+}
+
+/* The icons' overlay over the field's screen (gl_set_icons()): the bag's
+ * (its items' icons, its path) or the X menu's (its path), else none. */
+static void menu_icons_update(void) {
+    const uint8_t* rgba = NULL; int changed = 0;
+    float cw = 256 + 2 * (float)wide_side_target(), X0 = (cw - 256) / 2;   /* (the overlay: the canvas' middle 256) */
+    float chev[8];
+    if (g_bag) {
+        float x0 = bag_x0(cw), wy = BAG_WY1 + 5;
+        path_set(x0 + 1, 13, (const int (*)[4])g_bag_word, 3);
+        for (int i = 0; i < g_path_n; i++) { chev[2 * i] = g_path_chev[2 * i] - X0; chev[2 * i + 1] = g_path_chev[2 * i + 1]; }
+        changed = mapmarks_bag(g_bag_keys, g_bag_keys_n, x0 - X0 + 7, bag_my(BAG_LY) + (BAG_DY * BAG_K - BAG_IC) / 2 + 0.5f, BAG_DY * BAG_K, BAG_IC, g_bag_sel,
+                               x0 - X0 + 6, wy + (BAG_DH - BAG_BIG) / 2, g_bag_ink[1] >= g_bag_ink[0] ? BAG_BIG : 0,
+                               T("Menu"), g_path_x[0] - X0, g_path_y, PATH_H, chev, g_path_n, 5.0f, &rgba);
+    } else if (g_xmenu) {
+        float wx, wy;
+        xm_place(cw, &wx, &wy);
+        path_set(wx + 1, wy - 7, (const int (*)[4])g_xm_word, g_xm_nword);
+        for (int i = 0; i < g_path_n; i++) { chev[2 * i] = g_path_chev[2 * i] - X0; chev[2 * i + 1] = g_path_chev[2 * i + 1]; }
+        changed = mapmarks_menu(T("Menu"), g_path_x[0] - X0, g_path_y, PATH_H, chev, g_path_n, 5.0f, &rgba);
+    } else if (mapmarks_menu_off()) changed = 1;
+    if (changed && !g_shop) gl_set_icons(g_bag || g_xmenu ? rgba : NULL, MAPMARKS_W, MAPMARKS_H);
+}
+
+/* The X menu's window alone in the middle (g_xmenu), as the bag's (the 2D
+ * apart): its panel and line of the modern style, its name and lines (light
+ * letters, the hand kept), the chosen one lit to its column's end; the box
+ * at the bottom where it was, of the style; the path above. */
+static void xmenu_pieces(GlPresent* v) {
+    float wx, wy, t = 0.75f, X = (v->cw - 256) / 2;
+    xm_place(v->cw, &wx, &wy);
+    const int X0 = g_xm_win[0], top = g_xm_win[1], X1 = g_xm_win[2], bot = g_xm_win[3], sep = g_xm_sep;
+    float ox = wx - X0, oy = wy - top, w = (float)(X1 - X0 + 1), h = (float)(bot - top + 1);
+    #define XM_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    XM_WIN(wx, wy, w, h);
+    int ly0 = (sep ? sep : top) + 1;
+    if (sep) {
+        bestiary_piece(v, 3, X0 + 1, top + 1, X1 - X0 - 1, sep - top - 1, 3, X0 + 1 + ox, top + 1 + oy, 1);   /* its name */
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx + 4, sep + oy, w - 8, t);
+    }
+    if (g_xm_band[2] > g_xm_band[0])                             /* the chosen line lit */
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), g_xm_band[0] + ox, g_xm_band[1] + oy, g_xm_band[2] - g_xm_band[0], g_xm_band[3] - g_xm_band[1]);
+    bestiary_piece(v, 3, X0 + 1, ly0, X1 - X0 - 1, bot - ly0, 3, X0 + 1 + ox, ly0 + oy, 1);                  /* its lines */
+    bestiary_piece(v, 3, 0, ly0, X0, bot - ly0, 3, ox, ly0 + oy, 1);                                          /* (the hand, over its left edge) */
+    if (g_xm_box[2]) {                                           /* the box at the bottom, where it was */
+        const int* b = g_xm_box;
+        XM_WIN(X + b[0], (float)b[1], (float)b[2], (float)b[3]);
+        bestiary_piece(v, 3, b[0] + 2, b[1] + 2, b[2] - 4, b[3] - 4, 3, X + b[0] + 2, (float)b[1] + 2, 1);
+    }
+    path_pieces(v);
+    #undef XM_WIN
+    v->icons[0] = X; v->icons[1] = 0; v->icons[2] = 256; v->icons[3] = 192;
 }
 
 /* The map's markers (mapmarks.c) over the top screen, in whichever window
@@ -4009,11 +4186,13 @@ static void present_gl(void) {
     gl_set_hud_cut(g_winstyle && (g_hud_n > 0 || g_hud_win[2]));
     shop_update((pow >> 15) & 1);
     bag_update((pow >> 15) & 1);
+    xmenu_update((pow >> 15) & 1);
+    menu_icons_update();
     pop_update((pow >> 15) & 1);
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
-    gl_set_split(g_shop || g_bag);
+    gl_set_split(g_shop || g_bag || g_xmenu);
     g_win_outline = g_hud_win[2] != 0;                           /* (the next frames: the experience and level-up windows outlined) */
     g_dlg_outline = (pow >> 15) & 1;                             /* battles (the 3D on the top screen): the text box too */
     {   /* the 3D gone for a single frame in widescreen (a shop's menu after an item's

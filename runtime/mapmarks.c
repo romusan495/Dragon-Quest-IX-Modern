@@ -2160,30 +2160,31 @@ int mapmarks_bag_list(int hero, uint16_t keys[8], int* sel) {
     return lines;
 }
 
-/* The bag's list, laid out again by the front end (bag_pieces()): each
- * line's item's icon (n lines from y0, dy apart, size s at x), the chosen
- * one's big in the description's window (bx, by, bs; bs 0: none), and the
- * marks between the path's words above the window (chev: x, y of each, h
- * high); in the overlay's units (MAPMARKS_R pixels each). */
-int mapmarks_bag(const uint16_t* keys, int n, float x, float y0, float dy, float s, int sel, float bx, float by, float bs,
-                 const float* chev, int nchev, float ch, const uint8_t** rgba, int* changed) {
-    static uint32_t last_key;
-    *rgba = g_icons; *changed = 0;
-    if (n <= 0) { if (last_key) { last_key = 0; memset(g_icons, 0, sizeof g_icons); *changed = 1; } return 0; }
-    uint32_t key = 2166136261u;
-    for (int i = 0; i < n; i++) key = (key ^ keys[i]) * 16777619u;
-    float v[8] = { x, y0, dy, s, bx, by, bs, ch };
-    for (int i = 0; i < 8; i++) key = (key ^ (uint32_t)lroundf(v[i] * 8)) * 16777619u;
-    for (int i = 0; i < 2 * nchev; i++) key = (key ^ (uint32_t)lroundf(chev[i] * 8)) * 16777619u;
-    key = (key ^ (uint32_t)sel) * 16777619u; key = (key ^ (uint32_t)n) * 16777619u;
-    if (!key) key = 1;
-    if (key == last_key) return 1;
-    last_key = key; *changed = 1;
-    memset(g_icons, 0, sizeof g_icons);
+/* The menus' path (Menu > Items > ...), drawn over the front end's: its
+ * first word ("Menu", light grey, h high, its left at fx and middle at fy)
+ * and the marks "›" between the words (chev: x, y of each, ch high); in the
+ * overlay's units (MAPMARKS_R pixels each). */
+static void draw_path(const char* first, float fx, float fy, float fh, const float* chev, int nchev, float ch) {
     const float R = MAPMARKS_R;
-    for (int i = 0; i < n; i++)
-        if (keys[i] != 0xFFFF) draw_icon(keys[i], (int)lroundf(x * R), (int)lroundf((y0 + dy * i) * R), (int)lroundf(s * R));
-    if (bs > 0 && sel >= 0 && sel < n && keys[sel] != 0xFFFF) draw_icon(keys[sel], (int)lroundf(bx * R), (int)lroundf(by * R), (int)lroundf(bs * R));
+    if (first && *first && text_ready()) {
+        static uint32_t t[256 * 48];
+        int h = (int)(fh * R * 1.4f);
+        if (h > 48) h = 48;
+        memset(t, 0, sizeof t);
+        int w = text_draw(t, 256, h, 0, 0, fh * R, 0xFFFFFF, first);
+        if (w > 256) w = 256;
+        int X0 = (int)lroundf(fx * R), Y0 = (int)lroundf(fy * R - fh * R * 0.62f);
+        for (int yy = 0; yy < h; yy++)
+            for (int xx = 0; xx < w; xx++) {
+                int X = X0 + xx, Y = Y0 + yy;
+                if (X < 0 || Y < 0 || X >= MAPMARKS_W || Y >= MAPMARKS_H) continue;
+                float a = (float)((t[yy * 256 + xx] >> 16) & 255) / 255.0f * 0.85f;
+                if (a <= 0) continue;
+                uint8_t* d = &g_icons[(Y * MAPMARKS_W + X) * 4];
+                for (int k = 0; k < 3; k++) d[k] = (uint8_t)(a * 215 + d[k] * (1 - a));
+                d[3] = (uint8_t)(a * 255 + d[3] * (1 - a));
+            }
+    }
     for (int c = 0; c < nchev; c++) {                             /* the marks: "›", light grey, two strokes */
         float ax = chev[2 * c] * R, ay = (chev[2 * c + 1] - ch / 2) * R, bx2 = ax + ch * 0.45f * R, by2 = chev[2 * c + 1] * R, cy = (chev[2 * c + 1] + ch / 2) * R;
         float hw = 0.32f * R;                                     /* (half the stroke's width) */
@@ -2205,6 +2206,64 @@ int mapmarks_bag(const uint16_t* keys, int n, float x, float y0, float dy, float
                 dst[3] = (uint8_t)(a2 * 255 + dst[3] * (1 - a2));
             }
     }
+}
+
+float mapmarks_text_w(const char* s, float h) {
+    static uint32_t t[512 * 48];
+    if (!s || !*s || !text_ready()) return 0;
+    int ph = (int)(h * MAPMARKS_R * 1.4f);
+    if (ph > 48) ph = 48;
+    return (float)text_draw(t, 512, ph, 0, 0, h * MAPMARKS_R, 0xFFFFFF, s) / MAPMARKS_R;
+}
+
+static uint32_t g_menu_key;                                       /* what g_icons holds for the bag or the menus (0: nothing) */
+static uint32_t path_key(uint32_t key, const char* first, float fx, float fy, float fh, const float* chev, int nchev, float ch) {
+    for (const char* c = first ? first : ""; *c; c++) key = (key ^ (uint8_t)*c) * 16777619u;
+    float v[4] = { fx, fy, fh, ch };
+    for (int i = 0; i < 4; i++) key = (key ^ (uint32_t)lroundf(v[i] * 8)) * 16777619u;
+    for (int i = 0; i < 2 * nchev; i++) key = (key ^ (uint32_t)lroundf(chev[i] * 8)) * 16777619u;
+    return key;
+}
+
+int mapmarks_menu_off(void) {
+    if (!g_menu_key) return 0;
+    g_menu_key = 0; memset(g_icons, 0, sizeof g_icons);
+    return 1;
+}
+
+int mapmarks_menu(const char* first, float fx, float fy, float fh, const float* chev, int nchev, float ch, const uint8_t** rgba) {
+    *rgba = g_icons;
+    uint32_t key = path_key(2166136261u ^ 0x5A5Au, first, fx, fy, fh, chev, nchev, ch);
+    if (!key) key = 1;
+    if (key == g_menu_key) return 0;
+    g_menu_key = key;
+    memset(g_icons, 0, sizeof g_icons);
+    draw_path(first, fx, fy, fh, chev, nchev, ch);
+    return 1;
+}
+
+/* The bag's list, laid out again by the front end (bag_pieces()): each
+ * line's item's icon (n lines from y0, dy apart, size s at x), the chosen
+ * one's big in the description's window (bx, by, bs; bs 0: none), and its
+ * path (as mapmarks_menu()); in the overlay's units. */
+int mapmarks_bag(const uint16_t* keys, int n, float x, float y0, float dy, float s, int sel, float bx, float by, float bs,
+                 const char* first, float fx, float fy, float fh, const float* chev, int nchev, float ch, const uint8_t** rgba) {
+    *rgba = g_icons;
+    uint32_t key = 2166136261u;
+    for (int i = 0; i < n; i++) key = (key ^ keys[i]) * 16777619u;
+    float v[7] = { x, y0, dy, s, bx, by, bs };
+    for (int i = 0; i < 7; i++) key = (key ^ (uint32_t)lroundf(v[i] * 8)) * 16777619u;
+    key = (key ^ (uint32_t)sel) * 16777619u; key = (key ^ (uint32_t)n) * 16777619u;
+    key = path_key(key, first, fx, fy, fh, chev, nchev, ch);
+    if (!key) key = 1;
+    if (key == g_menu_key) return 0;
+    g_menu_key = key;
+    memset(g_icons, 0, sizeof g_icons);
+    const float R = MAPMARKS_R;
+    for (int i = 0; i < n; i++)
+        if (keys[i] != 0xFFFF) draw_icon(keys[i], (int)lroundf(x * R), (int)lroundf((y0 + dy * i) * R), (int)lroundf(s * R));
+    if (bs > 0 && sel >= 0 && sel < n && keys[sel] != 0xFFFF) draw_icon(keys[sel], (int)lroundf(bx * R), (int)lroundf(by * R), (int)lroundf(bs * R));
+    draw_path(first, fx, fy, fh, chev, nchev, ch);
     return 1;
 }
 
