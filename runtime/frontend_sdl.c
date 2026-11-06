@@ -1900,7 +1900,7 @@ static void bag_pieces(GlPresent* v) {
         bestiary_piece(v, 3, w[0], w[1], w[2], w[3], 3, x0 + 8, (BAG_WY + 33) / 2 - w[3] * BAG_K / 2, BAG_K);
     }
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x0 + 4, 33, BAG_W - 8, t);
-    if (g_bag_sel >= 0)                                           /* the chosen line lit */
+    for (int i = 0; i < 3 && g_bag_sel >= 0; i++)                 /* the chosen line lit (three times, as the menus') */
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), x0 + 2.5f, bag_my(BAG_LY + BAG_DY * g_bag_sel) + 0.5f, BAG_W - 5, BAG_DY * BAG_K);
     bestiary_piece(v, 3, BAG_TX, BAG_LY, 253 - BAG_TX, 8 * BAG_DY, 3, bag_mx(cw, BAG_TX), bag_my(BAG_LY), BAG_K);   /* the names, the numbers */
     bestiary_piece(v, 3, BAG_X0 + 2, BAG_LY + 8 * BAG_DY, BAG_X1 - BAG_X0 - 3, BAG_Y1 - BAG_LY - 8 * BAG_DY, 3,      /* the pages: 1/4, the arrows */
@@ -4036,15 +4036,30 @@ static void xmenu_update(int a_on_top) {
         if (!list) { g_xm_box[0] = bx0; g_xm_box[1] = by0; g_xm_box[2] = bx1 - bx0 + 1; g_xm_box[3] = by1 - by0 + 1; }
     }
     g_xm_win[0] = X0; g_xm_win[1] = top; g_xm_win[2] = X1; g_xm_win[3] = bot; g_xm_sep = sep;
-    {   /* the chosen line: the hand's, up to its column's end (the first gap of 10 empty columns in all its lines after its text) */
+    {   /* the chosen line: from the hand (the window's left in the first column) to its column's end (the
+         * first gap of 10 columns empty in all its lines after the text), over its letters' rows (but the
+         * accents': 3 letter pixels a row) with 4 pixels round; the chosen line's letters may be yellow */
         int ly0 = (sep ? sep : top) + 2, ly1 = bot - 2, end = X1 - 2, seen = 0, gap = 0;
+        #define XM_INK(c) (xm_light(c) || ((((c) >> 16) & 255) > 180 && (((c) >> 8) & 255) > 140 && ((c) & 255) < 100))
         for (int x = hx1 + 2; x < X1 - 1; x++) {
             int any = 0;
-            for (int y = ly0; y <= ly1 && !any; y++) any = xm_light(px[y * 256 + x]);
+            for (int y = ly0; y <= ly1 && !any; y++) any = XM_INK(px[y * 256 + x]);
             if (any) { seen = 1; gap = 0; } else if (seen && ++gap >= 10) { end = x - 5; break; }
         }
-        g_xm_band[0] = X0 + 2; g_xm_band[2] = end;
-        g_xm_band[1] = hy - 6; g_xm_band[3] = hy + 6;
+        int t0 = -1, t1 = -1;                                      /* its letters' rows: the run round the hand's middle */
+        for (int y = hy - 9, c0 = -1, c1 = -1; y <= hy + 10; y++) {   /* (the runs of rows apart by 3 or more; the nearest the hand's middle) */
+            int k = 0;
+            if (y >= ly0 && y <= ly1 && y <= hy + 9) for (int x = hx1 + 1; x < end; x++) k += XM_INK(px[y * 256 + x]);
+            if (k >= 3) { if (c0 < 0 || y > c1 + 2) c0 = y; c1 = y; continue; }
+            if (c0 >= 0 && y > c1 + 2) {
+                if (t0 < 0 || abs((c0 + c1) - 2 * hy) < abs((t0 + t1) - 2 * hy)) { t0 = c0; t1 = c1; }
+                c0 = -1;
+            }
+        }
+        #undef XM_INK
+        if (t0 < 0) { t0 = hy - 3; t1 = hy + 3; }
+        g_xm_band[0] = hx0 - 1 > X0 + 2 ? hx0 - 1 : X0 + 2; g_xm_band[2] = end;
+        g_xm_band[1] = t0 - 4; g_xm_band[3] = t1 + 5;
         if (g_xm_band[1] < ly0 - 1) g_xm_band[1] = ly0 - 1;
         if (g_xm_band[3] > ly1 + 1) g_xm_band[3] = ly1 + 1;
     }
@@ -4070,7 +4085,7 @@ static void xmenu_update(int a_on_top) {
     }
     if (sep && g_xm_nword < 4) { bag_word(px, X0 + 2, top + 1, X1 - 1, sep, g_xm_word[g_xm_nword]); if (g_xm_word[g_xm_nword][2]) g_xm_nword++; }
     #undef GREY
-    if (dbg && g_frame % 30 == 0) fprintf(stderr, "xm f%llu ok win %d %d %d %d sep %d words %d\n", (unsigned long long)g_frame, X0, top, X1, bot, sep, g_xm_nword);
+    if (dbg && g_frame % 30 == 0) fprintf(stderr, "xm f%llu ok win %d %d %d %d sep %d words %d band %d %d %d %d hand %d-%d %d-%d\n", (unsigned long long)g_frame, X0, top, X1, bot, sep, g_xm_nword, g_xm_band[0], g_xm_band[1], g_xm_band[2], g_xm_band[3], hx0, hx1, hy0, hy1);
     g_xmenu = 1;
 }
 
@@ -4115,7 +4130,7 @@ static void xmenu_pieces(GlPresent* v) {
         bestiary_piece(v, 3, X0 + 1, top + 1, X1 - X0 - 1, sep - top - 1, 3, X0 + 1 + ox, top + 1 + oy, 1);   /* its name */
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx + 4, sep + oy, w - 8, t);
     }
-    if (g_xm_band[2] > g_xm_band[0])                             /* the chosen line lit */
+    for (int i = 0; i < 3 && g_xm_band[2] > g_xm_band[0]; i++)  /* the chosen line lit (three times: seen over a bright field too) */
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), g_xm_band[0] + ox, g_xm_band[1] + oy, g_xm_band[2] - g_xm_band[0], g_xm_band[3] - g_xm_band[1]);
     bestiary_piece(v, 3, X0 + 1, ly0, X1 - X0 - 1, bot - ly0, 3, X0 + 1 + ox, ly0 + oy, 1);                  /* its lines */
     bestiary_piece(v, 3, 0, ly0, X0, bot - ly0, 3, ox, ly0 + oy, 1);                                          /* (the hand, over its left edge) */
