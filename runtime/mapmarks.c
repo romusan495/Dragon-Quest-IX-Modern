@@ -2114,6 +2114,76 @@ int mapmarks_shop(uint32_t* px, uint8_t* info, int desc_y, const uint8_t** rgba,
     return 1;
 }
 
+/* The bag (Items: the bag): its items' keys, u16 each in the order its list
+ * shows them, at BAG_KEYS (0xFFFF: the end), BAG_SLOTS of them, after their
+ * own bounds (BAG_HDR: start, end, count). The list's pages: an object of the
+ * menu's (on the heap: found by its shape, then kept while it holds): u32
+ * lines in all, pages, ?, lines a page (8), ?, the page, ?, the chosen line
+ * (on its page), then pointers to its own +8, +0xC, +0x18, +0x1C. */
+#define BAG_HDR    0xF5DDC
+#define BAG_KEYS   0x020F5DE8
+#define BAG_SLOTS  0x98
+#define HERO_ITEMS 0x020F58CC                                     /* the leader's things (Items: their name), u16 each */
+#define HERO_SLOTS 8
+static int bag_pager_is(uint32_t b, int n) {
+    return rd32(b) == (uint32_t)n && rd32(b + 4) == (uint32_t)((n + 7) / 8) && rd32(b + 0xC) == 8
+        && rd32(b + 0x20) == 0x02000000u + b + 8 && rd32(b + 0x24) == 0x02000000u + b + 0xC
+        && rd32(b + 0x28) == 0x02000000u + b + 0x18 && rd32(b + 0x2C) == 0x02000000u + b + 0x1C
+        && rd32(b + 0x14) < (uint32_t)((n + 7) / 8) && rd32(b + 0x1C) < 8;
+}
+int mapmarks_bag_list(int hero, uint16_t keys[8], int* sel) {
+    static uint32_t pager;                                        /* (main RAM offset; 0: not found) */
+    static uint64_t looked;
+    uint16_t all[BAG_SLOTS];
+    int n = 0;
+    *sel = -1;
+    if (hero) {                                                   /* the leader's things: HERO_ITEMS (0, 0xFFFF: none) */
+        for (int i = 0; i < HERO_SLOTS; i++) { uint16_t k = rd16(HERO_ITEMS + 2 * i); if (k && k != 0xFFFF) all[n++] = k; }
+    } else {
+        if (rd32(BAG_HDR) != BAG_KEYS || rd32(BAG_HDR + 8) != BAG_SLOTS) return 0;
+        while (n < BAG_SLOTS && rd16(BAG_KEYS + 2 * n) != 0xFFFF) { all[n] = rd16(BAG_KEYS + 2 * n); n++; }
+    }
+    if (!n) return 0;
+    if (pager && !bag_pager_is(pager, n)) pager = 0;
+    if (!pager && g_frame - looked >= 10) {                       /* (looked for again at most every 10 frames) */
+        looked = g_frame;
+        for (uint32_t b = 0x100000; b + 0x30 <= MAIN_RAM_SIZE; b += 4)   /* (the heap) */
+            if (rd32(b) == (uint32_t)n && rd32(b + 0x20) == 0x02000000u + b + 8 && bag_pager_is(b, n)) { pager = b; break; }
+    }
+    if (!pager) return 0;
+    int page = (int)rd32(pager + 0x14), lines = n - page * 8;
+    if (lines > 8) lines = 8;
+    if (lines <= 0) return 0;
+    *sel = (int)rd32(pager + 0x1C);
+    if (*sel >= lines) *sel = -1;
+    for (int i = 0; i < lines; i++) keys[i] = all[page * 8 + i];
+    return lines;
+}
+
+/* The bag's list (Items: the bag, or a character's things), laid out again
+ * by the front end (bag_pieces()): each line's item's icon in the gap opened
+ * before its name (n lines from y0, dy apart, the icons size s at x), and the
+ * chosen one's big in the description's window (bx, by, bs; bs 0: none); in
+ * DS pixels. */
+int mapmarks_bag(const uint16_t* keys, int n, int x, int y0, int dy, int s, int sel, int bx, int by, int bs, const uint8_t** rgba, int* changed) {
+    static uint32_t last_key;
+    *rgba = g_icons; *changed = 0;
+    if (n <= 0) { if (last_key) { last_key = 0; memset(g_icons, 0, sizeof g_icons); *changed = 1; } return 0; }
+    uint32_t key = 2166136261u;
+    for (int i = 0; i < n; i++) key = (key ^ keys[i]) * 16777619u;
+    int v[8] = { n, x, y0, dy, s, sel, bx, by };
+    for (int i = 0; i < 8; i++) key = (key ^ (uint32_t)v[i]) * 16777619u;
+    key = (key ^ (uint32_t)bs) * 16777619u;
+    if (!key) key = 1;
+    if (key == last_key) return 1;
+    last_key = key; *changed = 1;
+    memset(g_icons, 0, sizeof g_icons);
+    for (int i = 0; i < n; i++)
+        if (keys[i] != 0xFFFF) draw_icon(keys[i], x * MAPMARKS_R, (y0 + dy * i) * MAPMARKS_R, s * MAPMARKS_R);
+    if (bs > 0 && sel >= 0 && sel < n && keys[sel] != 0xFFFF) draw_icon(keys[sel], bx * MAPMARKS_R, by * MAPMARKS_R, bs * MAPMARKS_R);
+    return 1;
+}
+
 /* ---------------------------------------------------------------- shared readers (romdata.h) */
 /* The round minimap's list of the monsters near: a line each (a dot of its
  * colour, its name, how many), on nothing (its window drawn apart). */

@@ -120,6 +120,15 @@ static int g_stamp[4];                                            /* ...its Comp
 static int g_shop;                                                /* widescreen: a shop's buy list on the field, its item's description from the top screen under it (shop_update) */
 static int g_shop_cut = 118, g_shop_cut2 = 118;                   /* ...the list's rows end at the first, the panels under it start at the second */
 enum { SHOP_TX = 60, SHOP_TY = 33, SHOP_TW = 113, SHOP_TH = 58, SHOP_PAD = 3, SHOP_GAP = 3 };   /* the card's text, beside its icon; the description's window */
+/* widescreen, modern: the bag's list (Items: the bag) on the field, laid out
+ * again (bag_pieces()): each item's icon before its name, its description
+ * from its card under the list (bag_update()) */
+static int g_bag;                                                 /* the list's lines shown (0: not up) */
+static int g_bag_box[4];                                          /* ...the box under it ("SELECT Sort"): x, y, w, h (w 0: none) */
+static int g_bag_ink[2];                                          /* ...the card's description's rows on the top screen (y0, y1; y1 < y0: none) */
+enum { BAG_X0 = 113, BAG_Y0 = 9, BAG_X1 = 254, BAG_Y1 = 134,     /* the list's window (its grey line) */
+       BAG_TX = 124, BAG_GAP = 17, BAG_LY = 16, BAG_DY = 13, BAG_IC = 12,   /* the names from x 124 (moved right: the icons' gap); the lines */
+       BAG_DTOP = 138, BAG_DBOT = 190, BAG_BIG = 30, BAG_BX = 6 };   /* the description's window under the list; its icon */
 static int g_hud_list;                                            /* ...a list open (spells, items, targets): modern, the chooser alone */
 static int g_hud_win[4];                                          /* ...or a window alone there (experience, level up): x, y, w, h (w 0: none) */
 static int g_volume = 100, g_mute;                                /* Game > Volume */
@@ -300,11 +309,11 @@ static int top_page_wide(void) {                                  /* (widescreen
     return WIDE_GL && g_wide && !g_side_by_side && !(g_gl && g_two && !g_single) && g_minimap && in_adventure();
 }
 static int top_page_mode(void) {
-    if (!top_page_wide() || (g_small_blank && !g_shop)) return 0;   /* (a shop's list: the top screen goes blank before its card shows) */
+    if (!top_page_wide() || (g_small_blank && !g_shop && !g_bag)) return 0;   /* (a shop's list: the top screen goes blank before its card shows) */
     int side = 0, which = g_gl ? gl_wide_shown(&side) : -1;
     if (g_cc_n) return 0;                                         /* (the character's creation: its own pop-ups, creation_update) */
     if (which == 0) return g_top_menu && !g_hud_n && !g_hud_win[2] ? 2 : 0;
-    return mapmarks_top_page() || g_shop ? 1 : 0;                 /* (a shop's list: laid out before its card shows) */
+    return mapmarks_top_page() || g_shop || g_bag ? 1 : 0;        /* (a shop's list, the bag's: laid out before the card shows) */
 }
 
 /* A quest's sheet (the top screen while a quest is offered, accepted or
@@ -1731,6 +1740,48 @@ static void round_minimap(GlPresent* v, const float* small, int z) {
 }
 
 /* second: the layout of the second window (two windows) */
+/* The bag's list, laid out again over the field (the 2D apart: gl_set_split()):
+ * the screen's 2D as it is left of the names; the names, the numbers and
+ * the window's right side moved right (into the canvas' side) to open a gap
+ * for the items' icons (mapmarks_bag()), filled with the window's panel and
+ * its lines; under the list a window of the same style with the chosen
+ * item's icon, big, and its description (from its card on the top screen,
+ * as Equip's card draws it); the box that was there ("SELECT Sort") moved
+ * to its left. In DS pixels, the canvas' middle 256. */
+static void bag_pieces(GlPresent* v) {
+    float X = (v->cw - 256) / 2, G = BAG_GAP;
+    static const float part[][9] = {                              /* source x, y, w, h; canvas x (+X), y, w, h; u_mode */
+        { 0, 0, BAG_TX - 1, 192,                 0, 0, BAG_TX - 1, 192, 0 },   /* (the column before the names left out: its edge would take some of their first one) */
+        { BAG_TX, 0, 256 - BAG_TX, BAG_Y1 + 1,   BAG_TX + BAG_GAP, 0, 256 - BAG_TX, BAG_Y1 + 1, 0 },
+        { 116, 0, 1, 12,                          BAG_TX - 1, 0, BAG_GAP + 1, 12, 0 },              /* the gap: above, the top line, the panel */
+        { 116, 12, 1, 1,                          BAG_TX - 1, 12, BAG_GAP + 1, BAG_Y1 - 12, 0 },
+        { 116, BAG_Y1, 1, 1,                      BAG_TX - 1, BAG_Y1, BAG_GAP + 1, 1, 0 } };     /* the bottom line */
+    for (int i = 0; i < 5; i++) {
+        const float* p = part[i];
+        float* q = v->piece[v->npiece++];
+        q[4] = 3; q[5] = p[0]; q[6] = p[1]; q[7] = p[2]; q[8] = p[3]; q[9] = p[8];
+        q[0] = X + p[4]; q[1] = p[5]; q[2] = p[6]; q[3] = p[7];
+    }
+    if (g_bag_box[2]) {                                          /* the box: at the left of the description's window, their bottoms in line */
+        float* q = v->piece[v->npiece++];
+        q[4] = 3; q[5] = (float)g_bag_box[0]; q[6] = (float)g_bag_box[1]; q[7] = (float)g_bag_box[2]; q[8] = (float)g_bag_box[3]; q[9] = 0;
+        q[0] = X + BAG_X0 - 4 - g_bag_box[2]; q[1] = BAG_DBOT + 1 - g_bag_box[3]; q[2] = q[7]; q[3] = q[8];
+    }
+    {   /* the description's window: the list's width, its panel, its line (one pixel) */
+        float wx = X + BAG_X0, wy = BAG_DTOP, ww = BAG_X1 + 1 - BAG_X0 + G, wh = BAG_DBOT + 1 - BAG_DTOP, t = 1;
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), wx, wy, ww, wh);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy, ww, t);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy + wh - t, ww, t);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy, t, wh);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx + ww - t, wy, t, wh);
+        if (g_bag_ink[1] >= g_bag_ink[0]) {                      /* its text, beside the icon (mapmarks_bag()), in the middle */
+            float h = (float)(g_bag_ink[1] - g_bag_ink[0] + 3), k = fminf(1.0f, (wh - 6) / h);
+            bestiary_piece(v, 0, 60, g_bag_ink[0] - 1, 110, h, 6, wx + BAG_BX + BAG_BIG + 7, wy + (wh - h * k) / 2, k);
+        }
+    }
+    v->icons[0] = X; v->icons[1] = 0; v->icons[2] = 256; v->icons[3] = 192;
+}
+
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
     if (wh > 0) g_lay_s = (float)wh / 192.0f;
@@ -1883,6 +1934,9 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
                 q[0] = x + (SHOP_DESC_X + SHOP_DESC_ICON + 8) * k; q[1] = (L + gap + SHOP_PAD) * k; q[2] = SHOP_TW * k; q[3] = SHOP_TH * k;
             }
             v->icons[0] = x; v->icons[1] = 0; v->icons[2] = 256 * k; v->icons[3] = 192 * k;
+        } else if (page == 1 && g_bag && !second && v->npiece + 12 <= GL_MAX_PIECES) {
+            small[0] = small[1] = small[2] = small[3] = 0;           /* (the card: its description under the list) */
+            bag_pieces(v);
         } else if (page == 1 && which < 0 && g_pop_win[2] && !g_quest_page && !g_card_page && !second) {
             /* a page on the top screen over a menu without the field (allocating
              * skill points: the skill's table over the list of skills, after a
@@ -2766,21 +2820,44 @@ static void save_screenshot(void) {
 /* tests: DQIX_MEMFIND="frame,hex,hex...": at that frame, the main RAM / DTCM
  * addresses holding each 32-bit value, and the projection matrix */
 static void memfind_hook(void) {
+    {   /* DQIX_MEMSNAP="f1,f2,...": the main RAM at those frames; at the last, the bytes (and u16s) whose values went as DQIX_MEMPAT "a,b,c..;a,b,c.." */
+        static uint8_t* snap[8]; static long long fr[8]; static int nf = -1;
+        if (nf < 0) { nf = 0; const char* e = getenv("DQIX_MEMSNAP"); while (e && *e && nf < 8) { fr[nf++] = atoll(e); e = strchr(e, ','); if (e) e++; } }
+        for (int i = 0; i < nf; i++) if ((long long)g_frame == fr[i]) {
+            snap[i] = malloc(MAIN_RAM_SIZE); memcpy(snap[i], g_main_ram, MAIN_RAM_SIZE);
+            if (i == nf - 1) for (const char* p = getenv("DQIX_MEMPAT"); p && *p; ) {
+                int want[8], nw = 0; const char* q = p;
+                while (nw < nf) { want[nw++] = atoi(q); q = strpbrk(q, ",;"); if (!q || *q == ';') break; q++; }
+                int hits = 0;
+                for (uint32_t a = 0; a < MAIN_RAM_SIZE && hits < 60; a++) { int ok = 1; for (int j = 0; j < nf && ok; j++) ok = snap[j][a] == want[j]; if (ok) { fprintf(stderr, "pat %s byte %08x\n", p, 0x02000000u + a); hits++; } }
+                p = strchr(p, ';'); if (p) p++;
+            }
+        }
+    }
+    {   const char* e = getenv("DQIX_MEMDUMP2");                 /* "frame:addr:words;..." */
+        for (const char* c = e; c && *c; ) { unsigned long long f; unsigned a, n;
+            if (sscanf(c, "%llu:%x:%u", &f, &a, &n) == 3 && f == g_frame)
+                for (unsigned i = 0; i < n; i += 8) { fprintf(stderr, "d2 %llu %08x:", f, a + i * 4); for (unsigned j = 0; j < 8; j++) { uint32_t w; memcpy(&w, g_main_ram + ((a + (i + j) * 4) & (MAIN_RAM_SIZE - 4)), 4); fprintf(stderr, " %08x", w); } fprintf(stderr, "\n"); }
+            c = strchr(c, ';'); if (c) c++; } }
     static long long at = -2; static unsigned vals[8]; static int nv;
     if (at == -2) {
         at = -1; const char* e = getenv("DQIX_MEMFIND");
         if (e) { at = atoll(e); const char* c = e; while ((c = strchr(c, ',')) && nv < 8) { c++; vals[nv++] = (unsigned)strtoul(c, NULL, 16); } }
     }
     if (at < 0 || g_frame != (uint64_t)at) return;
+    {   const char* e = getenv("DQIX_PTRFIND");                  /* "lo,hi": the words pointing in there */
+        unsigned lo, hi; int n = 0;
+        if (e && sscanf(e, "%x,%x", &lo, &hi) == 2)
+            for (uint32_t a = 0; a + 4 <= MAIN_RAM_SIZE && n < 80; a += 4) { uint32_t w; memcpy(&w, g_main_ram + a, 4); if (w >= lo && w < hi) { fprintf(stderr, "ptr %08x at %08x\n", w, 0x02000000u + a); n++; } } }
     extern void gpu3d_debug_proj(void);
     gpu3d_debug_proj();
     {   const char* d = getenv("DQIX_MEMDUMP");                  /* "addr,addr,...": 0x20 bytes before and after each */
         while (d && *d) { uint32_t a = (uint32_t)strtoul(d, NULL, 16) & 0x3FFFFC;
-            fprintf(stderr, "dump %08x:", 0x02000000u + a - 0x20); for (int i = -8; i < 8; i++) { uint32_t v; memcpy(&v, g_main_ram + a + i * 4, 4); fprintf(stderr, " %08x", v); } fprintf(stderr, "\n");
+            fprintf(stderr, "dump %08x:", 0x02000000u + a - 0x20); for (int i = -8; i < (getenv("DQIX_MEMDUMP_N") ? atoi(getenv("DQIX_MEMDUMP_N")) : 8); i++) { uint32_t v; memcpy(&v, g_main_ram + a + i * 4, 4); fprintf(stderr, " %08x", v); } fprintf(stderr, "\n");
             d = strchr(d, ','); if (d) d++; } }
     for (int k = 0; k < nv; k++) {
         int n = 0;
-        for (uint32_t a = 0; a + 4 <= MAIN_RAM_SIZE && n < 200; a += 2) { uint32_t v; memcpy(&v, g_main_ram + a, 4); if (v == vals[k]) { fprintf(stderr, "memfind %08x at %08x\n", vals[k], 0x02000000u + a); n++; } }
+        for (uint32_t a = 0; a + 4 <= MAIN_RAM_SIZE && n < 200; a += 2) { uint32_t v; memcpy(&v, g_main_ram + a, 4); if (v == vals[k]) { fprintf(stderr, "memfind %08x at %08x\n", vals[k], 0x02000000u + a); n++; if (getenv("DQIX_MEMFIND_DUMP") && k == 0) { fprintf(stderr, "fdump %08x:", 0x02000000u + (a & ~3u) - 0x40); for (int i = -16; i < 48; i++) { uint32_t w; memcpy(&w, g_main_ram + ((a & ~3u) + i * 4) % MAIN_RAM_SIZE, 4); fprintf(stderr, " %08x", w); } fprintf(stderr, "\n"); } } }
         for (uint32_t a = 0; a + 4 <= DTCM_SIZE; a += 2) { uint32_t v; memcpy(&v, g_dtcm + a, 4); if (v == vals[k]) fprintf(stderr, "memfind %08x at dtcm+%04x\n", vals[k], a); }
     }
 }
@@ -3630,6 +3707,65 @@ static void shop_update(int a_on_top) {
         }
 }
 
+/* The bag's list on the field's screen (Items: the bag), modern, widescreen
+ * with room at the sides: laid out again (bag_pieces()) with each item's
+ * icon and the chosen one's description. Up while its window is where the
+ * game draws it (its grey line whole round it) and the bag's items are read
+ * (mapmarks_bag_list()); the card's description: its dark letters' rows. */
+static void bag_update(int a_on_top) {
+    int side = 0, n = 0, sel = -1;
+    uint16_t keys[8];
+    const uint32_t* px = g_engine_out[0];
+    int ok = top_page_wide() && g_gl && !a_on_top && g_comp_has3d && g_winstyle == 2 && !g_shop && !g_equip && !g_cc_n
+          && gl_wide_shown(&side) == 1 && wide_side_target() >= BAG_GAP + 2;
+    int hand = 0;                                                 /* its line: grey, whole (no window over it; the hand over its left one) */
+    for (int y = BAG_Y0; ok && y <= BAG_Y1; y++) {
+        ok = (px[y * 256 + BAG_X1] & 0xFFFFFF) == 0x828282;
+        hand += (px[y * 256 + BAG_X0] & 0xFFFFFF) != 0x828282;
+    }
+    if (hand > 10) ok = 0;
+    for (int x = BAG_X0; ok && x <= BAG_X1; x++)
+        ok = (px[BAG_Y0 * 256 + x] & 0xFFFFFF) == 0x828282 && (px[BAG_Y1 * 256 + x] & 0xFFFFFF) == 0x828282;
+    if (ok) ok = (px[12 * 256 + 116] & 0xFFFFFF) != 0x828282 && (g_comp_info[(12 * 256 + 116) * 4] & 3) != 1;
+    if (ok) {                                                     /* the bag's lines have their numbers at the right; a character's things none */
+        int nums = 0;
+        for (int y = BAG_LY; y < BAG_LY + 8 * BAG_DY; y++)
+            for (int x = 230; x < BAG_X1 - 2; x++) { uint32_t c = px[y * 256 + x]; nums += ((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 200 && (c & 255) > 200; }
+        n = mapmarks_bag_list(nums < 8, keys, &sel);
+    }
+    if (n <= 0) ok = 0;
+    if (ok && sel < 0)                                            /* the hand (yellow) left of the names: the chosen line */
+        for (int i = 0; i < n; i++) {
+            int yellow = 0;
+            for (int y = BAG_LY + BAG_DY * i; y < BAG_LY + BAG_DY * (i + 1); y++)
+                for (int x = 104; x < BAG_TX; x++) { uint32_t c = px[y * 256 + x]; yellow += ((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100; }
+            if (yellow >= 6) sel = i;
+        }
+    g_bag = ok ? n : 0;
+    g_bag_box[2] = 0;
+    if (ok) {                                                     /* the box under the list: what isn't the field there */
+        int x0 = 256, y0 = 192, x1 = -1, y1 = -1;
+        for (int y = BAG_Y1 + 1; y < 192; y++)
+            for (int x = BAG_TX; x < 256; x++)
+                if ((g_comp_info[(y * 256 + x) * 4] & 3) != 1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 >= x0) { g_bag_box[0] = x0; g_bag_box[1] = y0; g_bag_box[2] = x1 - x0 + 1; g_bag_box[3] = y1 - y0 + 1; }
+    }
+    g_bag_ink[0] = 1; g_bag_ink[1] = 0;
+    if (ok) {                                                     /* the card's description (dark letters on its parchment, x 60..171) */
+        const uint32_t* t = g_engine_out[1];
+        for (int y = 30; y < 96; y++) {
+            int ink = 0;
+            for (int x = 60; x < 170; x++) { uint32_t c = t[y * 256 + x]; ink += ((c >> 16) & 255) < 110 && ((c >> 8) & 255) < 90 && (c & 255) < 80; }
+            if (ink >= 2) { if (g_bag_ink[1] < g_bag_ink[0]) g_bag_ink[0] = y; g_bag_ink[1] = y; }
+        }
+    }
+    const uint8_t* rgba; int changed;
+    int by = (BAG_DTOP + BAG_DBOT + 1 - BAG_BIG) / 2;
+    int on = mapmarks_bag(keys, g_bag, BAG_TX + (BAG_GAP - BAG_IC) / 2, BAG_LY, BAG_DY, BAG_IC, sel,
+                          BAG_X0 + BAG_BX, by, g_bag_ink[1] >= g_bag_ink[0] ? BAG_BIG : 0, &rgba, &changed);
+    if (changed && !g_shop) gl_set_icons(on ? rgba : NULL, MAPMARKS_W, MAPMARKS_H);
+}
+
 /* The map's markers (mapmarks.c) over the top screen, in whichever window
  * shows it whole, while it shows the map (the 3D on the bottom screen, or the
  * map kept during a battle); the mouse over that window points at them. */
@@ -3806,11 +3942,12 @@ static void present_gl(void) {
     hud_update((pow >> 15) & 1);                                 /* (before composing: the minimal style cuts the cards out for it) */
     gl_set_hud_cut(g_winstyle && (g_hud_n > 0 || g_hud_win[2]));
     shop_update((pow >> 15) & 1);
+    bag_update((pow >> 15) & 1);
     pop_update((pow >> 15) & 1);
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
-    gl_set_split(g_shop);
+    gl_set_split(g_shop || g_bag);
     g_win_outline = g_hud_win[2] != 0;                           /* (the next frames: the experience and level-up windows outlined) */
     g_dlg_outline = (pow >> 15) & 1;                             /* battles (the 3D on the top screen): the text box too */
     {   /* the 3D gone for a single frame in widescreen (a shop's menu after an item's
