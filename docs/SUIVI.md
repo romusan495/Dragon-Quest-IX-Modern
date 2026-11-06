@@ -27,7 +27,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | BUILD : « cmp: commande introuvable » (`tools/build-game.sh`) | Intégration | — | — | à faire | — | Installer `diffutils` dans MSYS2 ou éviter `cmp` ; le build réussit quand même |
 | Textures des monstres sur la carte (pack HD) | Graph | [Graph] Corriger les textures des monstres sur la carte | `claude/project-thread-3zdjvn` | fusionné | PR #115 | — |
 | Écran Équiper de Tsu (corrections) | Graph | [Graph] Corriger le nouvel écran Équiper | `claude/project-thread-v4a74b` | fusionné | PR #117 | — |
-| Étoiles des points de collecte sur la carte | Dev | [Dev] Étoiles des points de collecte sur la carte | `claude/project-thread-rila1e` | en cours | — (pas poussée) | Touche `runtime/frontend_sdl.c` (réglage `map_gathering`, `MI_MAPGATHER` = 344), `runtime/menu_win32.c` (une ligne du menu Moderne), `mapmarks.c/h`, `menu.h`, `lang/*.txt` ; rebaser sur `main` avant la PR |
+| Étoiles des points de collecte sur la carte | Dev | [Dev] Étoiles des points de collecte sur la carte | `claude/project-thread-rila1e` | fusionné | PR #121 | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
 #33 est fusionnée : chaque fil rebase sur `main` avant sa PR, et les PR passent
