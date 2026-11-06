@@ -591,6 +591,8 @@ static const char* FS_COPY =
     "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
     "    float ring = smoothstep(0.07, 0.05, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
     "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 27) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (the menus' hand alone, its own colours: its warm pixels (golds, browns, its pale yellow); not the window's black, its grey line, the white letters) */
+    "    float a = smoothstep(0.08, 0.13, r.r - r.b) * step(r.b, r.g + 0.02) * step(r.g, r.r + 0.02) * smoothstep(0.1, 0.16, r.r) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 21) { o_color = vec4(0.98, 0.78, 0.16, 1.0) * 0.16; return; }\n"   /* (a chosen line lit, gold, faint) */
     "  if (u_mode == 22) { o_color = vec4(0.0); return; }\n"   /* (nothing: a touchable place only) */
     "  if (u_mode == 20) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (signs on a book's brown panel (73, 56, 24 to 93, 73, 44): the panel see-through) */

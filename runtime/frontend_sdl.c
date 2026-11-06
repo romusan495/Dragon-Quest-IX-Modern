@@ -176,6 +176,7 @@ static int g_xm_win[4];                                           /* ...the wind
 static int g_xm_sep;                                              /* ...the line under its name (0: none, the menu) */
 static int g_xm_band[4];                                          /* ...the chosen line's: x0, y0, x1, y1 (x1 < x0: none) */
 static int g_xm_box[4];                                           /* ...the box at the bottom: x, y, w, h (w 0: none) */
+static int g_xm_hand[4];                                          /* ...the hand: x, y, w, h (round its yellow) */
 static int g_xm_word[4][4], g_xm_nword;                           /* ...the path: the menus' names before, and its own */
 static void xm_place(float cw, float* wx, float* wy) {
     *wx = floorf(cw / 2 - (g_xm_win[2] - g_xm_win[0] + 1) / 2.0f);
@@ -4036,6 +4037,7 @@ static void xmenu_update(int a_on_top) {
         if (!list) { g_xm_box[0] = bx0; g_xm_box[1] = by0; g_xm_box[2] = bx1 - bx0 + 1; g_xm_box[3] = by1 - by0 + 1; }
     }
     g_xm_win[0] = X0; g_xm_win[1] = top; g_xm_win[2] = X1; g_xm_win[3] = bot; g_xm_sep = sep;
+    g_xm_hand[0] = hx0 - 4 < 0 ? 0 : hx0 - 4; g_xm_hand[1] = hy0 - 3; g_xm_hand[2] = hx1 + 3 - g_xm_hand[0]; g_xm_hand[3] = hy1 + 4 - g_xm_hand[1];
     {   /* the chosen line: from the hand (the window's left in the first column) to its column's end (the
          * first gap of 10 columns empty in all its lines after the text), over its letters' rows (but the
          * accents': 3 letter pixels a row) with 4 pixels round; the chosen line's letters may be yellow */
@@ -4133,7 +4135,10 @@ static void xmenu_pieces(GlPresent* v) {
     for (int i = 0; i < 3 && g_xm_band[2] > g_xm_band[0]; i++)  /* the chosen line lit (three times: seen over a bright field too) */
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), g_xm_band[0] + ox, g_xm_band[1] + oy, g_xm_band[2] - g_xm_band[0], g_xm_band[3] - g_xm_band[1]);
     bestiary_piece(v, 3, X0 + 1, ly0, X1 - X0 - 1, bot - ly0, 3, X0 + 1 + ox, ly0 + oy, 1);                  /* its lines */
-    bestiary_piece(v, 3, 0, ly0, X0, bot - ly0, 3, ox, ly0 + oy, 1);                                          /* (the hand, over its left edge) */
+    if (g_xm_hand[2]) {                                          /* the hand: its own colours, whole (over the window's left line too) */
+        const int* h = g_xm_hand;
+        bestiary_piece(v, 3, h[0], h[1], h[2], h[3], 27, h[0] + ox, h[1] + oy, 1);
+    }
     if (g_xm_box[2]) {                                           /* the box at the bottom, where it was */
         const int* b = g_xm_box;
         XM_WIN(X + b[0], (float)b[1], (float)b[2], (float)b[3]);
