@@ -269,6 +269,27 @@ static void texts(const Trophy* t, char* title, int tcap, char* desc, int dcap) 
     else { cap_first(name); snprintf(desc, (size_t)dcap, f, name); }
 }
 
+/* The bosses and the quests not won yet keep their names: a hidden trophy
+ * shows only what kind it is (no spoilers in the list). */
+static int hidden(const Trophy* t) {
+    return t->kind == K_STORY || t->kind == K_QBOSS || t->kind == K_GROTTO || t->kind == K_LEGACY || t->kind == K_QUEST;
+}
+
+static void hidden_texts(const Trophy* t, char* title, int tcap, char* desc, int dcap) {
+    int l = lang();
+    static const char* const ttl[5] = { "Hidden trophy", "Trophée caché", "Verborgene Trophäe", "Trofeo nascosto", "Trofeo oculto" };
+    static const char* const what[][5] = {
+        { "Defeat a story boss", "Vaincre un boss de l'histoire", "Einen Story-Boss besiegen", "Sconfiggere un boss della storia", "Derrotar a un jefe de la historia" },
+        { "Defeat a quest boss", "Vaincre un boss de quête", "Einen Quest-Boss besiegen", "Sconfiggere un boss di missione", "Derrotar a un jefe de misión" },
+        { "Defeat a grotto boss", "Vaincre un boss de grotte", "Einen Grottenboss besiegen", "Sconfiggere un boss di grotta", "Derrotar a un jefe de gruta" },
+        { "Defeat a legacy boss", "Vaincre un boss légendaire", "Einen legendären Boss besiegen", "Sconfiggere un boss leggendario", "Derrotar a un jefe legendario" },
+        { "Complete a quest", "Accomplir une quête", "Eine Quest erledigen", "Completare una missione", "Completar una misión" },
+    };
+    int w = t->kind == K_STORY ? 0 : t->kind == K_QBOSS ? 1 : t->kind == K_GROTTO ? 2 : t->kind == K_LEGACY ? 3 : 4;
+    snprintf(title, (size_t)tcap, "%s", ttl[l]);
+    snprintf(desc, (size_t)dcap, "%s", what[w][l]);
+}
+
 /* ---------------------------------------------------------------- the game's state */
 static int quest_done(int num) {
     /* the quests' numbers: data/scenario/questidtbl.bin (tag 0x68: the index, the number) */
@@ -530,7 +551,8 @@ static void page_draw(const JournalCanvas* c) {
         if (g_top + r == g_sel) journal_box(c, c->x - 6, y - 3, c->w + 12, ROW_H - 4, 0x2A3140, 1);
         cup(c, c->x, y + 2, 46, won, won ? 1.0f : 0.8f);
         char title[200], desc[300];
-        texts(&g_list[i], title, sizeof title, desc, sizeof desc);
+        if (won || !hidden(&g_list[i])) texts(&g_list[i], title, sizeof title, desc, sizeof desc);
+        else hidden_texts(&g_list[i], title, sizeof title, desc, sizeof desc);
         journal_text(c, c->x + 60, y, 19, won ? 0xF0F0F0 : 0x8A9098, title);
         int g = goal(&g_list[i]);
         if (!won && g > 1) {                                    /* the counts: how far */
