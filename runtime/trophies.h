@@ -24,3 +24,9 @@ int trophies_enabled(void);
 /* The frontend's PNG reader (RGBA, 4 bytes a pixel), for the trophies' pictures
  * (trophies/<key>.png, fetched by BUILD.bat); without one, the cups only. */
 void trophies_set_loader(uint8_t* (*load)(const char* file, int* w, int* h));
+
+/* The chime with each notice (the grade by ear), mixed into the game's sound
+ * (stereo, 32768 Hz) from the sound thread; settings.ini trophy_sound = 0 or 1. */
+void trophies_mix(int16_t* out, uint32_t frames);
+void trophies_sound_enable(int on);
+int trophies_sound_enabled(void);

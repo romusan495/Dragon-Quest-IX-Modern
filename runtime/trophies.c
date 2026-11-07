@@ -59,8 +59,12 @@ enum {
     K_QUESTS, K_MONSTERS, K_ITEMS, K_WARDROBE, K_RECIPES, K_BATTLES,   /* how many (a) */
     K_SKILL,                                            /* a skill at 100 points (a: 1..26) */
     K_LEVEL,                                            /* a vocation at level 50 (a: 1..12) */
+    K_PLATINUM,                                         /* every other trophy (the last of the list) */
 };
-enum { C_STORY, C_VOCATIONS, C_BATTLES, C_COLLECTIONS, C_QUESTS, C_SKILLS, C_LEVELS, C_BOSSES, N_CAT };
+/* the categories, in the order of the adventure (the Journal's order) */
+enum { C_STORY, C_VOCATIONS, C_QUESTS, C_BATTLES, C_COLLECTIONS, C_SKILLS, C_LEVELS, C_QBOSSES, C_GROTTOS, C_LEGACY, C_PLATINUM, N_CAT };
+/* the grades (PlayStation-like): only how hard; each trophy is won on its own */
+enum { G_BRONZE, G_SILVER, G_GOLD, G_PLATINUM };
 
 typedef struct { const char* key; uint8_t kind, cat; int16_t a, b; const char* title[5]; } Trophy;
 
@@ -134,34 +138,72 @@ static const Trophy g_list[] = {
     { "level50_07", K_LEVEL, C_LEVELS, 7 }, { "level50_08", K_LEVEL, C_LEVELS, 8 }, { "level50_09", K_LEVEL, C_LEVELS, 9 },
     { "level50_10", K_LEVEL, C_LEVELS, 10 }, { "level50_11", K_LEVEL, C_LEVELS, 11 }, { "level50_12", K_LEVEL, C_LEVELS, 12 },
     /* the other bosses: quests' (some downloaded), grottoes', the legendary ones */
-    { "qboss_sanguinus", K_QBOSS, C_BOSSES, 288 }, { "qboss_elusid", K_QBOSS, C_BOSSES, 287 },
-    { "qboss_hammibal", K_QBOSS, C_BOSSES, 290 }, { "qboss_fowleye", K_QBOSS, C_BOSSES, 291 },
-    { "qboss_excalipurr", K_QBOSS, C_BOSSES, 292 }, { "qboss_wrecks", K_QBOSS, C_BOSSES, 293 },
-    { "qboss_yore", K_QBOSS, C_BOSSES, 278 }, { "qboss_rover", K_QBOSS, C_BOSSES, 279 },
-    { "qboss_godfrey", K_QBOSS, C_BOSSES, 280 }, { "qboss_wrecks2", K_QBOSS, C_BOSSES, 281 },
-    { "qboss_nodoph", K_QBOSS, C_BOSSES, 282 }, { "qboss_nokturnus", K_QBOSS, C_BOSSES, 304 },
-    { "grotto_equinox", K_GROTTO, C_BOSSES, 283 }, { "grotto_nemean", K_GROTTO, C_BOSSES, 284 },
-    { "grotto_shogum", K_GROTTO, C_BOSSES, 285 }, { "grotto_trauminator", K_GROTTO, C_BOSSES, 286 },
-    { "grotto_atlas", K_GROTTO, C_BOSSES, 289 }, { "grotto_greygnarl", K_GROTTO, C_BOSSES, 294 },
-    { "legacy_dragonlord", K_LEGACY, C_BOSSES, 295 }, { "legacy_malroth", K_LEGACY, C_BOSSES, 296 },
-    { "legacy_baramos", K_LEGACY, C_BOSSES, 297 }, { "legacy_zoma", K_LEGACY, C_BOSSES, 298 },
-    { "legacy_psaro", K_LEGACY, C_BOSSES, 299 }, { "legacy_estark", K_LEGACY, C_BOSSES, 300 },
-    { "legacy_nimzo", K_LEGACY, C_BOSSES, 301 }, { "legacy_murdaw", K_LEGACY, C_BOSSES, 302 },
-    { "legacy_mortamor", K_LEGACY, C_BOSSES, 303 }, { "legacy_orgodemir", K_LEGACY, C_BOSSES, 305 },
-    { "legacy_dhoulmagus", K_LEGACY, C_BOSSES, 306 }, { "legacy_rhapthorne", K_LEGACY, C_BOSSES, 307 },
+    { "qboss_sanguinus", K_QBOSS, C_QBOSSES, 288 }, { "qboss_elusid", K_QBOSS, C_QBOSSES, 287 },
+    { "qboss_hammibal", K_QBOSS, C_QBOSSES, 290 }, { "qboss_fowleye", K_QBOSS, C_QBOSSES, 291 },
+    { "qboss_excalipurr", K_QBOSS, C_QBOSSES, 292 }, { "qboss_wrecks", K_QBOSS, C_QBOSSES, 293 },
+    { "qboss_yore", K_QBOSS, C_QBOSSES, 278 }, { "qboss_rover", K_QBOSS, C_QBOSSES, 279 },
+    { "qboss_godfrey", K_QBOSS, C_QBOSSES, 280 }, { "qboss_wrecks2", K_QBOSS, C_QBOSSES, 281 },
+    { "qboss_nodoph", K_QBOSS, C_QBOSSES, 282 }, { "qboss_nokturnus", K_QBOSS, C_QBOSSES, 304 },
+    { "grotto_equinox", K_GROTTO, C_GROTTOS, 283 }, { "grotto_nemean", K_GROTTO, C_GROTTOS, 284 },
+    { "grotto_shogum", K_GROTTO, C_GROTTOS, 285 }, { "grotto_trauminator", K_GROTTO, C_GROTTOS, 286 },
+    { "grotto_atlas", K_GROTTO, C_GROTTOS, 289 }, { "grotto_greygnarl", K_GROTTO, C_GROTTOS, 294 },
+    { "legacy_dragonlord", K_LEGACY, C_LEGACY, 295 }, { "legacy_malroth", K_LEGACY, C_LEGACY, 296 },
+    { "legacy_baramos", K_LEGACY, C_LEGACY, 297 }, { "legacy_zoma", K_LEGACY, C_LEGACY, 298 },
+    { "legacy_psaro", K_LEGACY, C_LEGACY, 299 }, { "legacy_estark", K_LEGACY, C_LEGACY, 300 },
+    { "legacy_nimzo", K_LEGACY, C_LEGACY, 301 }, { "legacy_murdaw", K_LEGACY, C_LEGACY, 302 },
+    { "legacy_mortamor", K_LEGACY, C_LEGACY, 303 }, { "legacy_orgodemir", K_LEGACY, C_LEGACY, 305 },
+    { "legacy_dhoulmagus", K_LEGACY, C_LEGACY, 306 }, { "legacy_rhapthorne", K_LEGACY, C_LEGACY, 307 },
+    /* everything: the last one (checked after the others) */
+    { "platinum", K_PLATINUM, C_PLATINUM, 0, 0, T5("Legendary Sentinel", "Sentinelle légendaire", "Legendärer Wächter", "Sentinella leggendaria", "Centinela legendario") },
 };
 #define N_TROPHIES ((int)(sizeof g_list / sizeof g_list[0]))
 
 static const char* const CAT_NAME[N_CAT][5] = {
     T5("Story", "Histoire", "Geschichte", "Storia", "Historia"),
     T5("Vocations", "Vocations", "Berufe", "Vocazioni", "Vocaciones"),
+    T5("Quests", "Quêtes", "Quests", "Missioni", "Misiones"),
     T5("Battles", "Combats", "Kämpfe", "Battaglie", "Combates"),
     T5("Collections", "Collections", "Sammlungen", "Collezioni", "Colecciones"),
-    T5("Quests", "Quêtes", "Quests", "Missioni", "Misiones"),
     T5("Skills", "Compétences", "Fertigkeiten", "Abilità", "Habilidades"),
     T5("Vocation levels", "Niveaux de vocation", "Berufsstufen", "Livelli di vocazione", "Niveles de vocación"),
-    T5("Other bosses", "Autres boss", "Weitere Bosse", "Altri boss", "Otros jefes"),
+    T5("Quest bosses", "Boss de quêtes", "Quest-Bosse", "Boss di missione", "Jefes de misión"),
+    T5("Grotto bosses", "Boss de grottes", "Grottenbosse", "Boss delle grotte", "Jefes de gruta"),
+    T5("Legacy bosses", "Boss légendaires", "Legendäre Bosse", "Boss leggendari", "Jefes legendarios"),
+    T5("Platinum", "Platine", "Platin", "Platino", "Platino"),
 };
+
+/* A trophy's grade (docs: the trophies' list): bronze a step, silver a feat,
+ * gold a great one, platinum all of them. */
+static int grade(const Trophy* t) {
+    static const short story_silver[] = { 270, 271, 272, 275 }, qboss_silver[] = { 287, 288, 290, 291, 292, 293 };
+    switch (t->kind) {
+    case K_PLATINUM: return G_PLATINUM;
+    case K_STORY:
+        if (t->a == 274 || t->a == 277) return G_GOLD;
+        for (unsigned i = 0; i < sizeof story_silver / sizeof *story_silver; i++) if (t->a == story_silver[i]) return G_SILVER;
+        return G_BRONZE;
+    case K_HERO_VOC: return G_BRONZE;
+    case K_VOCATION: return t->a == 118 ? G_GOLD : G_SILVER;
+    case K_QUEST:                                               /* the vocations' second quests: silver */
+        return t->a >= 91 && t->a <= 120 && ((t->a <= 102 && !(t->a & 1)) || (t->a >= 104 && (t->a - 104) % 3 == 1)) ? G_SILVER : G_BRONZE;
+    case K_QUESTS: return t->a >= 100 ? G_GOLD : t->a >= 50 ? G_SILVER : G_BRONZE;
+    case K_METAL: return t->a == 229 ? G_GOLD : t->a == 214 ? G_SILVER : G_BRONZE;
+    case K_BATTLES: return G_SILVER;
+    case K_MONSTERS: return t->a >= 230 ? G_GOLD : t->a >= 153 ? G_SILVER : G_BRONZE;
+    case K_ITEMS: return t->a >= 168 ? G_GOLD : t->a >= 112 ? G_SILVER : G_BRONZE;
+    case K_WARDROBE: return t->a >= 708 ? G_GOLD : t->a >= 472 ? G_SILVER : G_BRONZE;
+    case K_RECIPES: return t->a >= 339 ? G_GOLD : t->a >= 226 ? G_SILVER : G_BRONZE;
+    case K_SKILL: return t->a >= 15 ? G_SILVER : G_BRONZE;
+    case K_LEVEL: return t->a == 11 ? G_GOLD : t->a >= 7 ? G_SILVER : G_BRONZE;
+    case K_QBOSS:
+        if (t->a == 304) return G_GOLD;
+        for (unsigned i = 0; i < sizeof qboss_silver / sizeof *qboss_silver; i++) if (t->a == qboss_silver[i]) return G_SILVER;
+        return G_BRONZE;
+    case K_GROTTO: return t->a == 294 ? G_GOLD : t->a == 286 || t->a == 289 ? G_SILVER : G_BRONZE;
+    case K_LEGACY: return t->a >= 303 ? G_GOLD : t->a >= 299 ? G_SILVER : G_BRONZE;
+    }
+    return G_BRONZE;
+}
 
 /* The descriptions: %s the game's name (a monster, a vocation, a skill), %d the number. */
 static const char* desc_format(int kind, int l) {
@@ -181,6 +223,7 @@ static const char* desc_format(int kind, int l) {
         [K_RECIPES]  = T5("Make %d different alchemy recipes", "Réaliser %d recettes d'alchimie différentes", "%d verschiedene Alchemie-Rezepte herstellen", "Realizza %d ricette alchemiche diverse", "Elabora %d recetas de alquimia distintas"),
         [K_BATTLES]  = T5("Win %d battles", "Remporter %d combats", "%d Kämpfe gewinnen", "Vinci %d battaglie", "Gana %d combates"),
         [K_SKILL]    = T5("100 skill points in %s (one party member)", "100 points de compétence en %s (un membre du groupe)", "100 Fertigkeitspunkte in %s (ein Gruppenmitglied)", "100 punti abilità in %s (un membro del gruppo)", "100 puntos de habilidad en %s (un miembro del grupo)"),
+        [K_PLATINUM] = T5("Unlock all %d other trophies", "Débloquer les %d autres trophées", "Alle %d anderen Trophäen freischalten", "Sbloccare tutti gli altri %d trofei", "Desbloquear los otros %d trofeos"),
         [K_LEVEL]    = T5("Level 50 as %s (one party member)", "Niveau 50 en %s (un membre du groupe)", "Stufe 50 als %s (ein Gruppenmitglied)", "Livello 50 come %s (un membro del gruppo)", "Nivel 50 como %s (un miembro del grupo)"),
     };
     return t[kind][l];
@@ -266,6 +309,7 @@ static void texts(const Trophy* t, char* title, int tcap, char* desc, int dcap) 
     const char* f = desc_format(t->kind, l);
     if (t->kind == K_QUEST || t->kind == K_QUESTS || t->kind == K_MONSTERS || t->kind == K_ITEMS || t->kind == K_WARDROBE
         || t->kind == K_RECIPES || t->kind == K_BATTLES) snprintf(desc, (size_t)dcap, f, t->a);
+    else if (t->kind == K_PLATINUM) snprintf(desc, (size_t)dcap, f, N_TROPHIES - 1);
     else { cap_first(name); snprintf(desc, (size_t)dcap, f, name); }
 }
 
@@ -319,6 +363,7 @@ static int quests_done(void) {
 static int defeated(int num) { return num >= 1 && num <= 308 && (rd32(MONSTERS + 4u * (uint32_t)(num - 1)) & 0x3FF) != 0; }
 static int bits(uint32_t a, int n) { int c = 0; for (int i = 0; i < n; i++) c += (rd8(a + (uint32_t)(i >> 3)) >> (i & 7)) & 1; return c; }
 
+static int64_t g_won[];
 static int progress(const Trophy* t) {                         /* how far (for the counts), else 0 / 1 */
     int n = 0;
     switch (t->kind) {
@@ -334,12 +379,13 @@ static int progress(const Trophy* t) {                         /* how far (for t
     case K_BATTLES: return (int)(rd32(BATTLES) > 1000000 ? 1000000 : rd32(BATTLES));
     case K_SKILL: for (int m = 0; m < 4; m++) if (rd8(PARTY + (uint32_t)m * MEMBER + 0x428 + (uint32_t)t->a) >= 100) return 1; return 0;
     case K_LEVEL: for (int m = 0; m < 4; m++) if (rd16(PARTY + (uint32_t)m * MEMBER + 0x130 + 2u * (uint32_t)t->a) >= 50) return 1; return 0;
+    case K_PLATINUM: for (int i = 0; i < N_TROPHIES; i++) n += g_won[i] != 0 && g_list[i].kind != K_PLATINUM; return n;
     }
     return 0;
 }
 static int goal(const Trophy* t) {
     return t->kind == K_QUESTS || t->kind == K_MONSTERS || t->kind == K_ITEMS || t->kind == K_WARDROBE
-        || t->kind == K_RECIPES || t->kind == K_BATTLES ? t->a : 1;
+        || t->kind == K_RECIPES || t->kind == K_BATTLES ? t->a : t->kind == K_PLATINUM ? N_TROPHIES - 1 : 1;
 }
 
 /* ---------------------------------------------------------------- won, and kept */
@@ -403,6 +449,49 @@ static void check(void) {
     else announce(-nf);                                         /* (an adventure from before trophies: one notice) */
 }
 
+/* ---------------------------------------------------------------- the chime */
+/* A small bell of our own with the notice, the grade by ear: 2 notes for
+ * bronze, 3 for silver, 4 for gold, a short fanfare for platinum. Made in the
+ * sound's own thread (trophies_mix), at 32768 Hz; settings.ini trophy_sound = 0
+ * keeps the notices silent. */
+static int g_sound_on = 1;
+static volatile int g_chime_grade = -1, g_chime_new;       /* set here, taken by the sound thread */
+void trophies_sound_enable(int on) { g_sound_on = on != 0; }
+int trophies_sound_enabled(void) { return g_sound_on; }
+static void chime(int g) { if (g_sound_on) { g_chime_grade = g; g_chime_new = 1; } }
+
+void trophies_mix(int16_t* out, uint32_t frames) {
+    static const float NOTES[4][6] = {                          /* Hz, 0 = the end */
+        { 659.25f, 987.77f },                                   /* E5 B5 */
+        { 523.25f, 659.25f, 783.99f },                          /* C5 E5 G5 */
+        { 523.25f, 659.25f, 783.99f, 1046.50f },                /* C5 E5 G5 C6 */
+        { 392.00f, 523.25f, 659.25f, 783.99f, 1046.50f, 1318.51f },
+    };
+    static int grade_on = -1; static uint32_t t;                /* the chime playing, its sample */
+    if (g_chime_new) { g_chime_new = 0; grade_on = g_chime_grade; t = 0; }
+    if (grade_on < 0) return;
+    const float rate = 32768.0f, step = grade_on == G_PLATINUM ? 0.09f : 0.11f, ring = 0.9f;
+    int n = 0; while (n < 6 && NOTES[grade_on][n] > 0) n++;
+    float end = step * (float)(n - 1) + ring;
+    for (uint32_t i = 0; i < frames; i++, t++) {
+        float s = 0, at = (float)t / rate;
+        if (at > end) { grade_on = -1; return; }
+        for (int k = 0; k < n; k++) {
+            float u = at - step * (float)k;
+            if (u < 0) break;
+            float last = k == n - 1 ? 1.6f : 1.0f;              /* the last note rings longer */
+            float env = (u < 0.004f ? u / 0.004f : 1.0f) * expf(-u * 5.5f / last);
+            float w = 6.2831853f * NOTES[grade_on][k] * u;
+            s += env * (sinf(w) + 0.35f * sinf(2.0f * w) + 0.12f * sinf(3.01f * w));   /* a bell: some overtones */
+        }
+        int v = (int)(s * 0.11f * 32767.0f);
+        for (int c = 0; c < 2; c++) {
+            int o = out[i * 2 + c] + v;
+            out[i * 2 + c] = (int16_t)(o > 32767 ? 32767 : o < -32768 ? -32768 : o);
+        }
+    }
+}
+
 void trophies_tick(void) {
     g_tick++;
     if (!g_enabled) return;
@@ -419,6 +508,7 @@ void trophies_tick(void) {
         g_show = g_queue[0];
         memmove(g_queue, g_queue + 1, sizeof(int) * (size_t)--g_nqueue);
         g_age = 0; g_pic_dirty = 1;
+        chime(g_show >= 0 ? grade(&g_list[g_show]) : G_GOLD);
     }
     if (g_show != -1000) {
         g_age++;
@@ -443,8 +533,11 @@ static int in_cup(float x, float y) {                             /* the cup's s
     if (y >= 0.65f && y <= 0.74f && fabsf(x - 0.5f) <= 0.16f) return 1;                                        /* the foot */
     return 0;
 }
-static void cup(const JournalCanvas* c, int x, int y, int s, int won, float a) {
-    uint32_t disc = won ? 0x5A4012 : 0x262A31, rim = won ? 0xB8892A : 0x40454E, gold = won ? 0xF2C94C : 0x6A707A;
+static void cup(const JournalCanvas* c, int x, int y, int s, int won, int g, float a) {
+    /* the grade's metal: the disc, its rim, the cup (bronze, silver, gold, platinum); not won: grey, the rim tinted */
+    static const uint32_t DISC[4] = { 0x4A2E18, 0x3A3F48, 0x5A4012, 0x2E3550 }, RIM[4] = { 0xA8683A, 0xA2ABB8, 0xB8892A, 0x9FB4E8 },
+                          CUP[4] = { 0xE8A872, 0xEEF1F5, 0xF2C94C, 0xEAF0FF }, DIM[4] = { 0x5A3E2A, 0x50555E, 0x5E4E26, 0x4A5470 };
+    uint32_t disc = won ? DISC[g] : 0x262A31, rim = won ? RIM[g] : DIM[g], gold = won ? CUP[g] : 0x6A707A;
     float x0 = c->ox + x * c->u, y0 = c->oy + y * c->u, S = s * c->u;
     for (int py = (int)floorf(y0); py < (int)ceilf(y0 + S); py++)
         for (int px = (int)floorf(x0); px < (int)ceilf(x0 + S); px++) {
@@ -563,7 +656,7 @@ const uint8_t* trophies_picture(int w, int h, int* changed) {
     }
     journal_box(&c, 0, 0, bw, bh, 0x161B24, 0.94f * out);
     journal_box(&c, 0, 0, 5, bh, 0xF2C94C, out);
-    if (g_show < 0 || !badge(&c, g_show, 18, 16, 64, out)) cup(&c, 18, 16, 64, 1, out);
+    if (g_show < 0 || !badge(&c, g_show, 18, 16, 64, out)) cup(&c, 18, 16, 64, 1, g_show >= 0 ? grade(&g_list[g_show]) : G_GOLD, out);
     journal_text(&c, 98, 10, 14, out > 0.5f ? 0xF2C94C : 0x806A2A, won1[l]);
     journal_text(&c, 98, 32, 21, out > 0.5f ? 0xF4F4F4 : 0x7A7A7A, title);
     journal_wrap(&c, 98, 62, bw - 110, 14, out > 0.5f ? 0xA8B0BC : 0x55585E, desc, 1);
@@ -584,6 +677,9 @@ static void rows(void) {
         }
     for (int i = 1; i < g_nrows && g_won[g_rows[i]]; i++)
         for (int j = i; j > 0 && g_won[g_rows[j]] > g_won[g_rows[j - 1]]; j--) { int t = g_rows[j]; g_rows[j] = g_rows[j - 1]; g_rows[j - 1] = t; }
+    int first = 0; while (first < g_nrows && g_won[g_rows[first]]) first++;
+    for (int i = first + 1; i < g_nrows; i++)                   /* the others: bronze to platinum (stable) */
+        for (int j = i; j > first && grade(&g_list[g_rows[j]]) < grade(&g_list[g_rows[j - 1]]); j--) { int t = g_rows[j]; g_rows[j] = g_rows[j - 1]; g_rows[j - 1] = t; }
     if (g_sel >= g_nrows) g_sel = g_nrows ? g_nrows - 1 : 0;
 }
 
@@ -595,25 +691,40 @@ static const char* page_title(int l) {
 #define ROW_H 58
 static void page_draw(const JournalCanvas* c) {
     load(); rows();
-    int l = c->lang, n = won_count();
+    int l = c->lang, n = 0, total = 0, per[4][2] = { { 0 } };       /* in the category shown: won, all; by grade */
+    for (int i = 0; i < N_TROPHIES; i++) {
+        if (g_cat >= 0 && g_list[i].cat != g_cat) continue;
+        int g = grade(&g_list[i]); total++; per[g][1]++;
+        if (g_won[i]) { n++; per[g][0]++; }
+    }
     char buf[200];
     static const char* const won_f[5] = { "%d of %d unlocked", "%d sur %d débloqués", "%d von %d freigeschaltet", "%d su %d sbloccati", "%d de %d desbloqueados" };
-    snprintf(buf, sizeof buf, won_f[l], n, N_TROPHIES);
+    snprintf(buf, sizeof buf, won_f[l], n, total);
     journal_text(c, c->x, c->y, 20, 0xF0F0F0, buf);
-    journal_bar(c, c->x + 330, c->y + 9, 360, 10, (float)n / N_TROPHIES, 0xF2C94C);
-    snprintf(buf, sizeof buf, "%d %%", (int)lroundf(100.0f * n / N_TROPHIES));
+    float part = total ? (float)n / total : 0;
+    journal_bar(c, c->x + 330, c->y + 9, 360, 10, part, 0xF2C94C);
+    snprintf(buf, sizeof buf, "%d %%", (int)lroundf(100.0f * part));
     journal_text(c, c->x + 702, c->y, 18, 0xF2C94C, buf);
+    /* the second line: the category (left, right to change), the medals by grade */
     static const char* const all[5] = { "All", "Tous", "Alle", "Tutti", "Todos" };
     snprintf(buf, sizeof buf, "\xE2\x86\x90 %s \xE2\x86\x92", g_cat < 0 ? all[l] : CAT_NAME[g_cat][l]);
-    int bw = journal_text_width(18, buf);
-    journal_text(c, c->x + c->w - bw, c->y + 1, 18, 0x9AA0A8, buf);
-    int y0 = c->y + 40, shown = (c->h - 40) / ROW_H;
+    journal_text(c, c->x, c->y + 30, 18, 0x9AA0A8, buf);
+    int mx = c->x + c->w;
+    for (int g = G_PLATINUM; g >= G_BRONZE; g--) {
+        if (!per[g][1]) continue;
+        snprintf(buf, sizeof buf, "%d/%d", per[g][0], per[g][1]);
+        int tw = journal_text_width(16, buf);
+        mx -= tw; journal_text(c, mx, c->y + 32, 16, per[g][0] ? 0xE8E8E8 : 0x8A9098, buf);
+        mx -= 28; cup(c, mx, c->y + 30, 22, per[g][0] > 0, g, 1.0f);
+        mx -= 18;
+    }
+    int y0 = c->y + 66, shown = (c->h - 66) / ROW_H;
     if (g_sel < g_top) g_top = g_sel;
     if (g_sel >= g_top + shown) g_top = g_sel - shown + 1;
     for (int r = 0; r < shown && g_top + r < g_nrows; r++) {
         int i = g_rows[g_top + r], y = y0 + r * ROW_H, won = g_won[i] != 0;
         if (g_top + r == g_sel) journal_box(c, c->x - 6, y - 3, c->w + 12, ROW_H - 4, 0x2A3140, 1);
-        if (!won || !badge(c, i, c->x, y + 2, 46, 1.0f)) cup(c, c->x, y + 2, 46, won, won ? 1.0f : 0.8f);
+        if (!won || !badge(c, i, c->x, y + 2, 46, 1.0f)) cup(c, c->x, y + 2, 46, won, grade(&g_list[i]), won ? 1.0f : 0.8f);
         char title[200], desc[300];
         int masked = !won && hidden(&g_list[i]) && !g_reveal[i];
         if (!masked) texts(&g_list[i], title, sizeof title, desc, sizeof desc);
@@ -637,14 +748,14 @@ static void page_draw(const JournalCanvas* c) {
     }
     if (g_nrows > shown) {                                      /* where in the list */
         float part = (float)shown / g_nrows, at = (float)g_top / g_nrows;
-        int h = c->h - 40;
+        int h = c->h - 66;
         journal_box(c, c->x + c->w + 14, y0, 4, h, 0x3A3F48, 1);
         journal_box(c, c->x + c->w + 14, y0 + (int)(at * h), 4, (int)(part * h) < 8 ? 8 : (int)(part * h), 0x9AA0A8, 1);
     }
 }
 
 static int page_key(int k) {
-    int shown = 9;
+    int shown = 8;
     switch (k) {
     case JK_UP: if (g_sel > 0) { g_sel--; return 1; } return 0;
     case JK_DOWN: if (g_sel + 1 < g_nrows) { g_sel++; return 1; } return 0;

@@ -2126,6 +2126,7 @@ static void settings_load(void) {
         else if (!strcmp(key, "farm_fast_forward")) g_farm_fast = atoi(val) != 0;
         else if (!strcmp(key, "skip_intro")) { int v = atoi(val); if (v >= 0 && v <= 2) g_skip_intro = v; }
         else if (!strcmp(key, "trophies")) trophies_enable(atoi(val) != 0);
+        else if (!strcmp(key, "trophy_sound")) trophies_sound_enable(atoi(val) != 0);
         else if (!strcmp(key, "battle_speed")) { int v = atoi(val); if (v >= 1 && v <= 4) g_battle_speed = v; }
         else if (!strcmp(key, "battle_speed_turn_only")) g_battle_turn_only = atoi(val) != 0;
         else if (!strcmp(key, "battle_victory_auto")) g_battle_auto_victory = atoi(val) != 0;
@@ -2237,6 +2238,7 @@ static void settings_save(void) {
     fprintf(f, "# Modern > Start: 0 the logos and the opening movie as on a DS, 1 skip the logos, 2 skip the opening movie too\n");
     fprintf(f, "skip_intro = %d\n", g_skip_intro);
     fprintf(f, "trophies = %d\n", trophies_enabled());
+    fprintf(f, "trophy_sound = %d\n", trophies_sound_enabled());
     fprintf(f, "# Modern > Battle speed: battles go 1, 2, 3 or 4 times as fast (not while playing with friends);\n");
     fprintf(f, "# turn_only 1: only while the turn plays out (the commands are chosen at the usual pace);\n");
     fprintf(f, "# victory_auto 1: after a win, the messages turn their page by themselves (not after a level up): 0 or 1\n");
@@ -2349,6 +2351,7 @@ static void audio_cb(void* u, Uint8* stream, int len) {
         }
         g_audio_priming = 1;
     }
+    trophies_mix(out, frames);                            /* a trophy's chime, at the game's volume */
     int v = g_mute ? 0 : g_volume;                        /* Game > Volume: by ear (loudness follows the square) */
     if (v < 100) {
         int32_t gain = v * v * 65536 / 10000;               /* 16.16 */
