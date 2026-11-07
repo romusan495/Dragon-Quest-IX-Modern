@@ -105,11 +105,19 @@ def main():
         os.replace(os.path.join(out, key + ".png.new"), os.path.join(out, key + ".png"))
         got += 1
 
+    def bar(done):                                              # in the build's window: where the download is
+        n = len(missing); full = 30 * done // n if n else 30
+        sys.stdout.write("\r   trophy pictures: [%s%s] %d/%d " % ("#" * full, "." * (30 - full), done, n)); sys.stdout.flush()
+
     search = {k: (ids, w) for k, ids, w in SEARCH}
+    tried = 0
+    bar(0)
     used = set(FIXED.values())
     try:
-        for key in missing:
+        for done, key in enumerate(missing):
+            if done: bar(done)
             if time.time() - start > 240 or in_row >= 5: break     # never hold the build long (the site out of reach)
+            tried = done + 1
             try:
                 if key in FIXED:
                     aid = FIXED[key]
@@ -128,6 +136,7 @@ def main():
             except Exception:
                 failed += 1; in_row += 1
     finally:
+        bar(tried); sys.stdout.write("\n")
         with open(cache_file, "w", encoding="utf-8") as f:
             for aid in sorted(cache): f.write("%d\t%s\t%s\n" % (aid, cache[aid][0], cache[aid][1]))
     print("   trophy pictures: %d fetched, %d not (the cups instead; tried again next build), %d already there"
