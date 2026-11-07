@@ -3982,7 +3982,9 @@ static void bag_update(int a_on_top) {
  * name's, the bottom) and no other window is up but the box at the bottom
  * (what isn't one of these menus: the game's layout kept). The menus before
  * it (greyed) give the path: their names, above it. */
-#define XM_INK2(c) (xm_light(c) || ((((c) >> 16) & 255) > 180 && (((c) >> 8) & 255) > 140 && ((c) & 255) < 100 && (((c) >> 8) & 255) < 235))
+/* (letters: white, grey; the chosen line's yellow; chosen with the mouse, held: green 81, 195, 24 on the DS (shown yellow)) */
+#define XM_INK2(c) (xm_light(c) || ((((c) >> 16) & 255) > 180 && (((c) >> 8) & 255) > 140 && ((c) & 255) < 100) \
+                    || ((((c) >> 8) & 255) > 150 && (((c) >> 16) & 255) < 130 && ((c) & 255) < 80))
 static int xm_light(uint32_t c) { return ((c >> 16) & 255) > 170 && ((c >> 8) & 255) > 170 && (c & 255) > 170; }
 static void xmenu_update(int a_on_top) {
     const uint32_t* px = g_engine_out[0];
@@ -3992,14 +3994,24 @@ static void xmenu_update(int a_on_top) {
     g_xmenu = 0;
     if (!ok) return;
     #define GREY(x, y) ((px[(y) * 256 + (x)] & 0xFFFFFF) == 0x828282)
-    int hx0 = 256, hy0 = 192, hx1 = -1, hy1 = -1, hn = 0;          /* the hand */
+    int hx0 = 256, hy0 = 192, hx1 = -1, hy1 = -1, hn = 0;          /* the hand: the leftmost run of columns with yellow (the chosen line's letters,
+                                                                     * yellow when chosen with the mouse, after it) */
+    static int ycol[256], ylo[256], yhi[256];
+    for (int x = 0; x < 256; x++) { ycol[x] = 0; ylo[x] = 192; yhi[x] = -1; }
     for (int y = 0; y < 192; y++)
         for (int x = 0; x < 256; x++) {
             uint32_t c = px[y * 256 + x];
             if (((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100 && (info[(y * 256 + x) * 4] & 3) != 1) {
-                hn++; if (x < hx0) hx0 = x; if (x > hx1) hx1 = x; if (y < hy0) hy0 = y; if (y > hy1) hy1 = y;
+                ycol[x]++; if (y < ylo[x]) ylo[x] = y; if (y > yhi[x]) yhi[x] = y;
             }
         }
+    for (int x = 0, x0 = -1; x < 256; x++) {                     /* (the hand's 14 columns from its first yellow one: gaps inside it) */
+        if (x0 >= 0 && x > x0 + 13) break;
+        if (!ycol[x]) continue;
+        if (x0 < 0) x0 = hx0 = x;
+        hx1 = x; hn += ycol[x];
+        if (ylo[x] < hy0) hy0 = ylo[x]; if (yhi[x] > hy1) hy1 = yhi[x];
+    }
     static int dbg = -1; if (dbg < 0) dbg = getenv("DQIX_XMDBG") != NULL;
     #define XMFAIL(c) do { if (dbg && g_frame % 30 == 0) fprintf(stderr, "xm f%llu fail %d hand %d %d-%d %d-%d\n", (unsigned long long)g_frame, c, hn, hx0, hx1, hy0, hy1); return; } while (0)
     if (hn < 6 || hn > 120 || hx1 - hx0 > 24 || hy1 - hy0 > 14) XMFAIL(1);
@@ -4043,7 +4055,7 @@ static void xmenu_update(int a_on_top) {
          * first gap of 10 columns empty in all its lines after the text), over its letters' rows (but the
          * accents': 3 letter pixels a row) with 4 pixels round; the chosen line's letters may be yellow */
         int ly0 = (sep ? sep : top) + 2, ly1 = bot - 2, end = X1 - 2, seen = 0, gap = 0;
-        #define XM_INK(c) (xm_light(c) || ((((c) >> 16) & 255) > 180 && (((c) >> 8) & 255) > 140 && ((c) & 255) < 100))
+        #define XM_INK(c) XM_INK2(c)
         for (int x = hx1 + 2; x < X1 - 1; x++) {
             int any = 0;
             for (int y = ly0; y <= ly1 && !any; y++) any = XM_INK(px[y * 256 + x]);
