@@ -39,6 +39,8 @@ static int lang(void) { return g_fw_language >= 1 && g_fw_language <= 5 ? g_fw_l
 int journal_open(void) { return g_open; }
 void journal_toggle(void) {
     ready();
+    static int test_tab = -2;                                   /* tests: DQIX_JOURNAL_TAB=n, the tab it opens on */
+    if (test_tab == -2) { const char* e = getenv("DQIX_JOURNAL_TAB"); test_tab = e ? atoi(e) : -1; if (test_tab >= 0 && test_tab < g_npage) g_tab = test_tab; }
     g_open = !g_open;
     g_dirty = 1;
     if (g_open && g_tab < g_npage && g_page[g_tab]->opened) g_page[g_tab]->opened();
@@ -67,10 +69,14 @@ int journal_typed(const char* utf8) {
 }
 
 /* ---------------------------------------------------------------- drawing */
+/* The helpers draw on the canvas' own picture: the journal's, or another one
+ * (the trophies' notice, trophies.c). */
+static uint8_t* g_tgt; static int g_tw, g_th;
+static void target(const JournalCanvas* c) { g_tgt = c->rgba; g_tw = c->pw; g_th = c->ph; }
 static void put(int x, int y, uint32_t rgb, float a) {           /* premultiplied "over" */
-    if (x < 0 || y < 0 || x >= g_pw || y >= g_ph || a <= 0) return;
+    if (!g_tgt || x < 0 || y < 0 || x >= g_tw || y >= g_th || a <= 0) return;
     if (a > 1) a = 1;
-    uint8_t* p = &g_pic[((size_t)y * g_pw + x) * 4];
+    uint8_t* p = &g_tgt[((size_t)y * g_tw + x) * 4];
     float k = 1 - a;
     p[0] = (uint8_t)(((rgb >> 16) & 255) * a + p[0] * k + 0.5f);
     p[1] = (uint8_t)(((rgb >> 8) & 255) * a + p[1] * k + 0.5f);
@@ -79,6 +85,7 @@ static void put(int x, int y, uint32_t rgb, float a) {           /* premultiplie
 }
 
 void journal_box(const JournalCanvas* c, int x, int y, int w, int h, uint32_t rgb, float alpha) {
+    target(c);
     float x0 = c->ox + x * c->u, y0 = c->oy + y * c->u, x1 = x0 + w * c->u, y1 = y0 + h * c->u, r = 4 * c->u;
     if (r > (x1 - x0) / 2) r = (x1 - x0) / 2;
     if (r > (y1 - y0) / 2) r = (y1 - y0) / 2;
@@ -95,6 +102,7 @@ void journal_box(const JournalCanvas* c, int x, int y, int w, int h, uint32_t rg
 
 /* A thin frame (the game's restyled windows: a grey line). */
 static void frame(const JournalCanvas* c, int x, int y, int w, int h, uint32_t rgb) {
+    target(c);
     float t = fmaxf(1.0f, 1.2f * c->u);
     int x0 = (int)(c->ox + x * c->u), y0 = (int)(c->oy + y * c->u), x1 = (int)(c->ox + (x + w) * c->u), y1 = (int)(c->oy + (y + h) * c->u), n = (int)(t + 0.5f);
     for (int i = 0; i < n; i++) {
@@ -120,18 +128,23 @@ int journal_text_width(float px, const char* s) {
 
 int journal_text(const JournalCanvas* c, int x, int y, float px, uint32_t rgb, const char* s) {
     if (!s || !*s || !text_ready()) return 0;
+    target(c);
     float size = px * c->u;
     int lh = (int)ceilf(size * 1.4f) + 2;
-    if (lh > g_scratch_h) { free(g_scratch); g_scratch = malloc(sizeof(uint32_t) * (size_t)g_pw * lh); g_scratch_h = g_scratch ? lh : 0; }
+    static int scratch_w;                                       /* (the scratch line is as wide as the picture drawn on) */
+    if (lh > g_scratch_h || g_tw != scratch_w) {
+        free(g_scratch); g_scratch = malloc(sizeof(uint32_t) * (size_t)g_tw * lh);
+        g_scratch_h = g_scratch ? lh : 0; scratch_w = g_scratch ? g_tw : 0;
+    }
     if (!g_scratch) return 0;
     int X = (int)lroundf(c->ox + x * c->u), Y = (int)lroundf(c->oy + y * c->u);
-    memset(g_scratch, 0, sizeof(uint32_t) * (size_t)g_pw * lh);
-    int w = text_draw(g_scratch, g_pw, lh, X < 0 ? 0 : X, 0, size, 0xFFFFFF, s);
+    memset(g_scratch, 0, sizeof(uint32_t) * (size_t)g_tw * lh);
+    int w = text_draw(g_scratch, g_tw, lh, X < 0 ? 0 : X, 0, size, 0xFFFFFF, s);
     int x0 = X < 0 ? 0 : X, x1 = x0 + w + (int)size;
-    if (x1 > g_pw) x1 = g_pw;
+    if (x1 > g_tw) x1 = g_tw;
     for (int j = 0; j < lh; j++)
         for (int i = x0; i < x1; i++) {
-            uint32_t t = g_scratch[(size_t)j * g_pw + i];
+            uint32_t t = g_scratch[(size_t)j * g_tw + i];
             if (t) put(i, Y + j, rgb, (float)((t >> 16) & 255) / 255.0f);
         }
     return (int)lroundf(w / c->u);

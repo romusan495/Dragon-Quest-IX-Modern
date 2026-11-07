@@ -112,6 +112,10 @@ cp lang/*.txt game/lang/ 2>/dev/null || true                          # the menu
 # modern job icons, in the HD texture pack (runtime/hdsprite.h): made from the ROM
 # like the program's icon. Optional: without them the game shows its own.
 $PY tools/job_icons.py "$ROM" game/textures/jobs || echo "   job icons: not made (optional)"
+# the trophies' pictures (runtime/trophies.c): their RetroAchievements badges,
+# fetched from the site once, for this computer only (never kept in the project).
+# Optional: without them (no Internet) the game shows its cups.
+$PY tools/trophy_badges.py game/trophies || echo "   trophy pictures: not fetched (optional)"
 # the same plaques for the modern Equip screen (runtime/frontend_sdl.c equip_pieces:
 # the bar, the card) and the jobs' coats of arms for the shop's wall; its backdrop, ui/equip-shop.png, if there
 mkdir -p game/ui/jobs game/ui/crests && cp tools/job_icons_plate/*.png game/ui/jobs/ 2>/dev/null || true

@@ -40,6 +40,7 @@
 #include "cheats.h"
 #include "mapmarks.h"
 #include "journal.h"
+#include "trophies.h"
 #include "version.h"
 #include "session.h"
 #include "air.h"
@@ -251,6 +252,8 @@ static void skins_scan(void) {
 #include "stb_image.h"
 
 /* The photo for the chosen console colour (if it is one), in the GPU. */
+static uint8_t* load_png(const char* file, int* w, int* h) { int n; return stbi_load(file, w, h, &n, 4); }   /* trophies' pictures */
+
 static const Skin* current_skin(void) {
     int i = g_opt.shell_color - N_DRAWN;
     if (i < 0 || i >= g_nskins || !g_gl) return NULL;
@@ -2122,6 +2125,8 @@ static void settings_load(void) {
         else if (!strcmp(key, "farm_gold_target")) { long v = atol(val); if (v > 0 && v <= 9999999) g_farm_target = (int)v; }
         else if (!strcmp(key, "farm_fast_forward")) g_farm_fast = atoi(val) != 0;
         else if (!strcmp(key, "skip_intro")) { int v = atoi(val); if (v >= 0 && v <= 2) g_skip_intro = v; }
+        else if (!strcmp(key, "trophies")) trophies_enable(atoi(val) != 0);
+        else if (!strcmp(key, "trophy_sound")) trophies_sound_enable(atoi(val) != 0);
         else if (!strcmp(key, "battle_speed")) { int v = atoi(val); if (v >= 1 && v <= 4) g_battle_speed = v; }
         else if (!strcmp(key, "battle_speed_turn_only")) g_battle_turn_only = atoi(val) != 0;
         else if (!strcmp(key, "battle_victory_auto")) g_battle_auto_victory = atoi(val) != 0;
@@ -2232,6 +2237,8 @@ static void settings_save(void) {
     fprintf(f, "farm_fast_forward = %d\n", g_farm_fast);
     fprintf(f, "# Modern > Start: 0 the logos and the opening movie as on a DS, 1 skip the logos, 2 skip the opening movie too\n");
     fprintf(f, "skip_intro = %d\n", g_skip_intro);
+    fprintf(f, "trophies = %d\n", trophies_enabled());
+    fprintf(f, "trophy_sound = %d\n", trophies_sound_enabled());
     fprintf(f, "# Modern > Battle speed: battles go 1, 2, 3 or 4 times as fast (not while playing with friends);\n");
     fprintf(f, "# turn_only 1: only while the turn plays out (the commands are chosen at the usual pace);\n");
     fprintf(f, "# victory_auto 1: after a win, the messages turn their page by themselves (not after a level up): 0 or 1\n");
@@ -2344,6 +2351,7 @@ static void audio_cb(void* u, Uint8* stream, int len) {
         }
         g_audio_priming = 1;
     }
+    trophies_mix(out, frames);                            /* a trophy's chime, at the game's volume */
     int v = g_mute ? 0 : g_volume;                        /* Game > Volume: by ear (loudness follows the square) */
     if (v < 100) {
         int32_t gain = v * v * 65536 / 10000;               /* 16.16 */
@@ -2769,6 +2777,9 @@ static void do_action(int id);
 static void test_actions_hook(void) {
     static const char* e = (const char*)-1; if (e == (const char*)-1) e = getenv("DQIX_TEST_ACTIONS");
     if (!e) return;
+    static uint64_t done = (uint64_t)-1;                      /* once a frame (the journal stops the frames: drawn again, not toggled again) */
+    if (g_frame == done) return;
+    done = g_frame;
     for (const char* c = e; c && *c; ) {
         unsigned long long f = strtoull(c, NULL, 10); const char* a = strchr(c, ':');
         if (a && f == g_frame) {
@@ -3826,10 +3837,12 @@ static void present_gl(void) {
         if (mapmarks_update(&rgba)) gl_set_overlay(rgba, MAPMARKS_W, MAPMARKS_H);
     }
     int w, h; SDL_GL_GetDrawableSize(g_win, &w, &h);
-    {   /* the in-game menu (Esc) or the journal (J), over everything */
-        static int shown;                                        /* 1 the menu, 2 the journal */
+    {   /* the in-game menu (Esc) or the journal (J), over everything; else a trophy's notice */
+        static int shown;                                        /* 1 the menu, 2 the journal, 3 a trophy */
+        const uint8_t* tp; int tch = 0;
         if (gamemenu_is_open()) { int ch; const uint8_t* p = gamemenu_picture(w, h, &ch); if (ch || shown != 1) { gl_set_menu(p, w, h); gl_set_menu_box(gamemenu_box()); } shown = 1; }
         else if (journal_open()) { int ch; const uint8_t* p = journal_picture(w, h, &ch); if (ch || shown != 2) { gl_set_menu(p, w, h); gl_set_menu_box(NULL); } shown = 2; }
+        else if (g_gl && (tp = trophies_picture(w, h, &tch))) { if (tch || shown != 3) { gl_set_menu(tp, w, h); gl_set_menu_box(NULL); } shown = 3; }
         else if (shown) { gl_set_menu(NULL, 0, 0); gl_set_menu_box(NULL); shown = 0; }
     }
     GlPresent v; canvas_layout(&v, w, h);
@@ -3856,6 +3869,8 @@ static void present(void) {
     static long long skip = -2;                               /* DQIX_PRESENT_FROM=frame: don't draw before it (tests) */
     if (skip == -2) { const char* e = getenv("DQIX_PRESENT_FROM"); skip = e ? atoll(e) : -1; }
     if (skip >= 0 && g_frame < (uint64_t)skip) return;
+    trophies_set_loader(load_png);                            /* (the pictures, with the frontend's PNG reader) */
+    trophies_tick();                                          /* (checked even without OpenGL: the notice needs it, not the trophies) */
     if (g_gl) { present_gl(); return; }
     void* pix; int pitch;
     if (SDL_LockTexture(g_tex, NULL, &pix, &pitch) == 0) {
