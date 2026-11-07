@@ -28,7 +28,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Textures des monstres sur la carte (pack HD) | Graph | [Graph] Corriger les textures des monstres sur la carte | `claude/project-thread-3zdjvn` | fusionné | PR #115 | — |
 | Écran Équiper de Tsu (corrections) | Graph | [Graph] Corriger le nouvel écran Équiper | `claude/project-thread-v4a74b` | fusionné | PR #117 | — |
 | Étoiles des points de collecte sur la carte | Dev | [Dev] Étoiles des points de collecte sur la carte | `claude/project-thread-rila1e` | fusionné | PR #121 | — |
-| Trophées style Steam | Dev | [Dev] Ajouter des trophées style Steam | `claude/project-thread-j97l6o` | en cours | — (pas poussée) | Touche `runtime/frontend_sdl.c` (include, réglage `trophies`, `trophies_tick` dans `present()`, notice dans `present_gl`, garde une fois par image dans les actions de test, lecteur PNG passé à `trophies.c`) et `runtime/journal.c` (helpers de dessin, nouvel onglet) ; `tools/build-game.sh` (étape facultative : `tools/trophy_badges.py` télécharge les images des trophées dans `game/trophies/`) ; nouveaux `runtime/trophies.c/.h` (donc sans doute `build.mk`) ; rebaser sur `main` avant la PR |
+| Trophées style Steam | Dev | [Dev] Ajouter des trophées style Steam | `claude/project-thread-j97l6o` | fusionné | PR #123 (59b08f4) | Téléchargement des images (`tools/trophy_badges.py`, badges RetroAchievements, jamais dans le dépôt) au premier BUILD.bat pas encore testé sur Windows ; sans réseau il s'arrête après 5 échecs ou 4 min et le build continue |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
 #33 est fusionnée : chaque fil rebase sur `main` avant sa PR, et les PR passent
