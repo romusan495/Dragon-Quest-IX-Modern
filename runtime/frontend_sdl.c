@@ -78,7 +78,7 @@ static int g_hints = 1;                                           /* the DS butt
 static int g_hint_pad = -1;                                       /* ...the last used: 1 the controller, 0 the keyboard, -1 not yet */
 static int g_minimap = 1;                                         /* widescreen: the map small in a corner of the one window (no second window), not in battles */
 static int g_map_shown = 1;                                       /* ...shown (Modern > Map in the top right corner) */
-static int g_round_map = 1;                                       /* ...round, centred on the hero, a gold ring round it (Modern > Round map) */
+static int g_round_map = 1;                                       /* ...round, centred on the hero, a silver ring round it (Modern > Round map) */
 static int g_place_plate = -1;                                    /* the map's place name plate: its left edge on the top screen (-1: none) */
 static int g_place_txt[2];
 static int g_species_w, g_species_h;                              /* the monsters near's list (mapmarks_species()), its size (overlay pixels; 0: none) */                                        /* ...its letters (x0, x1) */
@@ -1776,8 +1776,8 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
 #undef MY
 }
 
-/* The round minimap's ring (GL_LAYER_RING): gold, a dark line either side,
- * the compass' marks (a gold arrow at the north, knobs at the east, south and
+/* The round minimap's ring (GL_LAYER_RING): silver, a dark line either side,
+ * the compass' marks (a silver arrow at the north, knobs at the east, south and
  * west, dots between), at the window's pixels: radius R, ring T (pixels). */
 static void round_ring(int D, float R, float T) {
     static uint8_t* img; static int had;
@@ -1794,30 +1794,30 @@ static void round_ring(int D, float R, float T) {
             float ri = R - 0.5f, ro = R + T;                       /* the ring: from just inside the map's edge */
             float dark = fminf(fmaxf(0, 1 - fabsf(r - (ri - 0.6f))), 1) + fminf(fmaxf(0, 1 - fabsf(r - (ro + 0.6f))), 1);
             float in = fminf(fmaxf(0, r - ri + 0.5f), 1) * fminf(fmaxf(0, ro - r + 0.5f), 1);
-            if (in > 0) {                                          /* gold, lit from the top left */
+            if (in > 0) {                                          /* silver (the modern windows' grey), lit from the top left */
                 float t = (r - ri) / (ro - ri), lit = 0.5f + 0.5f * cosf(ang + 0.8f);
                 float g = 0.72f + 0.28f * (1 - fabsf(t - 0.4f) * 2) + 0.12f * lit;
-                OVER(in, 236 * g, 180 * g, 74 * g);
+                OVER(in, fminf(255, 200 * g), fminf(255, 204 * g), fminf(255, 212 * g));
             }
-            OVER(fminf(dark, 1) * 0.85f, 40, 26, 10);
+            OVER(fminf(dark, 1) * 0.85f, 30, 32, 36);
             for (int k = 0; k < 8; k++) {                          /* the compass' marks */
                 float aa = k * 0.78539816f, mx = sinf(aa) * (R + T * 0.5f), my = -cosf(aa) * (R + T * 0.5f);
                 float d = sqrtf((px - mx) * (px - mx) + (py - my) * (py - my));
-                if (k == 0) {                                      /* the north: a gold arrow out of the ring */
+                if (k == 0) {                                      /* the north: a silver arrow out of the ring */
                     float ty = -(R + T * 0.5f), h = T * 2.2f, w = T * 1.25f, yy = py - ty;   /* (its tip above the ring) */
                     if (yy < 0.5f && yy > -h) {
                         float half = w * (yy + h) / h, e = half - fabsf(px);
                         float al = fminf(fmaxf(e + 0.5f, 0), 1);
-                        if (al > 0) { float sh = px < 0 ? 1.1f : 0.8f; OVER(fminf(fmaxf(e + 1.3f, 0), 1) * 0.9f, 40, 26, 10); OVER(al, 255 * sh > 255 ? 255 : 255 * sh, 208 * sh > 255 ? 255 : 208 * sh, 96 * sh); }
+                        if (al > 0) { float sh = px < 0 ? 1.1f : 0.8f; OVER(fminf(fmaxf(e + 1.3f, 0), 1) * 0.9f, 30, 32, 36); OVER(al, fminf(255, 236 * sh), fminf(255, 240 * sh), fminf(255, 246 * sh)); }
                     }
                 } else if (k % 2 == 0) {                           /* east, south, west: a knob */
                     float rk = T * 0.75f;
-                    OVER(fminf(fmaxf(rk + 1.2f - d, 0), 1) * 0.9f, 40, 26, 10);
+                    OVER(fminf(fmaxf(rk + 1.2f - d, 0), 1) * 0.9f, 30, 32, 36);
                     float al = fminf(fmaxf(rk + 0.5f - d, 0), 1); float sh = 0.85f + 0.35f * ((-(px - mx) - (py - my)) / (rk + 0.01f));
-                    OVER(al, fminf(255, 250 * sh), fminf(255, 205 * sh), fminf(255, 100 * sh));
+                    OVER(al, fminf(255, 232 * sh), fminf(255, 236 * sh), fminf(255, 242 * sh));
                 } else {                                           /* between: a dot */
                     float rk = T * 0.32f;
-                    OVER(fminf(fmaxf(rk + 0.5f - d, 0), 1), 70, 46, 18);
+                    OVER(fminf(fmaxf(rk + 0.5f - d, 0), 1), 64, 67, 74);
                 }
             }
 #undef OVER
@@ -1827,7 +1827,7 @@ static void round_ring(int D, float R, float T) {
     gl_set_layer(GL_LAYER_RING, img, D, D);
 }
 /* The minimap round: in the corner the small screen was given, the map's
- * part around the hero in a circle (gl_render.c draw_round()), the gold ring
+ * part around the hero in a circle (gl_render.c draw_round()), the silver ring
  * over it, the place's name in a little modern window under it. */
 static void round_minimap(GlPresent* v, const float* small, int z) {
     static const float RAD[3] = { 19, 25, 34 }, SRC = 60;          /* (canvas; DS pixels of the map shown from its centre to its edge) */

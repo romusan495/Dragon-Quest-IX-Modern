@@ -1249,5 +1249,5 @@ es = Bloq num
 en = num
 es = num
 
-en = Map in the corner: roun&d, centred on you (gold compass ring)
-es = Mapa en la esquina: redon&do, centrado en ti (anillo dorado con brújula)
+en = Map in the corner: roun&d, centred on you (silver compass ring)
+es = Mapa en la esquina: redon&do, centrado en ti (anillo plateado con brújula)

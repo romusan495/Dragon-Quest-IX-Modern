@@ -228,7 +228,7 @@ static void build(int all, const char* const* shell_names, int n_shells) {
     }
     sep(modern);
     item(modern, MI_MINIMAP, L"Map in the top right co&rner (one window, gone during battles)\tM");
-    item(modern, MI_ROUND_MAP, L"Map in the corner: roun&d, centred on you (gold compass ring)");
+    item(modern, MI_ROUND_MAP, L"Map in the corner: roun&d, centred on you (silver compass ring)");
     Menu ms = sub(modern, L"Map si&ze");
     item(ms, MI_SSIZE0, L"Small");
     item(ms, MI_SSIZE0 + 1, L"Medium");

@@ -1249,5 +1249,5 @@ it = Bloc num
 en = num
 it = num
 
-en = Map in the corner: roun&d, centred on you (gold compass ring)
-it = Mappa nell'angolo: roton&da, centrata su di te (anello dorato con bussola)
+en = Map in the corner: roun&d, centred on you (silver compass ring)
+it = Mappa nell'angolo: roton&da, centrata su di te (anello argentato con bussola)

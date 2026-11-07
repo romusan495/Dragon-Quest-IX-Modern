@@ -1249,5 +1249,5 @@ fr = Verr num
 en = num
 fr = num
 
-en = Map in the corner: roun&d, centred on you (gold compass ring)
-fr = Carte dans le coin : ron&de, centrée sur vous (anneau doré et boussole)
+en = Map in the corner: roun&d, centred on you (silver compass ring)
+fr = Carte dans le coin : ron&de, centrée sur vous (anneau argenté et boussole)

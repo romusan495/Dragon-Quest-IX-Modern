@@ -1249,5 +1249,5 @@ de = Num
 en = num
 de = num
 
-en = Map in the corner: roun&d, centred on you (gold compass ring)
-de = Karte in der Ecke: run&d, auf dich zentriert (goldener Kompassring)
+en = Map in the corner: roun&d, centred on you (silver compass ring)
+de = Karte in der Ecke: run&d, auf dich zentriert (silberner Kompassring)
