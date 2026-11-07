@@ -28,6 +28,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Textures des monstres sur la carte (pack HD) | Graph | [Graph] Corriger les textures des monstres sur la carte | `claude/project-thread-3zdjvn` | fusionné | PR #115 | — |
 | Écran Équiper de Tsu (corrections) | Graph | [Graph] Corriger le nouvel écran Équiper | `claude/project-thread-v4a74b` | fusionné | PR #117 | — |
 | Étoiles des points de collecte sur la carte | Dev | [Dev] Étoiles des points de collecte sur la carte | `claude/project-thread-rila1e` | fusionné | PR #121 | — |
+| Trophées style Steam | Dev | [Dev] Ajouter des trophées style Steam | `claude/project-thread-j97l6o` | en cours | — (pas poussée) | Touche `runtime/frontend_sdl.c` (include, réglage `trophies`, `trophies_tick` dans `present()`, notice dans `present_gl`, garde une fois par image dans les actions de test) et `runtime/journal.c` (helpers de dessin, nouvel onglet) ; nouveaux `runtime/trophies.c/.h` (donc sans doute `build.mk`) ; rebaser sur `main` avant la PR |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
 #33 est fusionnée : chaque fil rebase sur `main` avant sa PR, et les PR passent
@@ -35,11 +36,11 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) |
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) |
 | `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte |
 | `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
-| `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
+| `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) ; Trophées (`trophies.c`, probable) |
 | `runtime/gpu2d.c` | Cadre moderne |
 | `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) |
 | `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
