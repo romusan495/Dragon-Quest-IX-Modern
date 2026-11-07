@@ -252,6 +252,8 @@ static void skins_scan(void) {
 #include "stb_image.h"
 
 /* The photo for the chosen console colour (if it is one), in the GPU. */
+static uint8_t* load_png(const char* file, int* w, int* h) { int n; return stbi_load(file, w, h, &n, 4); }   /* trophies' pictures */
+
 static const Skin* current_skin(void) {
     int i = g_opt.shell_color - N_DRAWN;
     if (i < 0 || i >= g_nskins || !g_gl) return NULL;
@@ -3864,6 +3866,7 @@ static void present(void) {
     static long long skip = -2;                               /* DQIX_PRESENT_FROM=frame: don't draw before it (tests) */
     if (skip == -2) { const char* e = getenv("DQIX_PRESENT_FROM"); skip = e ? atoll(e) : -1; }
     if (skip >= 0 && g_frame < (uint64_t)skip) return;
+    trophies_set_loader(load_png);                            /* (the pictures, with the frontend's PNG reader) */
     trophies_tick();                                          /* (checked even without OpenGL: the notice needs it, not the trophies) */
     if (g_gl) { present_gl(); return; }
     void* pix; int pitch;

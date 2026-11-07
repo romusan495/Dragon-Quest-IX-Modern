@@ -344,6 +344,7 @@ static int goal(const Trophy* t) {
 
 /* ---------------------------------------------------------------- won, and kept */
 static int64_t g_won[N_TROPHIES];      /* when (unix time), 0 not yet */
+static uint8_t g_reveal[N_TROPHIES];   /* a hidden one the player chose to see (A in the list): "<key> shown" */
 static int g_loaded, g_enabled = 1;
 
 void trophies_enable(int on) { g_enabled = on != 0; }
@@ -356,7 +357,11 @@ static void load(void) {
     if (!f) return;
     char line[160];
     while (fgets(line, sizeof line, f)) {
-        char key[64]; long long when;
+        char key[64], word[16]; long long when;
+        if (sscanf(line, "%63s %15s", key, word) == 2 && !strcmp(word, "shown")) {
+            for (int i = 0; i < N_TROPHIES; i++) if (!strcmp(g_list[i].key, key)) g_reveal[i] = 1;
+            continue;
+        }
         if (sscanf(line, "%63s %lld", key, &when) != 2) continue;
         for (int i = 0; i < N_TROPHIES; i++) if (!strcmp(g_list[i].key, key)) g_won[i] = when > 0 ? when : 1;
     }
@@ -368,6 +373,7 @@ static void save(void) {
     if (!f) return;
     fprintf(f, "# DQIX Enhanced: trophies won (key, unix time)\n");
     for (int i = 0; i < N_TROPHIES; i++) if (g_won[i]) fprintf(f, "%s %lld\n", g_list[i].key, (long long)g_won[i]);
+    for (int i = 0; i < N_TROPHIES; i++) if (g_reveal[i] && !g_won[i]) fprintf(f, "%s shown\n", g_list[i].key);
     if (fclose(f) == 0) { remove(SAVE_FILE); rename(SAVE_FILE ".new", SAVE_FILE); }
 }
 
@@ -465,6 +471,64 @@ static void cup(const JournalCanvas* c, int x, int y, int s, int won, float a) {
         }
 }
 
+/* A won trophy's picture, where BUILD.bat could fetch it (tools/trophy_badges.py:
+ * trophies/<key>.png next to the game, the RetroAchievements badge), drawn in
+ * place of the cup with rounded corners; the cup otherwise. */
+static struct { int tried, w, h; uint8_t* px; } g_badge[N_TROPHIES];
+static uint8_t* (*g_load)(const char* file, int* w, int* h);
+void trophies_set_loader(uint8_t* (*load)(const char* file, int* w, int* h)) { g_load = load; }
+static int badge(const JournalCanvas* c, int i, int x, int y, int s, float a) {
+    if (!g_badge[i].tried) {
+        char file[96];
+        g_badge[i].tried = 1;
+        snprintf(file, sizeof file, "trophies/%s.png", g_list[i].key);
+        if (g_load) g_badge[i].px = g_load(file, &g_badge[i].w, &g_badge[i].h);
+    }
+    const uint8_t* img = g_badge[i].px; int iw = g_badge[i].w, ih = g_badge[i].h;
+    if (!img || iw < 2 || ih < 2) return 0;
+    float x0 = c->ox + x * c->u, y0 = c->oy + y * c->u, S = s * c->u, r = 0.14f, edge = 0.035f;
+    for (int py = (int)floorf(y0); py < (int)ceilf(y0 + S); py++)
+        for (int px = (int)floorf(x0); px < (int)ceilf(x0 + S); px++) {
+            if (px < 0 || py < 0 || px >= c->pw || py >= c->ph) continue;
+            float cov = 0, cr = 0, cg = 0, cb = 0;
+            for (int sy = 0; sy < 2; sy++)
+                for (int sx = 0; sx < 2; sx++) {
+                    float u = ((float)px + (sx + 0.5f) / 2 - x0) / S, v = ((float)py + (sy + 0.5f) / 2 - y0) / S;
+                    if (u < 0 || v < 0 || u >= 1 || v >= 1) continue;
+                    float qx = fmaxf(fabsf(u - 0.5f) - (0.5f - r), 0), qy = fmaxf(fabsf(v - 0.5f) - (0.5f - r), 0);
+                    float d = sqrtf(qx * qx + qy * qy);                 /* outside the rounded square: > r */
+                    if (d > r) continue;
+                    int inner = fabsf(u - 0.5f) < 0.5f - edge && fabsf(v - 0.5f) < 0.5f - edge && d <= r - edge;
+                    float R, G, B;
+                    if (!inner) { R = 0xF2; G = 0xC9; B = 0x4C; }        /* a gold edge */
+                    else {                                              /* the picture, bilinear */
+                        float fx = u * iw - 0.5f, fy = v * ih - 0.5f;
+                        int ix = (int)floorf(fx), iy = (int)floorf(fy); float tx = fx - ix, ty = fy - iy;
+                        float acc[4] = { 0, 0, 0, 0 };
+                        for (int k = 0; k < 4; k++) {
+                            int X = ix + (k & 1), Y = iy + (k >> 1);
+                            X = X < 0 ? 0 : X >= iw ? iw - 1 : X; Y = Y < 0 ? 0 : Y >= ih ? ih - 1 : Y;
+                            float wgt = ((k & 1) ? tx : 1 - tx) * ((k >> 1) ? ty : 1 - ty);
+                            const uint8_t* q = &img[((size_t)Y * iw + X) * 4];
+                            float al = q[3] / 255.0f;
+                            acc[0] += q[0] * al * wgt; acc[1] += q[1] * al * wgt; acc[2] += q[2] * al * wgt; acc[3] += al * wgt;
+                        }
+                        /* on the medal's dark disc where the picture is see-through */
+                        R = acc[0] + 0x26 * (1 - acc[3]); G = acc[1] + 0x2A * (1 - acc[3]); B = acc[2] + 0x31 * (1 - acc[3]);
+                    }
+                    cr += R; cg += G; cb += B; cov += 1;
+                }
+            if (cov == 0) continue;
+            float k = a * cov / 4;
+            uint8_t* p = &c->rgba[((size_t)py * c->pw + px) * 4];
+            p[0] = (uint8_t)(cr / cov * k + p[0] * (1 - k) + 0.5f);
+            p[1] = (uint8_t)(cg / cov * k + p[1] * (1 - k) + 0.5f);
+            p[2] = (uint8_t)(cb / cov * k + p[2] * (1 - k) + 0.5f);
+            p[3] = (uint8_t)(255 * k + p[3] * (1 - k) + 0.5f);
+        }
+    return 1;
+}
+
 static uint8_t* g_pic; static int g_pw, g_ph, g_drawn_age = -1;
 
 const uint8_t* trophies_picture(int w, int h, int* changed) {
@@ -499,7 +563,7 @@ const uint8_t* trophies_picture(int w, int h, int* changed) {
     }
     journal_box(&c, 0, 0, bw, bh, 0x161B24, 0.94f * out);
     journal_box(&c, 0, 0, 5, bh, 0xF2C94C, out);
-    cup(&c, 18, 16, 64, 1, out);
+    if (g_show < 0 || !badge(&c, g_show, 18, 16, 64, out)) cup(&c, 18, 16, 64, 1, out);
     journal_text(&c, 98, 10, 14, out > 0.5f ? 0xF2C94C : 0x806A2A, won1[l]);
     journal_text(&c, 98, 32, 21, out > 0.5f ? 0xF4F4F4 : 0x7A7A7A, title);
     journal_wrap(&c, 98, 62, bw - 110, 14, out > 0.5f ? 0xA8B0BC : 0x55585E, desc, 1);
@@ -549,10 +613,15 @@ static void page_draw(const JournalCanvas* c) {
     for (int r = 0; r < shown && g_top + r < g_nrows; r++) {
         int i = g_rows[g_top + r], y = y0 + r * ROW_H, won = g_won[i] != 0;
         if (g_top + r == g_sel) journal_box(c, c->x - 6, y - 3, c->w + 12, ROW_H - 4, 0x2A3140, 1);
-        cup(c, c->x, y + 2, 46, won, won ? 1.0f : 0.8f);
+        if (!won || !badge(c, i, c->x, y + 2, 46, 1.0f)) cup(c, c->x, y + 2, 46, won, won ? 1.0f : 0.8f);
         char title[200], desc[300];
-        if (won || !hidden(&g_list[i])) texts(&g_list[i], title, sizeof title, desc, sizeof desc);
+        int masked = !won && hidden(&g_list[i]) && !g_reveal[i];
+        if (!masked) texts(&g_list[i], title, sizeof title, desc, sizeof desc);
         else hidden_texts(&g_list[i], title, sizeof title, desc, sizeof desc);
+        if (masked && g_top + r == g_sel) {                     /* how to see it */
+            static const char* const how[5] = { "   (A: reveal)", "   (A : révéler)", "   (A: aufdecken)", "   (A: rivela)", "   (A: revelar)" };
+            size_t dl = strlen(desc); snprintf(desc + dl, sizeof desc - dl, "%s", how[l]);
+        }
         journal_text(c, c->x + 60, y, 19, won ? 0xF0F0F0 : 0x8A9098, title);
         int g = goal(&g_list[i]);
         if (!won && g > 1) {                                    /* the counts: how far */
@@ -583,6 +652,13 @@ static int page_key(int k) {
     case JK_PAGE_DOWN: g_sel = g_sel + shown < g_nrows ? g_sel + shown : (g_nrows ? g_nrows - 1 : 0); return 1;
     case JK_LEFT: g_cat = g_cat < 0 ? N_CAT - 1 : g_cat - 1; g_sel = g_top = 0; return 1;
     case JK_RIGHT: g_cat = g_cat >= N_CAT - 1 ? -1 : g_cat + 1; g_sel = g_top = 0; return 1;
+    case JK_OK:                                                 /* a hidden one: show it (again: hide it) */
+        if (g_sel < g_nrows) {
+            int i = g_rows[g_sel];
+            if (g_won[i] || !hidden(&g_list[i])) return 0;
+            g_reveal[i] = !g_reveal[i]; save(); return 1;
+        }
+        return 0;
     }
     return 0;
 }

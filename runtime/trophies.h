@@ -20,3 +20,7 @@ const uint8_t* trophies_picture(int w, int h, int* changed);
 /* settings.ini: trophies = 1 (on, the default) or 0 (no checks, no notices). */
 void trophies_enable(int on);
 int trophies_enabled(void);
+
+/* The frontend's PNG reader (RGBA, 4 bytes a pixel), for the trophies' pictures
+ * (trophies/<key>.png, fetched by BUILD.bat); without one, the cups only. */
+void trophies_set_loader(uint8_t* (*load)(const char* file, int* w, int* h));
