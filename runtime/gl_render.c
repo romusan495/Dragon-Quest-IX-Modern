@@ -434,6 +434,10 @@ static const char* FS_COMP =
      * pixel's effects (fades); elsewhere (2D menus, text boxes at the edge) black.
      * (32 pixels in: a small sign at the edge - the wireless icon at the top
      * left - doesn't black out the side beside it) */
+    "    if (u_only == 2) {\n"   /* (the 3D apart, its 2D laid out again over it (a menu): the 3D on every line, not black where the edge has a window's line) */
+    "      ivec2 sz1 = textureSize(u_3d, 0); vec4 s1 = texelFetch(u_3d, min(ivec2(v_uv * vec2(sz1)), sz1 - 1), 0);\n"
+    "      o_color = vec4(dlgline(s1.a > 0.0 ? s1.rgb : vec3(0.0), vec2(dsx, uv.y * 192.0)), 1.0); return;\n"
+    "    }\n"
     "    int found = -1;\n"
     "    for (int k = 0; k < 32; k++) { int x = dsx < 0.0 ? k : 255 - k;\n"
     "      if ((texelFetch(u_info, ivec2(x, p2.y), 0).r & 3u) != 0u) { found = x; break; } }\n"
@@ -539,7 +543,7 @@ static const char* FS_COPY =
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
     "float ink(vec2 uv, int light) { ivec2 ts = textureSize(u_src, 0); vec4 c = light == 3 ? texelFetch(u_src, clamp(ivec2(uv * vec2(ts)), ivec2(0), ts - 1), 0) : textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (relative: a parchment, however dark, is as coloured) */
-    "  return (light == 3 ? smoothstep(0.355, 0.325, L) : light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
+    "  return (light == 3 ? smoothstep(0.355, 0.325, L) : light == 4 ? smoothstep(0.57, 0.61, L) : light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
     "float letters(int light) {\n"   /* (9 points across the pixel at full size: a stroke thinner than the pixel drawn small is met by at least one; */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"   /* averaged, but never fainter than 3/4 of the strongest: thin strokes kept) */
@@ -591,7 +595,7 @@ static const char* FS_COPY =
     "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
     "    float ring = smoothstep(0.07, 0.05, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
     "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
-    "  if (u_mode == 29) { float t = smoothstep(0.57, 0.61, L) * c.a, y = yellows(), a = max(t, y);\n"   /* (as 3, for a window going grey: its letters (0.64, 0.73) in white, not its dark grey line (0.51)) */
+    "  if (u_mode == 29) { float t = letters(4), y = yellows(), a = max(t, y);\n"   /* (as 3, for a window going grey: its letters (0.64, 0.73) in white, not its grey lines (0.51); letters(4): above 0.57) */
     "    vec3 col = mix(vec3(0.93), vec3(0.98, 0.78, 0.16), y / max(a, 0.001)); o_color = vec4(col * a, a); return; }\n"
     "  if (u_mode == 28) { vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (stats' letters: light ones light, coloured ones (a value going down: red; up) their own colour; the dark panel not) */
     "    float k = smoothstep(0.4, 0.6, sat) * smoothstep(0.5, 0.7, mx), a = max(smoothstep(0.38, 0.55, L) * (1.0 - k), k) * c.a; vec3 col = mix(vec3(0.93), r * (1.0 / max(mx, 0.01)) * 0.98, k); o_color = vec4(col * a, a); return; }\n"

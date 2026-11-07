@@ -126,6 +126,7 @@ enum { SHOP_TX = 60, SHOP_TY = 33, SHOP_TW = 113, SHOP_TH = 58, SHOP_PAD = 3, SH
  * lit), the chosen item's description in a window under it, the box that
  * was under the list ("SELECT Sort", the gold) at its right; the menus that
  * led there hidden (bag_update()) */
+static int g_bag_hold;                                            /* (the bag kept, greyed: its letters grey) */
 static int g_bag;                                                 /* the list's lines shown (0: not up) */
 static int g_bag_sel = -1;                                        /* ...the chosen one */
 static uint16_t g_bag_keys[8]; static int g_bag_keys_n;          /* ...their items */
@@ -1904,13 +1905,13 @@ static void bag_pieces(GlPresent* v) {
     path_pieces(v);                                               /* the path ("Menu", the marks: mapmarks_bag()) */
     if (g_bag_word[2][2]) {                                       /* its name, the chosen line's in the menu before */
         const int* w = g_bag_word[2];
-        bestiary_piece(v, 3, w[0], w[1], w[2], w[3], 3, x0 + 8, (BAG_WY + 33) / 2 - w[3] * BAG_K / 2, BAG_K);
+        bestiary_piece(v, 3, w[0], w[1], w[2], w[3], g_bag_hold ? 29 : 3, x0 + 8, (BAG_WY + 33) / 2 - w[3] * BAG_K / 2, BAG_K);
     }
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x0 + 4, 33, BAG_W - 8, t);
     for (int i = 0; i < 3 && g_bag_sel >= 0; i++)                 /* the chosen line lit (three times, as the menus') */
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), x0 + 2.5f, bag_my(BAG_LY + BAG_DY * g_bag_sel) + 0.5f, BAG_W - 5, BAG_DY * BAG_K);
-    bestiary_piece(v, 3, BAG_TX, BAG_LY, 253 - BAG_TX, 8 * BAG_DY, 3, bag_mx(cw, BAG_TX), bag_my(BAG_LY), BAG_K);   /* the names, the numbers */
-    bestiary_piece(v, 3, BAG_X0 + 2, BAG_LY + 8 * BAG_DY, BAG_X1 - BAG_X0 - 3, BAG_Y1 - BAG_LY - 8 * BAG_DY, 3,      /* the pages: 1/4, the arrows */
+    bestiary_piece(v, 3, BAG_TX, BAG_LY, 253 - BAG_TX, 8 * BAG_DY, g_bag_hold ? 29 : 3, bag_mx(cw, BAG_TX), bag_my(BAG_LY), BAG_K);   /* the names, the numbers */
+    bestiary_piece(v, 3, BAG_X0 + 2, BAG_LY + 8 * BAG_DY, BAG_X1 - BAG_X0 - 3, BAG_Y1 - BAG_LY - 8 * BAG_DY, g_bag_hold ? 29 : 3,      /* the pages: 1/4, the arrows */
                    bag_mx(cw, BAG_X0 + 2), bag_my(BAG_LY + 8 * BAG_DY), BAG_K);
     if (g_bag_box[2]) {                                          /* the box: at the right, their bottoms in line */
         const int* b = g_bag_box;                                 /* (one window of the style; its letters, light, inside the game's edges) */
@@ -3922,14 +3923,19 @@ static void bag_update(int a_on_top) {
     const uint32_t* px = g_engine_out[0];
     int ok = top_page_wide() && g_gl && !a_on_top && g_comp_has3d && g_winstyle == 2 && !g_shop && !g_equip && !g_cc_n
           && gl_wide_shown(&side) == 1;
-    int hand = 0;                                                 /* its line: grey, whole (no window over it; the hand over its left one) */
-    for (int y = BAG_Y0; ok && y <= BAG_Y1; y++) {
-        ok = (px[y * 256 + BAG_X1] & 0xFFFFFF) == 0x828282;
-        hand += (px[y * 256 + BAG_X0] & 0xFFFFFF) != 0x828282;
+    static uint64_t bag_seen; static int bag_n;                   /* (an item chosen: the list not read a few frames while its window stays, the last one kept) */
+    int keep = bag_n > 0 && g_frame - bag_seen <= 12;
+    uint32_t gl = keep && (px[BAG_Y0 * 256 + BAG_X1 - 6] & 0xFFFFFF) == 0xA2A2A2 ? 0xA2A2A2 : 0x828282;   /* (just greyed, before the window of what to do with it) */
+    int hand = 0, odd = 0, tol = gl == 0x828282 ? 0 : 4;          /* its line: grey, whole (no window over it; the hand over its left one) */
+    for (int y = BAG_Y0; ok && y <= BAG_Y1; y++) {               /* (greyed: its round corners a little darker, a few pixels) */
+        odd += (px[y * 256 + BAG_X1] & 0xFFFFFF) != gl; ok = odd <= tol;
+        hand += (px[y * 256 + BAG_X0] & 0xFFFFFF) != gl;
     }
     if (hand > 10) ok = 0;
-    for (int x = BAG_X0; ok && x <= BAG_X1; x++)
-        ok = (px[BAG_Y0 * 256 + x] & 0xFFFFFF) == 0x828282 && (px[BAG_Y1 * 256 + x] & 0xFFFFFF) == 0x828282;
+    odd = 0;
+    for (int x = BAG_X0; ok && x <= BAG_X1; x++) {
+        odd += ((px[BAG_Y0 * 256 + x] & 0xFFFFFF) != gl) + ((px[BAG_Y1 * 256 + x] & 0xFFFFFF) != gl); ok = odd <= 2 * tol;
+    }
     if (ok) ok = (px[12 * 256 + 116] & 0xFFFFFF) != 0x828282 && (g_comp_info[(12 * 256 + 116) * 4] & 3) != 1;
     if (ok) {                                                     /* the bag's lines have their numbers at the right; a character's things none */
         int nums = 0;
@@ -3937,6 +3943,11 @@ static void bag_update(int a_on_top) {
             for (int x = 230; x < BAG_X1 - 2; x++) { uint32_t c = px[y * 256 + x]; nums += ((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 200 && (c & 255) > 200; }
         n = mapmarks_bag_list(nums < 8, keys, &sel);
     }
+    if (getenv("DQIX_XMDBG") && ok && (n <= 0 || gl != 0x828282)) fprintf(stderr, "bag f%llu list %d grey %06x (kept %d)\n", (unsigned long long)g_frame, n, gl, keep);
+    g_bag_hold = 0;
+    int held = ok && keep && (n <= 0 || gl != 0x828282);
+    if (held) { n = bag_n; memcpy(keys, g_bag_keys, sizeof keys); sel = g_bag_sel; g_bag_hold = gl != 0x828282; }
+    else if (ok && n > 0) { bag_seen = g_frame; bag_n = n; }
     if (n <= 0) ok = 0;
     if (ok && sel < 0)                                            /* the hand (yellow) left of the names: the chosen line */
         for (int i = 0; i < n; i++) {
@@ -3947,7 +3958,7 @@ static void bag_update(int a_on_top) {
         }
     g_bag = ok ? n : 0;
     g_bag_box[2] = 0;
-    if (ok) {                                                     /* the box under the list: what isn't the field there */
+    if (ok && !held) {                                            /* (not while kept: its box goes blank) */                                                     /* the box under the list: what isn't the field there */
         int x0 = 256, y0 = 192, x1 = -1, y1 = -1;
         for (int y = BAG_Y1 + 1; y < 192; y++)
             for (int x = BAG_TX; x < 256; x++)
@@ -4133,6 +4144,7 @@ static void xmenu_update(int a_on_top) {
     uint32_t wl = px[g_xm_win[1] * 256 + g_xm_win[0] + 6] & 0xFFFFFF;   /* (the last window's top line still there: the menus up) */
     if ((g_xmenu || g_frame - seen <= 90) && seen && (wl == 0x828282 || wl == 0xA2A2A2) && !a_on_top && !g_bag && !party_in_battle()) {   /* a message under the menus ("... has no items."): the layout kept with it, as long as it's up */
         #define MGREY(x, y) ((px[(y) * 256 + (x)] & 0xFFFFFF) == 0x828282)
+        int empty = 0;
         for (int y0 = 100; y0 < 180 && !g_xm_msg[2]; y0++) {
             if (!MGREY(12, y0) || !MGREY(128, y0) || !MGREY(236, y0) || MGREY(128, y0 - 1)) continue;   /* (its top line: across the screen) */
             int x0 = 12, x1 = 236, y1 = y0 + 8;
@@ -4142,11 +4154,11 @@ static void xmenu_update(int a_on_top) {
             if (y1 - y0 < 16) continue;
             int box[4];
             bag_word(px, x0 + 2, y0 + 2, x1 - 1, y1, box);         /* (its words) */
-            if (!box[2]) continue;
+            if (!box[2]) { empty = 1; continue; }                  /* (opened, its words not out yet) */
             g_xm_msg[0] = box[0]; g_xm_msg[1] = box[1]; g_xm_msg[2] = box[2]; g_xm_msg[3] = box[3];
         }
         #undef MGREY
-        if (g_xm_msg[2]) { g_xmenu = 1; g_xm_hand[2] = 0; g_xm_hold = 1; last = g_frame; return; }
+        if (g_xm_msg[2] || (empty && g_xmenu)) { g_xmenu = 1; g_xm_hand[2] = 0; g_xm_hold = 1; last = g_frame; return; }   /* (an empty one: the layout kept, no popup yet) */
     }
     int ok = g_xmenu && g_frame - last <= 12 && !a_on_top && !g_bag && !party_in_battle();
     if (ok) {                                                     /* (its top line: grey, the game's or greyed) */
