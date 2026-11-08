@@ -1359,17 +1359,19 @@ static void jb_load(void) {
     }
     g_jb_ok = 1;
 }
-static int equip_job(int eng) {
+static int job_at(int eng, int dy);
+static int equip_job(int eng) { return job_at(eng, 0); }
+static int job_at(int eng, int dy) {                              /* (dy: the bar lower down (Attributes': on the top screen, its foot)) */
     jb_load();
     if (g_jb_ok != 1) return -1;
     for (int i = 0; i < g_hdsprite_n[eng]; i++) {                 /* its HD picture (the pack on) */
         const HdSprite* s = &g_hdsprites[eng][i];
-        if (s->x < 50 || s->x > 90 || s->y < 145 || s->y > 175) continue;
+        if (s->x < 50 || s->x > 90 || s->y < 145 + dy || s->y > 175 + dy) continue;
         for (int k = 0; k < 13; k++) if (s->key == g_jb_key[k]) return k;
     }
     const uint32_t* px = g_engine_out[eng]; const uint8_t* ly = g_engine_layer[eng];
     for (int k = 0; k < 13; k++)                                  /* ...or its pixels, where they are */
-        for (int sy = 152; sy <= 168; sy++)
+        for (int sy = 152 + dy; sy <= 168 + dy && sy + 16 <= 192; sy++)
             for (int sx = 56; sx <= 80; sx++) {
                 int bad = 0, n = 0;
                 for (int y = 0; y < 16 && bad < 3; y++) for (int x = 0; x < 16 && bad < 3; x++) {
@@ -1637,6 +1639,18 @@ static void modern_window(GlPresent* v, float x, float y, float w, float h) {
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x + w - t, y, t, h);
 }
 
+/* the job's plaque into its layer (premultiplied), once per job: 0 none */
+static int plaque_layer(int job) {
+    const UiPic* p = plate_pic(job);
+    static int shown = -1;
+    if (!p || p->w > 256 || p->h > 256) return 0;
+    if (shown != job) {
+        static uint8_t img[256 * 256 * 4];
+        for (int i = 0; i < p->w * p->h; i++) { const uint8_t* s = &p->px[i * 4]; uint8_t* o = &img[i * 4]; o[0] = (uint8_t)(s[0] * s[3] / 255); o[1] = (uint8_t)(s[1] * s[3] / 255); o[2] = (uint8_t)(s[2] * s[3] / 255); o[3] = s[3]; }
+        gl_set_layer(GL_LAYER_PLAQUES, img, p->w, p->h); shown = job;
+    }
+    return 1;
+}
 static void equip_pieces(GlPresent* v, int ww, int wh) {
     const float C = fminf(v->ch / 1080.0f, v->cw / 1920.0f);     /* (mockup units -> canvas: narrower than 16:9, in a band across its middle) */
     float cw = v->cw, mid = cw / 2, oy = (v->ch - 1080 * C) / 2;
@@ -1661,18 +1675,7 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
         float x = bx + pad;
         bestiary_piece(v, 4, 6, 161, 56, 13, 11, x, by + (bh - 13 * KB) / 2, KB); x += nw + gap;
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
-        const UiPic* p = plate_pic(g_eq_job);
-        if (p) {
-            static int shown = -1;
-            if (shown != g_eq_job) {                              /* (premultiplied for the layer) */
-                static uint8_t img[256 * 256 * 4];
-                if (p->w <= 256 && p->h <= 256) {
-                    for (int i = 0; i < p->w * p->h; i++) { const uint8_t* s = &p->px[i * 4]; uint8_t* o = &img[i * 4]; o[0] = (uint8_t)(s[0] * s[3] / 255); o[1] = (uint8_t)(s[1] * s[3] / 255); o[2] = (uint8_t)(s[2] * s[3] / 255); o[3] = s[3]; }
-                    gl_set_layer(GL_LAYER_PLAQUES, img, p->w, p->h); shown = g_eq_job;
-                }
-            }
-            float* q = v->layer[GL_LAYER_PLAQUES]; q[0] = x; q[1] = by + (bh - IS) / 2; q[2] = IS; q[3] = IS;
-        }
+        if (plaque_layer(g_eq_job)) { float* q = v->layer[GL_LAYER_PLAQUES]; q[0] = x; q[1] = by + (bh - IS) / 2; q[2] = IS; q[3] = IS; }
         x += IS + gap;
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
         bestiary_piece(v, 4, 80, 161, 44, 13, 11, x, by + (bh - 13 * KB) / 2, KB);
@@ -1935,6 +1938,128 @@ static void bag_pieces(GlPresent* v) {
 }
 
 static void xmenu_pieces(GlPresent* v);
+/* Attributes, modern (as the menus' windows): on one dark window, the
+ * character alone (its model, its blue backdrop left out) over its name's
+ * bar; its equipment (names and icons, not their panel); the category shown
+ * (its title, its lines, its page) and the buttons' help under them. In the
+ * screens' pixels (the top screen 0, the bottom one 1): */
+enum { CA_MX = 6, CA_MY = 6, CA_MW = 114, CA_MH = 166,            /* the model, top screen (the 3D alone) */
+       CA_NX = 6, CA_NY = 177, CA_NW = 114, CA_NH = 13,             /* its name's bar (inside its white corners) */
+       CA_EX = 152, CA_EY = 22, CA_EW = 98, CA_EH = 162,            /* the equipment's names, inside their panel (their slots' icons left out) */
+       CA_BX = 2, CA_BY = 2, CA_BW = 252, CA_BH = 172 };            /* the category, bottom screen */
+#define CA_EQUIP 0x020F5794u                                       /* the equipment: a u16 item key per slot, 0x2C apart (a slot each character's), */
+static const int CA_SLOT[8] = { 0, 2, 3, 1, 4, 5, 6, 7 };         /* ...the slots in the screen's order: weapon, shield, head, body, arms, legs, feet, accessory */
+static uint64_t g_ca_at; static float g_ca_ic[4]; static int g_ca_job = -1;   /* (the icons' column: x, first y, pitch, size) */
+/* Battle records' first page (Sandy's: her pink touch screen, the buttons
+ * of the records; the parchment of numbers on the top screen), modern: on one
+ * dark window, the records' buttons as a menu's lines (the chosen one lit, the
+ * hand), the numbers in a window (the parchment's dark letters made light),
+ * Sandy's words (when she talks) in a window under them. In the screens'
+ * pixels (the top screen 0, the touch screen 1): */
+static int results_hub(void) {                                    /* (the touch screen pink: Sandy's) */
+    for (int e = 0; e < 2; e++) {
+        const uint32_t* px = g_engine_out[e]; int n = 0;
+        static const int at[5][2] = { { 128, 170 }, { 10, 150 }, { 200, 180 }, { 240, 186 }, { 60, 188 } };
+        for (int i = 0; i < 5; i++) { uint32_t c = px[at[i][1] * 256 + at[i][0]]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; n += r > 230 && g > 110 && g < 170 && b > 140 && b < 200; }
+        if (n < 4) continue;
+        const uint32_t* tp = g_engine_out[!e];                    /* (and the parchment of numbers on the other: its brown title bar, its pale panel) */
+        uint32_t b = tp[10 * 256 + 50], p = tp[40 * 256 + 50];
+        if (((b >> 16) & 255) > 80 && ((b >> 16) & 255) < 120 && ((b >> 8) & 255) > 55 && ((b >> 8) & 255) < 85 && ((p >> 16) & 255) > 215 && ((p >> 8) & 255) > 190) return e + 1;
+    }
+    return 0;
+}
+static void results_pieces(GlPresent* v, int eng) {
+    const float M = 5, t = 0.75f, kl = 0.62f;
+    #define RS_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    const uint32_t* bp = g_engine_out[eng];
+    int sel = -1;                                                 /* the hand (yellow) left of the buttons: the chosen one */
+    for (int y = 4; y < 110 && sel < 0; y++) for (int x = 0; x < 20 && sel < 0; x++) {
+        uint32_t c = bp[y * 256 + x];
+        if (((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100) sel = (y - 4) / 16;
+    }
+    int talk = 0;                                                 /* Sandy's words: dark letters on her page, under the buttons */
+    for (int y = 112; y < 188; y++) for (int x = 10; x < 246; x++) { uint32_t c = bp[y * 256 + x]; talk += ((c >> 16) & 255) < 130 && ((c >> 8) & 255) < 90; }
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, v->ch - 2 * M);   /* the backdrop: one dark window */
+    float lw = 136 * kl + 18, rw = v->cw - 2 * M - 10 - lw - 4, kr = fminf(0.62f, (rw - 10) / 244.0f);
+    float rh = (18 + 94 + 66) * kr + 14, lh = 6 * 16 * kl + 10, mh = 64 * kl + 10, ks = 0.42f;
+    float H = rh + mh + 4, top = floorf((v->ch - H) / 2), x = M + 5;
+    /* the records' buttons: a menu */
+    RS_WIN(x, top, lw, lh);
+    if (sel >= 0 && sel < 6)
+        for (int i = 0; i < 3; i++) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 21, 0, 0, 1), x + 12, top + 5 + sel * 16 * kl, lw - 16, 14 * kl);
+    for (int i = 0; i < 6; i++) bestiary_piece(v, 3, 20, 9 + 16 * i, 128, 14, 30, x + 14, top + 5 + i * 16 * kl, kl);   /* (30: the letters, not the button) */
+    if (sel >= 0 && sel < 6) bestiary_piece(v, 3, 0, 3 + 16 * sel, 20, 16, 27, x + 1, top + 5 + sel * 16 * kl - 2, kl);   /* the hand */
+    /* the numbers: the parchment's title, its two panels, its percentages */
+    float rx = x + lw + 4, y = top;
+    RS_WIN(rx, y, rw, rh);
+    bestiary_piece(v, 0, 2, 2, 252, 18, 3, rx + (rw - 252 * kr) / 2, y + 4, kr);              /* its title (light on its bar) */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 4 + 19 * kr, rw - 8, t);
+    bestiary_piece(v, 0, 8, 26, 90, 86, 6, rx + 5, y + 6 + 21 * kr, kr);                       /* (6: the dark letters made light) */
+    bestiary_piece(v, 0, 100, 26, 146, 80, 6, rx + 5 + 92 * kr, y + 6 + 21 * kr, kr);
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 8 + 113 * kr, rw - 8, t);
+    bestiary_piece(v, 0, 11, 122, 230, 60, 3, rx + 5 + 5 * kr, y + 10 + 114 * kr, kr);                   /* the percentages (light on their panel) */
+    {   /* Sandy (her 3D alone) at the bottom right, her words in a window beside her */
+        float my = top + rh + 4, sw = 80 * ks, sx = v->cw - M - 5 - sw;
+        bestiary_piece(v, 4, 144, 0, 80, 116, 11, sx, my + mh - 116 * ks, ks);   /* (above her words: they are 3D too) */
+        if (talk > 40) {
+            RS_WIN(x, my, sx - 4 - x, mh);                         /* (her words: light, in her dark box on her page) */
+            bestiary_piece(v, 1, 10, 120, 236, 64, 30, x + 8, my + 5, fminf(kl, (sx - 4 - x - 16) / 236.0f));
+        }
+    }
+    #undef RS_WIN
+}
+static int caract_screen(void) {                                  /* (the equipment's panel: its blue frame, top and bottom, on the top screen) */
+    for (int e = 0; e < 2; e++) {
+        const uint32_t* px = g_engine_out[e]; int n = 0;
+        static const int at[4][2] = { { 131, 19 }, { 200, 19 }, { 131, 187 }, { 200, 187 } };
+        for (int i = 0; i < 4; i++) { uint32_t c = px[at[i][1] * 256 + at[i][0]]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; n += r < 60 && g > 70 && g < 130 && b > 170; }
+        if (n >= 3) return e + 1;
+    }
+    return 0;
+}
+static void caract_pieces(GlPresent* v) {
+    const float M = 5, t = 0.75f, km = 0.66f, kn = 0.62f, ke = 0.56f, gap = 4, IC = 10;
+    #define CA_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, v->ch - 2 * M);   /* the backdrop: one dark window */
+    float mw = CA_MW * km + 4, mh = CA_MH * km + CA_NH * kn + 12;
+    float ew = 4 + IC + 3 + CA_EW * ke + 4, eh = CA_EH * ke + 8;
+    float x = M + 5, bx = x + mw + gap + ew + gap, bw = v->cw - M - 5 - bx, bk = (bw - 6) / CA_BW, bh = CA_BH * bk + 6;
+    float H = fmaxf(mh, fmaxf(eh, bh)), top = floorf((v->ch - H) / 2);
+    /* the character, its name, its job's plaque */
+    CA_WIN(x, top, mw, H);
+    bestiary_piece(v, 4, CA_MX, CA_MY, CA_MW, CA_MH, 11, x + 2, top + 3, km);                  /* (4: the 3D alone, not its backdrop) */
+    float ny = top + H - CA_NH * kn - 4;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 4, ny - 2, mw - 8, t);
+    bestiary_piece(v, 0, CA_NX, CA_NY, CA_NW, CA_NH, 30, x + (mw - CA_NW * kn) / 2, ny, kn);   /* its name, its level (30: not the bar's lines) */
+    {   int j = job_at(0, 20); if (j < 0) j = job_at(1, 20);
+        if (j > 0) g_ca_job = j;
+        if (plaque_layer(g_ca_job)) { float* q = v->layer[GL_LAYER_PLAQUES]; q[0] = x + mw - 22; q[1] = top + 4; q[2] = 18; q[3] = 18; } }
+    x += mw + gap;
+    /* the equipment: each item's own icon (menu_icons_update()), its name */
+    CA_WIN(x, top, ew, H);
+    float ey = top + (H - eh) / 2 + 4;
+    bestiary_piece(v, 0, CA_EX, CA_EY, CA_EW, CA_EH, 32, x + 4 + IC + 3, ey, ke);
+    g_ca_ic[0] = x + 4; g_ca_ic[1] = ey + (26 - CA_EY) * ke - (IC - 16 * ke) / 2; g_ca_ic[2] = 20 * ke; g_ca_ic[3] = IC;
+    g_ca_at = g_frame;
+    v->icons[0] = 0; v->icons[1] = 0; v->icons[2] = 256; v->icons[3] = 192;   /* (the overlay: the canvas' own units) */
+    x += ew + gap;
+    /* the category shown: its title, its lines, its page */
+    CA_WIN(bx, top, bw, H);
+    float by = top + (H - bh) / 2 + 3;
+    bestiary_piece(v, 1, CA_BX, CA_BY, CA_BW, CA_BH, 30, bx + 3, by, bk);                      /* (30: its letters, not the game's lines) */
+    {   /* under its title (a category's name alone in the middle of its first row; not the stats' first row) */
+        int e = caract_screen(); const uint32_t* bp = g_engine_out[e == 1 ? 1 : 0];
+        int mid = 0, side = 0;
+        for (int y = 3; y < 14; y++) for (int x = 2; x < 254; x++) { uint32_t c = bp[y * 256 + x]; if (((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 200) { if (x > 90 && x < 166) mid++; else if (x < 50) side++; } }
+        if (mid > 6 && !side) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), bx + 4, by + (17 - CA_BY) * bk, bw - 8, t);
+    }
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), bx + 4, by + (161 - CA_BY) * bk, bw - 8, t);   /* over its page */
+    #undef CA_WIN
+}
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
     if (wh > 0) g_lay_s = (float)wh / 192.0f;
@@ -2034,15 +2159,16 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
         if (g_bmode == BM_TITLES || g_bmode == BM_COLL) page = 2;   /* (these lists: no 3D, their window all the same) */                       /* (the titles' list: no 3D, its window all the same) */
+        int hub = 0;
         static int bare; static uint64_t bare_f;                   /* (a menu of neither the records nor Al Embic, a few frames on (Attributes, its model on the top screen): the two screens, not an empty window) */
-        if (bare_f != g_frame) { bare_f = g_frame; bare = page == 2 && g_bmode == BM_MENU && g_menu_bar == 0 && !g_npanel ? bare + 1 : 0; }
+        if (bare_f != g_frame) { bare_f = g_frame; bare = page == 2 && caract_screen() ? bare + 1 : 0; }   /* (Attributes: its equipment's panel on the top screen, two frames on) */
         if (g_equip && !second && !g_peek && v->npiece + 80 <= GL_MAX_PIECES) {
             /* Equip, modern: drawn again whole (equip_pieces()), no screen whole */
             v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
             v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
             v->alpha = 1.0f; v->front = 0;
             equip_pieces(v, ww, wh);
-        } else if (page == 2 && bmode && !(bmode == BM_MENU && bare >= 8) && !second && v->npiece + 40 <= GL_MAX_PIECES) {
+        } else if (page == 2 && bmode && !(bare >= 2) && !second && v->npiece + 40 <= GL_MAX_PIECES) {
             /* the monster list, modern: drawn again in two windows (bestiary_pieces()),
              * the window's shape, no screen whole */
             v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
@@ -2051,6 +2177,14 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
             v->alpha = 1.0f; v->front = 0;
             if (bmode == BM_LIST) bestiary_pieces(v); else if (bmode == BM_ALCH) alchemy_pieces(v); else if (bmode == BM_COLL) coll_pieces(v); else if (bmode == BM_TITLES) titles_pieces(v); else bestiary_menu_pieces(v);
+        } else if (page == 2 && bare >= 2 && !second && v->npiece + 24 <= GL_MAX_PIECES) {
+            /* Attributes (its character's 3D model on the top screen), modern: drawn again in windows (caract_pieces()) */
+            v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
+            v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
+            v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
+            v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
+            v->alpha = 1.0f; v->front = 0;
+            caract_pieces(v);
         } else if (page == 2) {
             /* a menu with its 3D model on the top screen (the monster list):
              * both screens whole, side by side, the top one on the left, until it closes */
@@ -2092,6 +2226,11 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         } else if (page == 1 && g_bag && !second && v->npiece + 22 <= GL_MAX_PIECES) {
             small[0] = small[1] = small[2] = small[3] = 0;           /* (the card: its description under the list) */
             bag_pieces(v);
+        } else if (!g_xmenu && !g_bag && !second && (hub = results_hub()) && v->npiece + 50 <= GL_MAX_PIECES) {
+            /* the battle records' first page (Sandy's), modern: drawn again in windows (results_pieces()) */
+            small[0] = small[1] = small[2] = small[3] = 0;
+            big[0] = big[1] = big[2] = big[3] = 0;
+            results_pieces(v, hub - 1);
         } else if (g_xmenu && !second && v->npiece + 44 <= GL_MAX_PIECES) {
             small[0] = small[1] = small[2] = small[3] = 0;
             xmenu_pieces(v);
@@ -4252,6 +4391,13 @@ static void menu_icons_update(void) {
         changed = mapmarks_bag(g_bag_keys, g_bag_keys_n, x0 - X0 + 7, bag_my(BAG_LY) + (BAG_DY * BAG_K - BAG_IC) / 2 + 0.5f, BAG_DY * BAG_K, BAG_IC, g_bag_sel,
                                x0 - X0 + 6, wy + (BAG_DH - BAG_BIG) / 2, g_bag_ink[1] >= g_bag_ink[0] ? BAG_BIG : 0,
                                T("Menu"), g_path_x[0] - X0, g_path_y, PATH_H, chev, g_path_n, 5.0f, &rgba);
+    } else if (g_ca_at && g_frame - g_ca_at <= 2) {               /* Attributes: the equipment's icons (the first character's) */
+        uint16_t keys[8];
+        for (int i = 0; i < 8; i++) {
+            uint16_t k; memcpy(&k, g_main_ram + ((CA_EQUIP + 0x2C * CA_SLOT[i]) & (MAIN_RAM_SIZE - 1)), 2);
+            keys[i] = k ? k : 0xFFFF;
+        }
+        changed = mapmarks_bag(keys, 8, g_ca_ic[0], g_ca_ic[1], g_ca_ic[2], g_ca_ic[3], -1, 0, 0, 0, "", 0, 0, 0, chev, 0, 0, &rgba);
     } else if (g_xmenu && !g_xm_free) {                          /* (its windows all where they are: no path, the menus behind shown) */
         float wx, wy;
         xm_place(cw, &wx, &wy);
@@ -4259,7 +4405,7 @@ static void menu_icons_update(void) {
         for (int i = 0; i < g_path_n; i++) { chev[2 * i] = g_path_chev[2 * i] - X0; chev[2 * i + 1] = g_path_chev[2 * i + 1]; }
         changed = mapmarks_menu(T("Menu"), g_path_x[0] - X0, g_path_y, PATH_H, chev, g_path_n, 5.0f, &rgba);
     } else if (mapmarks_menu_off()) changed = 1;
-    if (changed && !g_shop) gl_set_icons(g_bag || g_xmenu ? rgba : NULL, MAPMARKS_W, MAPMARKS_H);
+    if (changed && !g_shop) gl_set_icons(g_bag || g_xmenu || (g_ca_at && g_frame - g_ca_at <= 2) ? rgba : NULL, MAPMARKS_W, MAPMARKS_H);
 }
 
 /* The X menu's window alone in the middle (g_xmenu), as the bag's (the 2D
@@ -4503,7 +4649,7 @@ static void present_gl(void) {
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
-    gl_set_split(g_shop || g_bag || g_xmenu);
+    gl_set_split(g_shop || g_bag || g_xmenu || results_hub());   /* (Sandy's page: her 3D apart from her page) */
     {   /* between two of our menus' layouts (one window closing, the next not yet found), the
          * game's own windows on the field a few frames: the last picture kept instead (up to 10 frames);
          * DQIX_RAWCHK: the frames where they show all the same */

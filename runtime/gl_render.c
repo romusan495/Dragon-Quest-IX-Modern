@@ -595,6 +595,10 @@ static const char* FS_COPY =
     "    float brown = smoothstep(0.1, 0.13, r.r) * smoothstep(0.29, 0.26, r.r) * step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.03, 0.05, r.r - r.b) * smoothstep(0.13, 0.1, r.b);\n"
     "    float ring = smoothstep(0.07, 0.05, mx);\n"   /* (its black ring; its grey shown translucent in the 3D: opaque on the DS) */
     "    float a = (1.0 - max(max(box, brown), ring)) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 31) { vec3 r = c.rgb / max(c.a, 0.001); float bg = max(step(r.g + 0.04, r.b) * step(r.g, r.r + 0.1) * step(r.r, 0.59), step(r.g + 0.14, r.b) * step(r.r + 0.14, r.b));\n"   /* (the character on the Attributes' top screen: its blue backdrop (r = g < b) left out; not the teal shield (g over r)) */
+    "    float a = (1.0 - bg) * c.a; o_color = vec4(r * a, a); return; }\n"
+    "  if (u_mode == 32) { vec3 r = c.rgb / max(c.a, 0.001); float sat = max(r.r, max(r.g, r.b)) - min(r.r, min(r.g, r.b));\n"   /* (a list on its dark panel: the letters and the grey icons, not the panel (0.19) nor its blue frame) */
+    "    float a = smoothstep(0.30, 0.42, L) * smoothstep(0.30, 0.15, sat) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 30) { float t = letters(5), y = yellows(), a = max(t, y);\n"   /* (the windows round a menu: letters light or greyed (0.73), not the grey lines (0.51, 0.64)) */
     "    vec3 col = mix(vec3(0.93), vec3(0.98, 0.78, 0.16), y / max(a, 0.001)); o_color = vec4(col * a, a); return; }\n"
     "  if (u_mode == 29) { float t = letters(4), y = yellows(), a = max(t, y);\n"   /* (as 3, for a window going grey: its letters (0.64, 0.73) in white, not its grey lines (0.51); letters(4): above 0.57) */
