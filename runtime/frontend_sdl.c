@@ -1690,7 +1690,14 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
             { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
             g_key_pad = CTL_PAD_RT; bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
             g_key_pad = 0;
-        } else bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);   /* (else Y: the next one) */
+        } else {                                                  /* (else Y: the next one; under the card at the left, with what it does: the game's own words, "Changer perso.") */
+            float ky = MY(932), kl = KB * 1.2f;
+            bestiary_key(v, GL_LAYER_KEY1, CA_Y, MX(44), ky, kh);
+            const float* q = v->layer[GL_LAYER_KEY1];
+            float tx = q[0] + q[2] + 12 * C;
+            modern_window(v, MX(26), ky - 10 * C, tx + 68 * kl + 16 * C - MX(26), kh + 20 * C);   /* (in a window of its own: seen on the wall) */
+            bestiary_piece(v, 1, 60, 180, 68, 9, 30, tx, ky + (kh - 9 * kl) / 2, kl);
+        }
     }
     /* the list (or the bag's grid) at the right */
     const float WY = MY(170), WH = 730 * C, WW = 520 * C;
@@ -1945,9 +1952,10 @@ static void xmenu_pieces(GlPresent* v);
  * screens' pixels (the top screen 0, the bottom one 1): */
 enum { CA_MX = 6, CA_MY = 6, CA_MW = 114, CA_MH = 166,            /* the model, top screen (the 3D alone) */
        CA_NX = 6, CA_NY = 177, CA_NW = 114, CA_NH = 13,             /* its name's bar (inside its white corners) */
-       CA_EX = 152, CA_EY = 22, CA_EW = 98, CA_EH = 162,            /* the equipment's names, inside their panel (their slots' icons left out) */
+       CA_EX = 152, CA_EY = 24, CA_EW = 98, CA_EH = 160,            /* the equipment's names, inside their panel (their slots' icons left out) */
        CA_BX = 2, CA_BY = 2, CA_BW = 252, CA_BH = 172 };            /* the category, bottom screen */
-#define CA_EQUIP 0x020F5794u                                       /* the equipment: a u16 item key per slot, 0x2C apart (a slot each character's), */
+#define CA_EQUIP 0x020F5794u                                       /* the first character's equipment: a u16 item key per slot, 0x2C apart; the others' 0x964 lower each (their records, name at +0x2E0 less), */
+#define CA_WHO 0x02112794u                                         /* the character shown (0: the first) */
 static const int CA_SLOT[8] = { 0, 2, 3, 1, 4, 5, 6, 7 };         /* ...the slots in the screen's order: weapon, shield, head, body, arms, legs, feet, accessory */
 static uint64_t g_ca_at; static float g_ca_ic[4]; static int g_ca_job = -1;   /* (the icons' column: x, first y, pitch, size) */
 /* Battle records' first page (Sandy's: her pink touch screen, the buttons
@@ -2010,11 +2018,14 @@ static void results_pieces(GlPresent* v, int eng) {
     }
     #undef RS_WIN
 }
-static int caract_screen(void) {                                  /* (the equipment's panel: its blue frame, top and bottom, on the top screen) */
+static int caract_screen(void) {                                  /* (the equipment's panel: its frame, top and bottom, on the top screen, one colour (the character's: blue, cyan...), not a grey) */
     for (int e = 0; e < 2; e++) {
         const uint32_t* px = g_engine_out[e]; int n = 0;
         static const int at[4][2] = { { 131, 19 }, { 200, 19 }, { 131, 187 }, { 200, 187 } };
-        for (int i = 0; i < 4; i++) { uint32_t c = px[at[i][1] * 256 + at[i][0]]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; n += r < 60 && g > 70 && g < 130 && b > 170; }
+        uint32_t c0 = px[at[0][1] * 256 + at[0][0]];
+        int r0 = (c0 >> 16) & 255, g0 = (c0 >> 8) & 255, b0 = c0 & 255, hi = r0 > g0 ? (r0 > b0 ? r0 : b0) : (g0 > b0 ? g0 : b0), lo = r0 < g0 ? (r0 < b0 ? r0 : b0) : (g0 < b0 ? g0 : b0);
+        if (hi - lo < 60) continue;
+        for (int i = 1; i < 4; i++) { uint32_t c = px[at[i][1] * 256 + at[i][0]]; n += abs((int)((c >> 16) & 255) - r0) < 20 && abs((int)((c >> 8) & 255) - g0) < 20 && abs((int)(c & 255) - b0) < 20; }
         if (n >= 3) return e + 1;
     }
     return 0;
@@ -4391,10 +4402,11 @@ static void menu_icons_update(void) {
         changed = mapmarks_bag(g_bag_keys, g_bag_keys_n, x0 - X0 + 7, bag_my(BAG_LY) + (BAG_DY * BAG_K - BAG_IC) / 2 + 0.5f, BAG_DY * BAG_K, BAG_IC, g_bag_sel,
                                x0 - X0 + 6, wy + (BAG_DH - BAG_BIG) / 2, g_bag_ink[1] >= g_bag_ink[0] ? BAG_BIG : 0,
                                T("Menu"), g_path_x[0] - X0, g_path_y, PATH_H, chev, g_path_n, 5.0f, &rgba);
-    } else if (g_ca_at && g_frame - g_ca_at <= 2) {               /* Attributes: the equipment's icons (the first character's) */
+    } else if (g_ca_at && g_frame - g_ca_at <= 2) {               /* Attributes: the equipment's icons (the character shown's) */
         uint16_t keys[8];
+        int who = g_main_ram[CA_WHO & (MAIN_RAM_SIZE - 1)]; if (who > 21) who = 0;   /* (the character shown: his column) */
         for (int i = 0; i < 8; i++) {
-            uint16_t k; memcpy(&k, g_main_ram + ((CA_EQUIP + 0x2C * CA_SLOT[i]) & (MAIN_RAM_SIZE - 1)), 2);
+            uint16_t k; memcpy(&k, g_main_ram + ((CA_EQUIP - 0x964 * who + 0x2C * CA_SLOT[i]) & (MAIN_RAM_SIZE - 1)), 2);
             keys[i] = k ? k : 0xFFFF;
         }
         changed = mapmarks_bag(keys, 8, g_ca_ic[0], g_ca_ic[1], g_ca_ic[2], g_ca_ic[3], -1, 0, 0, 0, "", 0, 0, 0, chev, 0, 0, &rgba);
