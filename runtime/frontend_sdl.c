@@ -1945,6 +1945,8 @@ static void bag_pieces(GlPresent* v) {
 }
 
 static void xmenu_pieces(GlPresent* v);
+extern int g_comp_has3d;
+static int xm_field(void) { return in_adventure(); }   /* (not on the title: its own menus, its own picture) */
 /* Attributes, modern (as the menus' windows): on one dark window, the
  * character alone (its model, its blue backdrop left out) over its name's
  * bar; its equipment (names and icons, not their panel); the category shown
@@ -1964,16 +1966,29 @@ static uint64_t g_ca_at; static float g_ca_ic[4]; static int g_ca_job = -1;   /*
  * hand), the numbers in a window (the parchment's dark letters made light),
  * Sandy's words (when she talks) in a window under them. In the screens'
  * pixels (the top screen 0, the touch screen 1): */
-static int results_hub(void) {                                    /* (the touch screen pink: Sandy's) */
+static int g_rs_parch;                                            /* (the parchment of numbers there this frame: else its window left empty) */
+static int results_hub(void) {                                    /* (the touch screen Sandy's pink, the other the parchment of numbers; by their hues: fading in or out too) */
+    #define RH_RGB(c_) int r = ((c_) >> 16) & 255, g = ((c_) >> 8) & 255, b = (c_) & 255
+    static int last; static uint64_t seen;
     for (int e = 0; e < 2; e++) {
         const uint32_t* px = g_engine_out[e]; int n = 0;
         static const int at[5][2] = { { 128, 170 }, { 10, 150 }, { 200, 180 }, { 240, 186 }, { 60, 188 } };
-        for (int i = 0; i < 5; i++) { uint32_t c = px[at[i][1] * 256 + at[i][0]]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; n += r > 230 && g > 110 && g < 170 && b > 140 && b < 200; }
-        if (n < 4) continue;
-        const uint32_t* tp = g_engine_out[!e];                    /* (and the parchment of numbers on the other: its brown title bar, its pale panel) */
-        uint32_t b = tp[10 * 256 + 50], p = tp[40 * 256 + 50];
-        if (((b >> 16) & 255) > 80 && ((b >> 16) & 255) < 120 && ((b >> 8) & 255) > 55 && ((b >> 8) & 255) < 85 && ((p >> 16) & 255) > 215 && ((p >> 8) & 255) > 190) return e + 1;
+        for (int i = 0; i < 5; i++) { RH_RGB(px[at[i][1] * 256 + at[i][0]]); n += r > 30 && g * 100 >= r * 40 && g * 100 <= r * 70 && b * 100 >= r * 50 && b * 100 <= r * 80; }
+        if (n < 3) continue;
+        const uint32_t* tp = g_engine_out[!e];
+        int bar, pan;
+        { RH_RGB(tp[10 * 256 + 50]); bar = r > 20 && g * 100 >= r * 62 && g * 100 <= r * 88 && b * 100 >= r * 35 && b * 100 <= r * 65 ? r : 0; }
+        { RH_RGB(tp[40 * 256 + 50]); pan = r > 30 && g * 100 >= r * 78 && g * 100 <= r * 96 && b * 100 >= r * 38 && b * 100 <= r * 68 ? r : 0; }
+        int dark, btn;                                            /* (or the parchment not in yet, black, and the records' blue buttons there: not the ceremony's curtain) */
+        { RH_RGB(tp[10 * 256 + 50]); dark = r + g + b < 40; }
+        { RH_RGB(px[12 * 256 + 60]); btn = b > r + 40 && b > 60; }
+        int curtain; { RH_RGB(tp[96 * 256 + 128]); curtain = r > 60 && r > 2 * g && r > 2 * b; }   /* (a ceremony: the curtain over the parchment; the game's own) */
+        if (curtain) { last = 0; return 0; }
+        g_rs_parch = bar && pan > bar * 3 / 2 && pan > 225;   /* (bright: not fading, its dark letters made light would be blocks) */
+        if (n >= 4 && ((bar && pan > bar * 3 / 2) || (dark && btn))) { last = e + 1; seen = g_frame; return last; }
+        if (last == e + 1 && g_frame - seen <= 20) return last;   /* (its pink still, the parchment gone a moment: leaving it, or a window over it) */
     }
+    #undef RH_RGB
     return 0;
 }
 static void results_pieces(GlPresent* v, int eng) {
@@ -2002,18 +2017,18 @@ static void results_pieces(GlPresent* v, int eng) {
     /* the numbers: the parchment's title, its two panels, its percentages */
     float rx = x + lw + 4, y = top;
     RS_WIN(rx, y, rw, rh);
-    bestiary_piece(v, 0, 2, 2, 252, 18, 3, rx + (rw - 252 * kr) / 2, y + 4, kr);              /* its title (light on its bar) */
+    if (g_rs_parch) bestiary_piece(v, 0, 2, 2, 252, 18, 3, rx + (rw - 252 * kr) / 2, y + 4, kr);   /* its title (light on its bar) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 4 + 19 * kr, rw - 8, t);
-    bestiary_piece(v, 0, 8, 26, 90, 86, 6, rx + 5, y + 6 + 21 * kr, kr);                       /* (6: the dark letters made light) */
-    bestiary_piece(v, 0, 100, 26, 146, 80, 6, rx + 5 + 92 * kr, y + 6 + 21 * kr, kr);
+    if (g_rs_parch) bestiary_piece(v, 0, 8, 26, 90, 86, 6, rx + 5, y + 6 + 21 * kr, kr);                       /* (6: the dark letters made light) */
+    if (g_rs_parch) bestiary_piece(v, 0, 100, 26, 146, 80, 6, rx + 5 + 92 * kr, y + 6 + 21 * kr, kr);
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 8 + 113 * kr, rw - 8, t);
-    bestiary_piece(v, 0, 11, 122, 230, 60, 3, rx + 5 + 5 * kr, y + 10 + 114 * kr, kr);                   /* the percentages (light on their panel) */
+    if (g_rs_parch) bestiary_piece(v, 0, 11, 122, 230, 60, 3, rx + 5 + 5 * kr, y + 10 + 114 * kr, kr);                   /* the percentages (light on their panel) */
     {   /* Sandy (her 3D alone) at the bottom right, her words in a window beside her */
         float my = top + rh + 4, sw = 80 * ks, sx = v->cw - M - 5 - sw;
         bestiary_piece(v, 4, 144, 0, 80, 116, 11, sx, my + mh - 116 * ks, ks);   /* (above her words: they are 3D too) */
         if (talk > 40) {
-            RS_WIN(x, my, sx - 4 - x, mh);                         /* (her words: light, in her dark box on her page) */
-            bestiary_piece(v, 1, 10, 120, 236, 64, 30, x + 8, my + 5, fminf(kl, (sx - 4 - x - 16) / 236.0f));
+            RS_WIN(x, my, sx - 4 - x, mh);                         /* (her words: white (34), in her dark box on her page; not the pink's pattern) */
+            bestiary_piece(v, 1, 10, 120, 236, 64, 34, x + 8, my + 5, fminf(kl, (sx - 4 - x - 16) / 236.0f));
         }
     }
     #undef RS_WIN
@@ -2025,6 +2040,9 @@ static int caract_screen(void) {                                  /* (the equipm
         uint32_t c0 = px[at[0][1] * 256 + at[0][0]];
         int r0 = (c0 >> 16) & 255, g0 = (c0 >> 8) & 255, b0 = c0 & 255, hi = r0 > g0 ? (r0 > b0 ? r0 : b0) : (g0 > b0 ? g0 : b0), lo = r0 < g0 ? (r0 < b0 ? r0 : b0) : (g0 < b0 ? g0 : b0);
         if (hi - lo < 60) continue;
+        #define CA_SAME(c_) (abs((int)(((c_) >> 16) & 255) - r0) < 20 && abs((int)(((c_) >> 8) & 255) - g0) < 20 && abs((int)((c_) & 255) - b0) < 20)
+        if (CA_SAME(px[25 * 256 + 140]) || CA_SAME(px[100 * 256 + 165]) || !CA_SAME(px[100 * 256 + 131])) continue;   /* (a frame: not the colour inside it; its side down too: not a screen of one colour) */
+        #undef CA_SAME
         for (int i = 1; i < 4; i++) { uint32_t c = px[at[i][1] * 256 + at[i][0]]; n += abs((int)((c >> 16) & 255) - r0) < 20 && abs((int)((c >> 8) & 255) - g0) < 20 && abs((int)(c & 255) - b0) < 20; }
         if (n >= 3) return e + 1;
     }
@@ -2242,7 +2260,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             small[0] = small[1] = small[2] = small[3] = 0;
             big[0] = big[1] = big[2] = big[3] = 0;
             results_pieces(v, hub - 1);
-        } else if (g_xmenu && !second && v->npiece + 44 <= GL_MAX_PIECES) {
+        } else if (g_xmenu && xm_field() && !second && v->npiece + 44 <= GL_MAX_PIECES) {   /* (over the field: not the title's menus, its own picture) */
             small[0] = small[1] = small[2] = small[3] = 0;
             xmenu_pieces(v);
         } else if (page == 1 && which < 0 && g_pop_win[2] && !g_quest_page && !g_card_page && !second) {
@@ -4661,7 +4679,7 @@ static void present_gl(void) {
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
-    gl_set_split(g_shop || g_bag || g_xmenu || results_hub());   /* (Sandy's page: her 3D apart from her page) */
+    gl_set_split(g_shop || g_bag || (g_xmenu && xm_field()) || results_hub());   /* (Sandy's page: her 3D apart from her page) */
     {   /* between two of our menus' layouts (one window closing, the next not yet found), the
          * game's own windows on the field a few frames: the last picture kept instead (up to 10 frames);
          * DQIX_RAWCHK: the frames where they show all the same */
