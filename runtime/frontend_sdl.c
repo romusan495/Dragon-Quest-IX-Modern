@@ -467,6 +467,9 @@ static int alchemy_list(const uint32_t* list) {                 /* the Alchimana
  * on the top screen): the title's bar, the names' panel, its grey bottom edge */
 enum { CL_ROW0 = 57, CL_RH = 14 };
 static int g_coll_quest;                                          /* (that list: the quests', one column, the quest's sheet beside it) */
+static int g_qt_w = 190, g_qrow = -1, g_qstamp[4];               /* (the quests' page: its title's name's width; the chosen row; its Complete! stamp's box, quest_list_stamp()) */
+static void quest_list_stamp(const uint32_t* top);
+static int stamp_red(uint32_t c);
 static int quest_page(const uint32_t* px);
 static int coll_list(const uint32_t* list) {
     return px_share(list, 20, 12, 10, 0, 10, 130, 162, 70, 100, 8, 32) >= 7            /* the title's bar (146, 81, 16) */
@@ -946,6 +949,13 @@ static void bestiary_update(int a_on_top) {
         g_recipe = 0;
         g_rows[0] = list_rows(list, 14, 122, CL_ROW0, CL_RH); g_rows[1] = list_rows(list, 134, 244, CL_ROW0, CL_RH);
         g_coll_empty = !g_coll_quest && coll_empty(list);
+        if (g_coll_quest) {                                       /* the quest's title's name: how wide (its light letters, or its HD letters) */
+            const HdGlyph* gl = NULL; int ng = hdtext_glyphs(a_on_top ? 0 : 1, &gl), x1 = 0;
+            for (int y = 18; y < 33; y++) for (int x = 46; x < 239; x++) { uint32_t c = top[y * 256 + x]; if (((c >> 16) & 255) > 150 && ((c >> 8) & 255) > 150 && (c & 255) > 130 && x > x1) x1 = x; }
+            for (int i = 0; i < ng; i++) if (gl[i].y >= 14 && gl[i].y < 33 && gl[i].x + gl[i].w > x1 && gl[i].x + gl[i].w < 240) x1 = gl[i].x + gl[i].w;
+            g_qt_w = x1 > 60 ? x1 - 44 + 3 : 190;
+            quest_list_stamp(top);
+        }
         bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], 1);
         g_bmode = BM_COLL; g_bmode_at = g_frame; return;
     }
@@ -1195,7 +1205,9 @@ static void alchemy_pieces(GlPresent* v) {
 /* The Wardrobe, the Item list, modern: one window; left, the title, the
  * kind shown (its tab), the names in one column (the left column's, then the
  * right one's), the page, SELECT Sort; right of a line, the item's card. */
+static void quest_list_pieces(GlPresent* v);
 static void coll_pieces(GlPresent* v) {
+    if (g_coll_quest) { quest_list_pieces(v); return; }       /* (the quests': their own page) */
     const float M = 5, H = v->ch - 2 * M;
     float k = (H - 10) / (12 + 4 + 12 + 2 + 2 * 8 * CL_RH + 12 + 22), lw = 122 * k + 8, x = M + 4, y = M + 3;
     if (g_coll_quest) { k = fminf((H - 10) / (12 + 4 + 12 + 2 + 8 * CL_RH + 12 + 22) * 0.85f, (v->cw * 0.5f - 8) / 180); lw = 180 * k + 8; }   /* (one wide column) */
@@ -1250,6 +1262,114 @@ static void coll_pieces(GlPresent* v) {
         set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), px, y_page - 4, dw, 0.75f);
         bestiary_piece(v, 0, QS_BAR_X + 3, QS_DATE_Y + 1, QS_BAR_W - 6, QS_DATE_H - 2, 3, px, y_page, kq);   /* the date (light on its bar) */
     }
+}
+/* The quests' list, its own page for a wide screen (the mockup): two
+ * windows side by side. Left, the list: the kind shown (a gold line under
+ * it), each quest's sign and its number and name, the chosen one lit gold
+ * with the hand, the page and how it is sorted under them. Right, the chosen
+ * quest: its sign big, its number small over its name in big letters, its
+ * Complete! stamp, its description's lines spaced out, its date at the bottom
+ * (the words left, the date right). The game's letters, their own pieces. */
+static void quest_list_pieces(GlPresent* v) {
+    const float M = 5, t = 0.75f, G = 4, top = M + 1, H = v->ch - 2 * M - 2;
+    #define QL_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), 0, 0, v->cw, v->ch);   /* (the backdrop: dark) */
+    float lw = floorf((v->cw - 2 * M - G) * 0.47f), lx = M, rx = M + lw + G, rw = v->cw - M - rx;
+    /* the list */
+    QL_WIN(lx, top, lw, H);
+    float kl = fminf(0.85f, (lw - 30) / (14.0f + 142.0f)), tabh = 15, foot = 16;
+    bestiary_piece(v, 1, 12, 35, 100, 11, 6, lx + 10, top + 4, kl);           /* the kind shown */
+    for (int i = 0; i < 4; i++) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 21, 0, 0, 1), lx + 8, top + 4 + 12 * kl, 72 * kl + 6, 1.2f);   /* its gold line */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), lx + 4, top + tabh + 2, lw - 8, t);
+    float ry0 = top + tabh + 6, rp = fminf((H - tabh - foot - 10) / 8, CL_RH * kl * 1.45f);
+    int nq = g_rows[0];
+    int sel = g_cur[2] ? (g_cur[1] + g_cur[3] / 2 - CL_ROW0) / CL_RH : -1;
+    if (sel >= nq) sel = -1;
+    g_qrow = sel;
+    if (sel >= 0) {
+        for (int i = 0; i < 2; i++) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 21, 0, 0, 1), lx + 22, ry0 + sel * rp + (rp - CL_RH * kl) / 2 - 1, lw - 28, CL_RH * kl + 2);   /* the chosen one, lit */
+        bestiary_cursor_at(v, 3, CL_ROW0 + sel * CL_RH, lx + 3, ry0 + sel * rp + (rp - CL_RH * kl) / 2, kl);   /* the hand */
+    }
+    for (int r = 0; r < nq; r++) {
+        float yy = ry0 + r * rp + (rp - CL_RH * kl) / 2;
+        bestiary_piece(v, 1, 21, CL_ROW0 + r * CL_RH, 14, CL_RH, 20, lx + 26, yy, kl);          /* its sign */
+        bestiary_piece(v, 1, 35, CL_ROW0 + r * CL_RH, 142, CL_RH, 13, lx + 26 + 16 * kl, yy, kl);   /* its number and name */
+    }
+    float fy = top + H - foot;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), lx + 4, fy, lw - 8, t);
+    float kf = 0.62f;
+    bestiary_piece(v, 1, 11, 172, 10, 10, 3, lx + 10, fy + 4, kf);           /* the page, its arrows */
+    bestiary_piece(v, 1, 104, 172, 48, 9, 3, lx + 10 + 12 * kf, fy + 4, kf);
+    bestiary_piece(v, 1, 235, 172, 10, 10, 3, lx + 10 + 56 * kf, fy + 4, kf);
+    float sx = lx + lw - 6 - (26 + 34 + 52) * kf;                            /* SELECT Sort by what, on one line */
+    bestiary_key(v, GL_LAYER_KEY0, CA_SELECT, sx, fy + 3, 11 * kf);
+    bestiary_piece(v, 1, 206, 19, 32, 8, 12, sx + 26 * kf, fy + 5, kf);
+    bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 60 * kf, fy + 4.5f, kf);
+    /* the chosen quest */
+    QL_WIN(rx, top, rw, H);
+    if (!(g_quest_page && g_pop_win[2])) { g_qstamp[2] = 0; return; }
+    float kq = fminf(0.9f, (rw - 16) / (QS_IN_W - 1)), hh = 30;
+    float ix = rx + 10, iy = top + 6;
+    if (sel >= 0) bestiary_piece(v, 1, 21, CL_ROW0 + sel * CL_RH, 14, CL_RH, 20, ix, iy + 1, 1.7f);   /* its sign, big */
+    float nx = ix + 14 * 1.7f + 8, kt = fminf(1.15f, (rw - (nx - rx) - 10 - (g_qstamp[2] ? 34 : 0)) / (float)g_qt_w);
+    bestiary_piece(v, 0, QS_BAR_X + 2, QS_TITLE_Y + 2, 24, QS_TITLE_H - 4, 3, nx, iy, 0.62f);      /* its number, small */
+    bestiary_piece(v, 0, 44, QS_TITLE_Y + 2, (float)g_qt_w, QS_TITLE_H - 4, 3, nx - 2 * kt, iy + 9, kt);   /* its name, big */
+    if (g_qstamp[2]) {                                                        /* Complete!: the stamp, at the right */
+        float ks = fminf(0.5f, 46.0f / g_qstamp[3]), *l = v->layer[GL_LAYER_STAMP];
+        l[2] = g_qstamp[2] * ks; l[3] = g_qstamp[3] * ks; l[0] = rx + rw - 6 - l[2]; l[1] = top + 3;
+    }
+    float ly = top + hh + 6;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, ly, rw - 8, t);
+    float dx = rx + (rw - (QS_IN_W - 1) * kq) / 2, lp = fminf(16 * kq * 1.3f, (H - hh - 6 - 22 - 8) / 8);
+    for (int i = 0; i < 8; i++)                                               /* its lines, spaced out */
+        bestiary_piece(v, 0, QS_IN_X - 1, QS_DESC_Y + 16 * i, QS_IN_W - 1, 15, 6, dx, ly + 6 + i * lp, kq);   /* (15: not the page's edge under the last) */
+    float dy = top + H - 16;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, dy, rw - 8, t);
+    float kd = 0.62f;
+    bestiary_piece(v, 0, QS_BAR_X + 2, QS_DATE_Y + 1, 100, QS_DATE_H - 2, 3, rx + 10, dy + 4, kd);          /* Started:/Completed: */
+    bestiary_piece(v, 0, 134, QS_DATE_Y + 1, 105, QS_DATE_H - 2, 3, rx + rw - 10 - 105 * kd, dy + 4, kd);   /* the date */
+    #undef QL_WIN
+}
+/* The Complete! stamp on a quest's sheet beside the quests' list: the game
+ * sets it over the sheet's top right corner (turned, cut by the screen's top);
+ * its red alone, in clean ink, at the page's resolution times STAMP_S. */
+static void quest_list_stamp(const uint32_t* px) {
+    enum { X0 = 140, Y0 = 0, W = 116, H = 80, QL_S = 6 };   /* (QL_S: as quest_stamp()'s STAMP_S) */
+    static uint8_t mask[H][W], *img; static uint32_t shown;
+    int x0 = W, y0 = H, x1 = -1, y1 = -1, n = 0;
+    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+        int m = stamp_red(px[(Y0 + y) * 256 + X0 + x]); mask[y][x] = (uint8_t)m; n += m;
+        if (m) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    g_qstamp[2] = 0;
+    if (n < 150) return;
+    int w = x1 - x0 + 1, h = y1 - y0 + 1;
+    uint32_t key = 2166136261u;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) key = (key ^ mask[y][x]) * 16777619u;
+    key = (key ^ (uint32_t)(w << 8 | h)) * 16777619u;
+    g_qstamp[0] = X0 + x0; g_qstamp[1] = Y0 + y0; g_qstamp[2] = w; g_qstamp[3] = h;
+    if (key == shown) return;
+    shown = key;
+    int IW = w * QL_S, IH = h * QL_S;
+    uint8_t* nb = realloc(img, (size_t)IW * IH * 4);
+    if (!nb) { g_qstamp[2] = 0; return; }
+    img = nb;
+    for (int j = 0; j < IH; j++)
+        for (int i = 0; i < IW; i++) {
+            float sx = (i + 0.5f) / QL_S - 0.5f, sy = (j + 0.5f) / QL_S - 0.5f, v = 0;
+            int ix = (int)floorf(sx), iy = (int)floorf(sy); float fx = sx - ix, fy = sy - iy;
+            for (int k = 0; k < 4; k++) {                         /* (bilinear, cut at half: smooth edges) */
+                int xx = x0 + ix + (k & 1), yy = y0 + iy + (k >> 1);
+                float wk = ((k & 1) ? fx : 1 - fx) * ((k >> 1) ? fy : 1 - fy);
+                if (xx >= 0 && xx < W && yy >= 0 && yy < H) v += wk * mask[yy][xx];
+            }
+            float a = fminf(fmaxf((v - 0.38f) / 0.16f, 0), 1) * 0.92f;
+            uint8_t* o = img + ((size_t)j * IW + i) * 4;          /* premultiplied */
+            o[0] = (uint8_t)(206 * a + 0.5f); o[1] = (uint8_t)(28 * a + 0.5f); o[2] = (uint8_t)(34 * a + 0.5f); o[3] = (uint8_t)(255 * a + 0.5f);
+        }
+    gl_set_layer(GL_LAYER_STAMP, img, IW, IH);
 }
 /* The records' menus over the monster list (how to show it, its families):
  * one window, the touch screen's light letters and its gold cursor alone
