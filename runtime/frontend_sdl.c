@@ -890,8 +890,9 @@ static int coll_empty(const uint32_t* px) {                       /* (letters be
         for (int x = 14; x < 244; x++) {
             uint32_t c = px[y * 256 + x]; int R = (c >> 16) & 255, G = (c >> 8) & 255, B = c & 255;
             int mn = R < G ? (R < B ? R : B) : (G < B ? G : B), mx = R > G ? (R > B ? R : B) : (G > B ? G : B);
-            if (!(mn > 95 && mx - mn < 50)) continue;             /* (light letters; not the cursor's yellow) */
-            ink += x >= 124 && x < 133;
+            int light = mn > 95 && mx - mn < 50, gold = R > 200 && G > 150 && B < 110;   /* (light letters; a chosen name's yellow, or the cursor's) */
+            if (!light && !gold) continue;
+            ink += light && x >= 124 && x < 133;
             if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
         }
     for (int i = 0; i < ng; i++) {
@@ -900,7 +901,7 @@ static int coll_empty(const uint32_t* px) {                       /* (letters be
         ink += 3 * (g->x + g->w / 2 >= 124 && g->x + g->w / 2 < 133);
         if (g->x < x0) x0 = g->x; if (g->x + g->w > x1) x1 = g->x + g->w; if (g->y < y0) y0 = g->y; if (g->y + 12 > y1) y1 = g->y + 12;
     }
-    if (ink < 3 || x1 < x0) return 0;
+    if (ink < 3 || x1 < x0 || y0 < CL_ROW0 + CL_RH - 2) return 0;   /* (a list's first row has a name: those words sit lower) */
     g_ce[0] = x0 - 2 < 0 ? 0 : x0 - 2; g_ce[1] = y0 - 2; g_ce[2] = (x1 + 3 > 256 ? 256 : x1 + 3) - g_ce[0]; g_ce[3] = y1 + 3 - g_ce[1];
     return 1;
 }
@@ -936,7 +937,7 @@ static void bestiary_update(int a_on_top) {
         if (g_frame - g_titles_at < 90 && !(tit_black && tmean >= 8)) return;
     }
     if (g_bmode == BM_TITLES) g_bmode = BM_NONE;
-    if (g_winstyle == 2 && coll_list(list)) {                     /* the Wardrobe, the Item list, the quests' list: one window too (coll_pieces()) */
+    if (g_winstyle == 2 && coll_list(list) && !(monster_list(list) && monster_page(top)) && !alchemy_list(list)) {   /* (the monsters' list is laid out alike: told by its monster's page on the top screen; its own window then) */                     /* the Wardrobe, the Item list, the quests' list: one window too (coll_pieces()) */
         int icons = 0;                                            /* (the quests': a sign before each, its light ring (186, 251, 251)) */
         for (int r = 0; r < 8; r++) icons += (list[(CL_ROW0 + 3 + r * CL_RH) * 256 + 22] & 0xFFFFFF) == 0xBAFBFB;
         g_coll_quest = icons > 0 || quest_page(top);
@@ -2017,13 +2018,15 @@ static uint64_t g_ca_at; static float g_ca_ic[4]; static int g_ca_job = -1;   /*
  * Sandy's words (when she talks) in a window under them. In the screens'
  * pixels (the top screen 0, the touch screen 1): */
 static int g_rs_parch;                                            /* (the parchment of numbers there this frame: else its window left empty) */
+static int g_rs_cer;                                              /* (a title given over it: the curtain on the top screen; its plate and words in a window over the page) */
 static int results_hub(void) {                                    /* (the touch screen Sandy's pink, the other the parchment of numbers; by their hues: fading in or out too) */
     #define RH_RGB(c_) int r = ((c_) >> 16) & 255, g = ((c_) >> 8) & 255, b = (c_) & 255
     static int last; static uint64_t seen;
+    g_rs_cer = 0;
     for (int e = 0; e < 2; e++) {
         const uint32_t* px = g_engine_out[e]; int n = 0;
         static const int at[5][2] = { { 128, 170 }, { 10, 150 }, { 200, 180 }, { 240, 186 }, { 60, 188 } };
-        for (int i = 0; i < 5; i++) { RH_RGB(px[at[i][1] * 256 + at[i][0]]); n += r > 30 && g * 100 >= r * 40 && g * 100 <= r * 70 && b * 100 >= r * 50 && b * 100 <= r * 80; }
+        for (int i = 0; i < 5; i++) { RH_RGB(px[at[i][1] * 256 + at[i][0]]); n += r > 30 && g * 100 >= r * 30 && g * 100 <= r * 70 && b * 100 >= r * 45 && b * 100 <= r * 80; }   /* (dimmed under a ceremony too: 178, 65, 89) */
         if (n < 3) continue;
         const uint32_t* tp = g_engine_out[!e];
         int bar, pan;
@@ -2032,7 +2035,7 @@ static int results_hub(void) {                                    /* (the touch 
         int btn;                                                  /* (or the records' blue buttons there, whatever the top screen shows a moment (black, fading in, after a ceremony): not the curtain) */
         { RH_RGB(px[12 * 256 + 60]); btn = b > 20 && b * 10 > r * 13 + 80; }   /* (blue, however dim: fading in) */
         int curtain; { RH_RGB(tp[96 * 256 + 128]); curtain = r > 60 && r > 2 * g && r > 2 * b; }   /* (a ceremony: the curtain over the parchment; the game's own) */
-        if (curtain) { last = 0; return 0; }
+        if (curtain) { g_rs_cer = 1; g_rs_parch = 0; last = e + 1; seen = g_rec_at = g_frame; return last; }   /* (a title given: the page kept, the ceremony in a window over it) */
         g_rs_parch = bar && pan > bar * 3 / 2 && pan > 225;   /* (bright: not fading, its dark letters made light would be blocks) */
         if (n >= 4 && ((bar && pan > bar * 3 / 2) || btn)) { last = e + 1; seen = g_rec_at = g_frame; return last; }
         if (last == e + 1 && g_frame - seen <= 20) return last;   /* (its pink still, the parchment gone a moment: leaving it, or a window over it) */
@@ -2051,6 +2054,9 @@ static void results_pieces(GlPresent* v, int eng) {
         uint32_t c = bp[y * 256 + x];
         if (((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100) sel = (y - 4) / 16;
     }
+    int msg = 0;                                                  /* (a ceremony: the game's black window of its words over the lower buttons) */
+    if (g_rs_cer) for (int x = 20; x < 236; x += 24) { uint32_t c = bp[118 * 256 + x]; msg += ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255) < 30; }
+    msg = msg >= 7;
     int talk = 0;                                                 /* Sandy's words: dark letters on her page, under the buttons */
     for (int y = 112; y < 188; y++) for (int x = 10; x < 246; x++) { uint32_t c = bp[y * 256 + x]; talk += ((c >> 16) & 255) < 130 && ((c >> 8) & 255) < 90; }
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, v->ch - 2 * M);   /* the backdrop: one dark window */
@@ -2059,26 +2065,39 @@ static void results_pieces(GlPresent* v, int eng) {
     float H = rh + mh + 4, top = floorf((v->ch - H) / 2), x = M + 5;
     /* the records' buttons: a menu */
     RS_WIN(x, top, lw, lh);
-    if (sel >= 0 && sel < 6)
+    if (sel >= 0 && sel < 6 && !g_rs_cer)                        /* (a ceremony: its window over the page instead; the pieces kept for it) */
         for (int i = 0; i < 3; i++) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 21, 0, 0, 1), x + 12, top + 5 + sel * 16 * kl, lw - 16, 14 * kl);
-    for (int i = 0; i < 6; i++) bestiary_piece(v, 3, 20, 9 + 16 * i, 128, 14, 30, x + 14, top + 5 + i * 16 * kl, kl);   /* (30: the letters, not the button) */
+    for (int i = 0; i < (msg ? 4 : 6); i++) bestiary_piece(v, 3, 20, 9 + 16 * i, 128, 14, 30, x + 14, top + 5 + i * 16 * kl, kl);   /* (30: the letters, not the button; not under the ceremony's window) */
     if (sel >= 0 && sel < 6) bestiary_piece(v, 3, 0, 3 + 16 * sel, 20, 16, 27, x + 1, top + 5 + sel * 16 * kl - 2, kl);   /* the hand */
     /* the numbers: the parchment's title, its two panels, its percentages */
     float rx = x + lw + 4, y = top;
-    RS_WIN(rx, y, rw, rh);
+    if (!g_rs_cer) RS_WIN(rx, y, rw, rh);
     if (g_rs_parch) bestiary_piece(v, 0, 2, 2, 252, 18, 3, rx + (rw - 252 * kr) / 2, y + 4, kr);   /* its title (light on its bar) */
-    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 4 + 19 * kr, rw - 8, t);
+    if (!g_rs_cer) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 4 + 19 * kr, rw - 8, t);
     if (g_rs_parch) bestiary_piece(v, 0, 8, 26, 90, 86, 6, rx + 5, y + 6 + 21 * kr, kr);                       /* (6: the dark letters made light) */
     if (g_rs_parch) bestiary_piece(v, 0, 100, 26, 146, 80, 6, rx + 5 + 92 * kr, y + 6 + 21 * kr, kr);
-    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 8 + 113 * kr, rw - 8, t);
+    if (!g_rs_cer) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 8 + 113 * kr, rw - 8, t);
     if (g_rs_parch) bestiary_piece(v, 0, 11, 122, 230, 60, 3, rx + 5 + 5 * kr, y + 10 + 114 * kr, kr);                   /* the percentages (light on their panel) */
     {   /* Sandy (her 3D alone) at the bottom right, her words in a window beside her */
         float my = top + rh + 4, sw = 80 * ks, sx = v->cw - M - 5 - sw;
         bestiary_piece(v, 4, 144, 0, 80, 116, 11, sx, my + mh - 116 * ks, ks);   /* (above her words: they are 3D too) */
         if (talk > 40) {
             RS_WIN(x, my, sx - 4 - x, mh);                         /* (her words: white (34), in her dark box on her page; not the pink's pattern) */
-            bestiary_piece(v, 1, 10, 120, 236, 64, 34, x + 8, my + 5, fminf(kl, (sx - 4 - x - 16) / 236.0f));
+            bestiary_piece(v, 1, 10, 120 + 8 * msg, 236, 64 - 8 * msg, 34, x + 8, my + 5 + 8 * msg * fminf(kl, (sx - 4 - x - 16) / 236.0f), fminf(kl, (sx - 4 - x - 16) / 236.0f));
         }
+    }
+    if (g_rs_cer) {   /* a title given: one window in the middle, its gold plate (the top screen's), why it was given (the game's words under the page say it again) */
+        const float kc = fminf(0.8f, (v->cw * 0.6f) / 232.0f), cw = 232 * kc + 16;
+        float ch = AC_PH * kc + 8 + 78 * kc + 12, cx = floorf((v->cw - cw) / 2), cy = floorf((v->ch - ch) / 2);
+        RS_WIN(cx, cy, cw, ch);
+        float px = cx + (cw - AC_PW * kc) / 2, py = cy + 6;      /* (the plate: as accolade_plate(), its corners (the curtain) left out; once it is there, not the curtain alone) */
+        if (px_share(g_engine_out[!eng], 25, 30, 0, 6, 8, 180, 255, 140, 255, 0, 170) >= 6) {
+        bestiary_piece(v, 0, AC_PX + 3, AC_Y + 0.5f, AC_PW - 6, AC_PH - 1, 0, px + 3 * kc, py + 0.5f * kc, kc);
+        bestiary_piece(v, 0, AC_PX + 0.5f, AC_Y + 3, 2.5f, AC_PH - 6, 0, px + 0.5f * kc, py + 3 * kc, kc);
+        bestiary_piece(v, 0, AC_PX + AC_PW - 3, AC_Y + 3, 2.5f, AC_PH - 6, 0, px + (AC_PW - 3) * kc, py + 3 * kc, kc);
+        }
+        float ty = py + AC_PH * kc + 6;
+        bestiary_piece(v, 0, 12, 106, 232, 74, 34, cx + 8, ty, kc);   /* why (white letters on its black window; not the curtain) */
     }
     #undef RS_WIN
 }
@@ -2305,7 +2324,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
         } else if (page == 1 && g_bag && !second && v->npiece + 22 <= GL_MAX_PIECES) {
             small[0] = small[1] = small[2] = small[3] = 0;           /* (the card: its description under the list) */
             bag_pieces(v);
-        } else if (!g_xmenu && !g_bag && !second && (hub = results_hub()) && v->npiece + 50 <= GL_MAX_PIECES) {
+        } else if (!g_xmenu && !g_bag && !second && (hub = results_hub()) && v->npiece + 64 <= GL_MAX_PIECES) {
             /* the battle records' first page (Sandy's), modern: drawn again in windows (results_pieces()) */
             small[0] = small[1] = small[2] = small[3] = 0;
             big[0] = big[1] = big[2] = big[3] = 0;
