@@ -1203,6 +1203,7 @@ static void coll_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);
     bestiary_piece(v, 1, 9, 15, 110, 12, 12, x - 3 * k, y, k); y += 12 * k + 2;           /* the title (12: not its bar's pattern) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
+    float y_kind = y;                                             /* (the quests' sheet: its title on this row) */
     bestiary_piece(v, 1, 12, 35, 100, 11, 6, x - 3 * k, y, k); y += 14 * k;               /* the kind shown (its tab's dark letters) */
     if (g_coll_quest) {                                           /* the quests: their signs and names, one column */
         int nq = g_rows[0];                                       /* (the rows with a quest: the empty ones' panel brown not kept as specks) */
@@ -1226,6 +1227,7 @@ static void coll_pieces(GlPresent* v) {
         if (g_cur[2] && cr) bestiary_cursor_at(v, 123, CL_ROW0, x - 2, y, k);
         y = y0 + 2 * 8 * CL_RH * k;
     }
+    float y_page = y;                                             /* (...its date on this one) */
     bestiary_piece(v, 1, 104, 172, 48, 9, 3, M + (lw - 48 * k) / 2, y, k);              /* the page and its arrows */
     bestiary_piece(v, 1, 11, 172, 10, 10, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);
     bestiary_piece(v, 1, 235, 172, 10, 10, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k);
@@ -1234,12 +1236,19 @@ static void coll_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 206, 19, 32, 8, 12, sx + 30 * k, sy + 4 * k, k);
     bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);
     if (g_bpage) book_card(v, M, H, lw);
-    if (g_coll_quest && g_quest_page && g_pop_win[2]) {          /* the quest's sheet beside the list, its parts on the window */
-        float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kq = fminf(rw / QS_W, (H - 4) / QS_H), keep[3];
-        memcpy(keep, g_pop_at, sizeof keep);
-        g_pop_at[2] = kq; g_pop_at[0] = rx + (rw - QS_W * kq) / 2; g_pop_at[1] = M + (H - QS_H * kq) / 2;
-        g_quest_nowin = 1; quest_pieces(v); g_quest_nowin = 0;
-        memcpy(g_pop_at, keep, sizeof keep);
+    if (g_coll_quest && g_quest_page && g_pop_win[2]) {
+        /* the quest's sheet beside the list, laid out on the window's right
+         * part: its title on the list's first row (the kind shown), a line
+         * under it, its description, and its date on the page's row, a line
+         * over it; each part's letters alone, inside its bar's gold edges */
+        float rx = M + lw + 8, rw = v->cw - M - 6 - rx, kq = fminf(rw / (QS_IN_W - 1), (y_page - y_kind - 12) / (QS_TITLE_H - 4 + QS_DESC_H + 8));
+        float dw = (QS_IN_W - 1) * kq, px = rx + (rw - dw) / 2, ty = y_kind - 2;
+        bestiary_piece(v, 0, QS_BAR_X + 3, QS_TITLE_Y + 2, QS_BAR_W - 6, QS_TITLE_H - 4, 3, px, ty, kq);   /* the title (light on its bar) */
+        ty += (QS_TITLE_H - 4) * kq + 3;
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), px, ty, dw, 0.75f);
+        bestiary_piece(v, 0, QS_IN_X - 1, QS_DESC_Y + 1, QS_IN_W - 1, QS_DESC_H - 2, 6, px, ty + 4, kq);   /* (its lines from their first letters (16) to their last (238); not the torn edge at 14) */    /* the description (its dark letters made light) */
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), px, y_page - 4, dw, 0.75f);
+        bestiary_piece(v, 0, QS_BAR_X + 3, QS_DATE_Y + 1, QS_BAR_W - 6, QS_DATE_H - 2, 3, px, y_page, kq);   /* the date (light on its bar) */
     }
 }
 /* The records' menus over the monster list (how to show it, its families):
