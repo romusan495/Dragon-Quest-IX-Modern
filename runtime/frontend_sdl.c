@@ -1294,7 +1294,7 @@ static void quest_list_pieces(GlPresent* v) {
     }
     for (int r = 0; r < nq; r++) {
         float yy = ry0 + r * rp + (rp - CL_RH * kl) / 2;
-        bestiary_piece(v, 1, 21, CL_ROW0 + r * CL_RH, 14, CL_RH, 20, lx + 26, yy, kl);          /* its sign */
+        bestiary_piece(v, 1, 22, CL_ROW0 + r * CL_RH + 1, 11, 11, 20, lx + 27.5f * 1, yy + kl, kl);   /* its sign (11 by 11: not the hand at its left) */
         bestiary_piece(v, 1, 35, CL_ROW0 + r * CL_RH, 142, CL_RH, 13, lx + 26 + 16 * kl, yy, kl);   /* its number and name */
     }
     float fy = top + H - foot;
@@ -1312,7 +1312,7 @@ static void quest_list_pieces(GlPresent* v) {
     if (!(g_quest_page && g_pop_win[2])) { g_qstamp[2] = 0; return; }
     float kq = fminf(0.9f, (rw - 16) / (QS_IN_W - 1)), hh = 30;
     float ix = rx + 10, iy = top + 6;
-    if (sel >= 0) bestiary_piece(v, 1, 21, CL_ROW0 + sel * CL_RH, 14, CL_RH, 20, ix, iy + 1, 1.7f);   /* its sign, big */
+    if (sel >= 0) bestiary_piece(v, 1, 22, CL_ROW0 + sel * CL_RH + 1, 11, 11, 20, ix + 1.5f * 1.7f, iy + 2.7f, 1.7f);   /* its sign, big (11 by 11: not the hand at its left) */
     float nx = ix + 14 * 1.7f + 8, kt = fminf(1.15f, (rw - (nx - rx) - 10 - (g_qstamp[2] ? 34 : 0)) / (float)g_qt_w);
     bestiary_piece(v, 0, QS_BAR_X + 2, QS_TITLE_Y + 2, 24, QS_TITLE_H - 4, 3, nx, iy, 0.62f);      /* its number, small */
     bestiary_piece(v, 0, 44, QS_TITLE_Y + 2, (float)g_qt_w, QS_TITLE_H - 4, 3, nx - 2 * kt, iy + 9, kt);   /* its name, big */
@@ -1324,12 +1324,12 @@ static void quest_list_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, ly, rw - 8, t);
     float dx = rx + (rw - (QS_IN_W - 1) * kq) / 2, lp = fminf(16 * kq * 1.3f, (H - hh - 6 - 22 - 8) / 8);
     for (int i = 0; i < 8; i++)                                               /* its lines, spaced out */
-        bestiary_piece(v, 0, QS_IN_X - 1, QS_DESC_Y + 16 * i, QS_IN_W - 1, 15, 6, dx, ly + 6 + i * lp, kq);   /* (15: not the page's edge under the last) */
+        bestiary_piece(v, 0, QS_IN_X, QS_DESC_Y + 1 + 16 * i, QS_IN_W - 2, 14, 35, dx + kq, ly + 6 + kq + i * lp, kq);   /* (39 to 53: not the bar's edge over the first, the page's under the last; 35: no stamp's edge) */
     float dy = top + H - 16;
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, dy, rw - 8, t);
     float kd = 0.62f;
     bestiary_piece(v, 0, QS_BAR_X + 2, QS_DATE_Y + 1, 100, QS_DATE_H - 2, 3, rx + 10, dy + 4, kd);          /* Started:/Completed: */
-    bestiary_piece(v, 0, 134, QS_DATE_Y + 1, 105, QS_DATE_H - 2, 3, rx + rw - 10 - 105 * kd, dy + 4, kd);   /* the date */
+    bestiary_piece(v, 0, 134, QS_DATE_Y + 1, 102, QS_DATE_H - 2, 3, rx + rw - 10 - 102 * kd, dy + 4, kd);   /* (to 236: not the bar's end) */   /* the date */
     #undef QL_WIN
 }
 /* The Complete! stamp on a quest's sheet beside the quests' list: the game

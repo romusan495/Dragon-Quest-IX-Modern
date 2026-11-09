@@ -541,13 +541,14 @@ static const char* FS_COPY =
      * the dark letters made grey (an ingredient short) */
     "uniform int u_mode; uniform vec2 u_px; uniform float u_line; uniform vec2 u_ds; uniform vec4 u_clip; uniform float u_fade;\n"
     "float red(vec2 uv) { vec4 c = texture(u_src, uv); vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.45, r.r - max(r.g, r.b)) * c.a; }\n"
+    "float redn(vec2 uv) { vec2 t = 1.0 / vec2(textureSize(u_src, 0)); return max(red(uv), max(max(red(uv + vec2(t.x, 0.0)), red(uv - vec2(t.x, 0.0))), max(red(uv + vec2(0.0, t.y)), red(uv - vec2(0.0, t.y))))); }\n"   /* (a stamp's red and the texel round it: its shaded edge) */
     "float ink(vec2 uv, int light) { ivec2 ts = textureSize(u_src, 0); vec4 c = light == 3 ? texelFetch(u_src, clamp(ivec2(uv * vec2(ts)), ivec2(0), ts - 1), 0) : textureLod(u_src, uv, 0.0); float L = dot(c.rgb / max(c.a, 0.001), vec3(0.299, 0.587, 0.114));\n"
     "  vec3 r = c.rgb / max(c.a, 0.001); float mx = max(r.r, max(r.g, r.b)), sat = (mx - min(r.r, min(r.g, r.b))) / max(mx, 0.02);\n"   /* (relative: a parchment, however dark, is as coloured) */
     "  return (light == 3 ? smoothstep(0.355, 0.325, L) : light == 4 ? smoothstep(0.57, 0.61, L) : light == 5 ? smoothstep(0.665, 0.70, L) : light == 2 ? smoothstep(0.42, 0.58, L) * smoothstep(0.45, 0.3, sat) : light != 0 ? smoothstep(0.38, 0.55, L) : smoothstep(0.55, 0.36, L)) * c.a; }\n"   /* (the letters softened (Smooth 2D, HD text) are greys: light ones 0.55 to 0.7 bright on panels of 0.3; dark ones as before, the parchment's stains (0.5 and more) left out) */
     "float goldness(vec4 c) { vec3 r = c.rgb / max(c.a, 0.001); return smoothstep(0.3, 0.5, r.r - r.b) * smoothstep(0.5, 0.65, r.g) * smoothstep(0.25, 0.1, r.b); }\n"
     "float letters(int light) {\n"   /* (9 points across the pixel at full size: a stroke thinner than the pixel drawn small is met by at least one; */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"   /* averaged, but never fainter than 3/4 of the strongest: thin strokes kept) */
-    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 uv = v_uv + dx * float(i) + dy * float(j); float a = ink(uv, light) * (light != 0 && light != 3 ? 1.0 : 1.0 - red(uv)); t += a; m = max(m, a); }\n"
+    "  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 uv = v_uv + dx * float(i) + dy * float(j); float a = light == 6 ? ink(uv, 0) * (1.0 - redn(uv)) : ink(uv, light) * (light != 0 && light != 3 ? 1.0 : 1.0 - red(uv)); t += a; m = max(m, a); }\n"
     "  return max(t / 9.0, m * 0.75); }\n"
     "float yellows() {\n"   /* (bright yellow letters: not the parchment, duller and bluer) */
     "  vec2 dx = dFdx(v_uv) / 3.0, dy = dFdy(v_uv) / 3.0; float t = 0.0, m = 0.0;\n"
@@ -612,7 +613,7 @@ static const char* FS_COPY =
     "  if (u_mode == 21) { o_color = vec4(0.98, 0.78, 0.16, 1.0) * 0.16; return; }\n"   /* (a chosen line lit, gold, faint) */
     "  if (u_mode == 22) { o_color = vec4(0.0); return; }\n"   /* (nothing: a touchable place only) */
     "  if (u_mode == 20) { vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (signs on a book's brown panel (73, 56, 24 to 93, 73, 44): the panel see-through) */
-    "    float p = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.24, 0.26, r.r) * smoothstep(0.41, 0.39, r.r) * smoothstep(0.15, 0.17, r.g) * smoothstep(0.32, 0.3, r.g) * smoothstep(0.2, 0.18, r.b) * smoothstep(0.06, 0.08, r.r - r.b);\n"
+    "    float p = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.24, 0.26, r.r) * smoothstep(0.41, 0.39, r.r) * smoothstep(0.15, 0.17, r.g) * smoothstep(0.32, 0.3, r.g) * smoothstep(0.2, 0.18, r.b) * smoothstep(0.06, 0.08, r.r - r.b) * smoothstep(0.03, 0.05, r.b);\n"   /* (the panel has some blue: a sign's own dark brown (89, 56, 0) kept) */
     "    float a = (1.0 - p) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 19 || u_mode == 24) { c = texelFetch(u_src, ivec2(v_uv * vec2(textureSize(u_src, 0))), 0); vec3 r = c.rgb / max(c.a, 0.001);\n"   /* (nearest: no halo of its edges between texels) */   /* (the bag's grid made modern: its tan panel, the brown under it, its cells and their frames see-through: the cells drawn again, 23) */
     "    float tan = step(r.b, r.g) * step(r.g, r.r) * smoothstep(0.17, 0.2, r.r - r.b) * smoothstep(0.34, 0.31, r.r - r.b) * smoothstep(0.42, 0.45, r.r) * smoothstep(0.7, 0.67, r.r);\n"
@@ -641,7 +642,7 @@ static const char* FS_COPY =
     "  }\n"
     "  if (u_mode == 1) { float t = smoothstep(0.52, 0.32, L) * c.a;\n"
     "    o_color = vec4(vec3(0.93) * t, t); return; }\n"
-    "  if (u_mode == 3 || u_mode == 6 || (u_mode >= 12 && u_mode <= 15)) { float t = letters(u_mode == 6 ? 0 : u_mode == 15 ? 3 : u_mode == 12 || u_mode == 14 ? 2 : 1), y = u_mode == 6 || u_mode == 15 ? 0.0 : yellows();\n"   /* (the game's yellow letters, a chosen line: gold) */
+    "  if (u_mode == 3 || u_mode == 6 || u_mode == 35 || (u_mode >= 12 && u_mode <= 15)) { float t = letters(u_mode == 6 ? 0 : u_mode == 35 ? 6 : u_mode == 15 ? 3 : u_mode == 12 || u_mode == 14 ? 2 : 1), y = u_mode == 6 || u_mode == 35 || u_mode == 15 ? 0.0 : yellows();\n"   /* (35: as 6, a stamp's shaded edge left out too) */   /* (the game's yellow letters, a chosen line: gold) */
     "    float g = u_mode == 13 || u_mode == 14 ? greys() : 0.0, a = max(max(t, y), g); vec3 col = mix(g > t ? vec3(0.6) : u_mode == 15 ? vec3(0.7) : vec3(0.93), vec3(0.98, 0.78, 0.16), y / max(a, 0.001)); o_color = vec4(col * a, a); return; }\n"
     "  o_color = c;\n"
     "}\n";
