@@ -479,6 +479,24 @@ static int g_bmode, g_bpage;                                     /* the records'
 static int g_bhold;                                               /* (the top screen not told a menu's page a moment: kept modern) */
 static uint64_t g_page2_at;                                       /* (the last frame the top screen was told a menu's page) */
 static uint64_t g_bmode_at;
+/* The records' other menus (the Wardrobe's, the Item list's, the quests'):
+ * the touch screen's parchment with its title bar and its menu, the top
+ * screen a picture with no 3D (a drawing on parchment, the quests' board):
+ * drawn as the monsters' (one window, the light letters), while the battle
+ * records are open (their hub or a list seen not long ago) */
+static uint64_t g_rec_at, g_rec2d_at;                             /* (the records last seen; a menu of these last told) */
+static int rec_bar(const uint32_t* px, int x, int y) {
+    uint32_t c = px[y * 256 + x]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    return r > 6 && g * 100 >= r * 40 && g * 100 <= r * 75 && b * 100 <= r * 30;    /* (146, 81..89, 16; fading: alike, darker, to 8, 4, 0) */
+}
+static int parchment_share(const uint32_t* px);
+static int records_menu2d(const uint32_t* list) {
+    if (!g_rec_at || g_frame - g_rec_at > 300) return 0;
+    if (!(rec_bar(list, 50, 10) && rec_bar(list, 50, 20) && rec_bar(list, 200, 20))) return 0;
+    uint32_t c = list[20 * 256 + 50];
+    if (((c >> 16) & 255) < 40) return g_rec2d_at && g_frame - g_rec2d_at <= 4;   /* (nearly black, fading out: one of these menus a moment ago) */
+    return parchment_share(list) >= 6;
+}
 /* The book's picture, grey in the window's background: drawn from the top
  * screen's parchment when a records' menu shows it (still for a moment:
  * not a fade, not a page sliding by), one for each book (the monsters', the
@@ -864,6 +882,28 @@ static int list_rows_n(const uint32_t* px, int x0, int x1, int row0, float rh, i
     return n;
 }
 static int list_rows(const uint32_t* px, int x0, int x1, int row0, float rh) { return list_rows_n(px, x0, x1, row0, rh, 8); }
+static int g_coll_empty, g_ce[4];                                 /* the Wardrobe's or the Item list's list empty: its words (This list is empty.) across both columns; their box */
+static int coll_empty(const uint32_t* px) {                       /* (letters between the two columns: only those words are there) */
+    const HdGlyph* gl = NULL; int ng = g_list_eng >= 0 ? hdtext_glyphs(g_list_eng, &gl) : 0, ink = 0;
+    int x0 = 256, y0 = 192, x1 = -1, y1 = -1;
+    for (int y = CL_ROW0; y < CL_ROW0 + 8 * CL_RH; y++)
+        for (int x = 14; x < 244; x++) {
+            uint32_t c = px[y * 256 + x]; int R = (c >> 16) & 255, G = (c >> 8) & 255, B = c & 255;
+            int mn = R < G ? (R < B ? R : B) : (G < B ? G : B), mx = R > G ? (R > B ? R : B) : (G > B ? G : B);
+            if (!(mn > 95 && mx - mn < 50)) continue;             /* (light letters; not the cursor's yellow) */
+            ink += x >= 124 && x < 133;
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+    for (int i = 0; i < ng; i++) {
+        const HdGlyph* g = &gl[i];
+        if (!g->has_color || g->y < CL_ROW0 - 4 || g->y >= CL_ROW0 + 8 * CL_RH) continue;
+        ink += 3 * (g->x + g->w / 2 >= 124 && g->x + g->w / 2 < 133);
+        if (g->x < x0) x0 = g->x; if (g->x + g->w > x1) x1 = g->x + g->w; if (g->y < y0) y0 = g->y; if (g->y + 12 > y1) y1 = g->y + 12;
+    }
+    if (ink < 3 || x1 < x0) return 0;
+    g_ce[0] = x0 - 2 < 0 ? 0 : x0 - 2; g_ce[1] = y0 - 2; g_ce[2] = (x1 + 3 > 256 ? 256 : x1 + 3) - g_ce[0]; g_ce[3] = y1 + 3 - g_ce[1];
+    return 1;
+}
 static int g_menu_bar = -1;                                       /* the records' menus (the book on the top screen) 1, Al Embic's 0, not told yet -1 */
 static int g_list_ghost;                                          /* a list's screen a moment, its names gone (leaving for the menu): the window alone */
 static void card_slots(const uint32_t* tp);
@@ -871,10 +911,12 @@ static int card_plates(void);
 static void card_jobs(GlPresent* v, float X, float Y, float k, int n);
 static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
+    if (g_bmode) g_rec_at = g_frame;                              /* (the records still open) */
     logo_load();
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
     g_list_eng = a_on_top ? 1 : 0;
-    int m = BM_NONE, page = top_page_mode();
+    int m = BM_NONE, page = top_page_mode(), rec2d = g_winstyle == 2 && page != 2 && records_menu2d(list);
+    if (rec2d) { page = 2; g_rec2d_at = g_frame; }
     if (page == 2) g_page2_at = g_frame;
     /* a frame or two where the top screen isn't told a menu's page (its 3D
      * late a frame, on a slower PC): the records' screen as it was, not the
@@ -902,10 +944,12 @@ static void bestiary_update(int a_on_top) {
         if (g_bpage) { item_icon(top, g_engine_layer[a_on_top ? 0 : 1]); card_slots(top); } else g_icon[2] = 0;
         g_recipe = 0;
         g_rows[0] = list_rows(list, 14, 122, CL_ROW0, CL_RH); g_rows[1] = list_rows(list, 134, 244, CL_ROW0, CL_RH);
+        g_coll_empty = !g_coll_quest && coll_empty(list);
         bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], 1);
         g_bmode = BM_COLL; g_bmode_at = g_frame; return;
     }
-    if (g_bmode == BM_COLL && g_frame - g_bmode_at < 8) return;   /* (a page turned: as it was a moment) */
+    if (g_bmode == BM_COLL && g_frame - g_bmode_at < 8 && !records_menu2d(list)
+        && px_share(list, 20, 52, 20, 0, 10, 70, 102, 54, 84, 24, 54) >= 7) return;   /* (a page turned, its names' panel still there: as it was a moment; not the menu come back) */
     if (g_bmode == BM_COLL) g_bmode = BM_NONE;
     g_bhold = page != 2 && g_bmode && g_winstyle == 2 && g_frame - g_page2_at <= 10 && parchment_share(list) >= 6;
     if (g_bhold) return;
@@ -927,7 +971,8 @@ static void bestiary_update(int a_on_top) {
         if (m == BM_LIST) { logo_tell(0); logo_show(0); }
         else if (m == BM_ALCH) { logo_tell(1); logo_show(1); }
         else if (dark_screen(top)) ;                              /* (a fade: as it was) */
-        else if (parchment_share(top) >= 9) logo_make(top);       /* a records' menu: its book's picture */
+        else if (parchment_share(top) >= 9) { if (!logo_make(top) && rec2d) logo_show(-1); }   /* a records' menu: its book's picture (not the last book's while it comes) */
+        else if (rec2d) logo_show(-1);                            /* (the quests' board: no picture) */
         else logo_show(1);                                        /* Al Embic's menus (the pot): the Alchimanach's */
         bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], m != BM_MENU);
         {   /* the records' (the book's parchment on the top screen), not Al Embic's
@@ -936,7 +981,7 @@ static void bestiary_update(int a_on_top) {
             static int seen = -1, n;
             if (m == BM_MENU && g_bmode != BM_MENU) g_menu_bar = -1;      /* (just come: not told yet) */
             if (!dark_screen(top)) {
-                int rec = parchment_share(top) >= 9;
+                int rec = parchment_share(top) >= 9 || rec2d;
                 if (g_menu_bar < 0) { g_menu_bar = rec; n = 0; }
                 else if (rec == g_menu_bar) n = 0;
                 else if (rec == seen) { if (++n >= 3) { g_menu_bar = rec; n = 0; } }
@@ -948,6 +993,7 @@ static void bestiary_update(int a_on_top) {
         else if (!(m == BM_MENU && g_menu_bar == 0)) g_npanel = 0;  /* (fading: the windows as they were) */
     }
     g_bmode = m;
+    if (m) g_rec_at = g_frame;
 }
 static float* bestiary_piece(GlPresent* v, int screen, float sx, float sy, float sw, float sh, int mode, float x, float y, float k) {
     static float spare[10];
@@ -1165,6 +1211,10 @@ static void coll_pieces(GlPresent* v) {
         }
         if (g_cur[2]) bestiary_cursor_at(v, 3, CL_ROW0, x - 2, y, k);
         y += 8 * CL_RH * k + 4 * k;
+    } else if (g_coll_empty) {                                    /* (This list is empty.: its words whole, in the column's middle) */
+        float ke = fminf(k, (lw - 10) / (float)g_ce[2]);
+        bestiary_piece(v, 1, g_ce[0], g_ce[1], g_ce[2], g_ce[3], 13, M + (lw - g_ce[2] * ke) / 2, y + (2 * 8 * CL_RH * k - g_ce[3] * ke) / 2, ke);
+        y += 2 * 8 * CL_RH * k;
     } else {
         float y0 = y; int n1 = g_rows[0] ? g_rows[0] : 8;
         bestiary_piece(v, 1, 14, CL_ROW0, 108, n1 * CL_RH, 13, x - 2 + 17 * k, y, k);
@@ -1979,13 +2029,12 @@ static int results_hub(void) {                                    /* (the touch 
         int bar, pan;
         { RH_RGB(tp[10 * 256 + 50]); bar = r > 20 && g * 100 >= r * 62 && g * 100 <= r * 88 && b * 100 >= r * 35 && b * 100 <= r * 65 ? r : 0; }
         { RH_RGB(tp[40 * 256 + 50]); pan = r > 30 && g * 100 >= r * 78 && g * 100 <= r * 96 && b * 100 >= r * 38 && b * 100 <= r * 68 ? r : 0; }
-        int dark, btn;                                            /* (or the parchment not in yet, black, and the records' blue buttons there: not the ceremony's curtain) */
-        { RH_RGB(tp[10 * 256 + 50]); dark = r + g + b < 40; }
-        { RH_RGB(px[12 * 256 + 60]); btn = b > r + 40 && b > 60; }
+        int btn;                                                  /* (or the records' blue buttons there, whatever the top screen shows a moment (black, fading in, after a ceremony): not the curtain) */
+        { RH_RGB(px[12 * 256 + 60]); btn = b > 20 && b * 10 > r * 13 + 80; }   /* (blue, however dim: fading in) */
         int curtain; { RH_RGB(tp[96 * 256 + 128]); curtain = r > 60 && r > 2 * g && r > 2 * b; }   /* (a ceremony: the curtain over the parchment; the game's own) */
         if (curtain) { last = 0; return 0; }
         g_rs_parch = bar && pan > bar * 3 / 2 && pan > 225;   /* (bright: not fading, its dark letters made light would be blocks) */
-        if (n >= 4 && ((bar && pan > bar * 3 / 2) || (dark && btn))) { last = e + 1; seen = g_frame; return last; }
+        if (n >= 4 && ((bar && pan > bar * 3 / 2) || btn)) { last = e + 1; seen = g_rec_at = g_frame; return last; }
         if (last == e + 1 && g_frame - seen <= 20) return last;   /* (its pink still, the parchment gone a moment: leaving it, or a window over it) */
     }
     #undef RH_RGB
@@ -2184,6 +2233,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         int page = top_page_mode();
+        if (page != 2 && g_rec2d_at && g_rec2d_at == g_frame) page = 2;         /* (the records' menus with no 3D: bestiary_update()) */
         if (page == 2) g_page2_at = g_frame;
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
