@@ -4,5 +4,5 @@
  * this fork's weekly releases) and nightly ("v27-nightly1": the work in
  * progress towards the next stable). */
 #pragma once
-#define DQIX_VERSION "v45"
-#define DQIX_VERSION_DATE "2026-11-06"
+#define DQIX_VERSION "v46"
+#define DQIX_VERSION_DATE "2026-11-09"
