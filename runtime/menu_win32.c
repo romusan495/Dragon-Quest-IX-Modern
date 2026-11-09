@@ -228,13 +228,14 @@ static void build(int all, const char* const* shell_names, int n_shells) {
     }
     sep(modern);
     item(modern, MI_MINIMAP, L"Map in the top right co&rner (one window, gone during battles)\tM");
+    item(modern, MI_ROUND_MAP, L"Map in the corner: roun&d, centred on you (silver compass ring)");
     Menu ms = sub(modern, L"Map si&ze");
     item(ms, MI_SSIZE0, L"Small");
     item(ms, MI_SSIZE0 + 1, L"Medium");
     item(ms, MI_SSIZE0 + 2, L"Large");
     item(modern, MI_MAPMARKS, L"&Map: mark the chests, bookshelves and quests (the mouse over one: what it holds)");
     item(modern, MI_MAPMARKS_OPENED, L"Map: also mark the ones already &emptied or done (greyed)");
-    item(modern, MI_MAPMONSTERS, L"Map: show the m&onsters walking nearby (red dots)");
+    item(modern, MI_MAPMONSTERS, L"Map: show the m&onsters walking nearby (a colour and a name for each kind)");
     item(modern, MI_MAPGATHER, L"Map: a star on the &gathering spots (alchemy ingredients)");
     item(modern, MI_INTERIOR_MAPS, L"Map: a plan of the &rooms inside buildings (drawn from their walls)");
     item(modern, MI_MAP_LEGEND, L"Map: a &legend of the marks (under the place's name)");

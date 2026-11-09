@@ -323,8 +323,8 @@ de = &Karte: Truhen, Bücherregale und Aufträge markieren (Maus darüber: der I
 en = Map: also mark the ones already &emptied or done (greyed)
 de = Karte: auch bereits &geleerte oder erledigte markieren (grau)
 
-en = Map: show the m&onsters walking nearby (red dots)
-de = Karte: &Monster in der Nähe zeigen (rote Punkte)
+en = Map: show the m&onsters walking nearby (a colour and a name for each kind)
+de = Karte: &Monster in der Nähe zeigen (eine Farbe und ein Name je Art)
 
 en = Map: a star on the &gathering spots (alchemy ingredients)
 de = Karte: ein Stern auf den &Sammelstellen (Alchemie-Zutaten)
@@ -1248,3 +1248,6 @@ de = Num
 
 en = num
 de = num
+
+en = Map in the corner: roun&d, centred on you (silver compass ring)
+de = Karte in der Ecke: run&d, auf dich zentriert (silberner Kompassring)

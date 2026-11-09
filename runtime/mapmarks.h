@@ -9,6 +9,7 @@ extern int g_mapmarks_opened;      /* ...also the ones already emptied or done (
 extern int g_mapmarks_monsters;    /* the monsters walking nearby, as red dots */
 extern int g_mapmarks_gather;      /* the fields' gathering spots (alchemy ingredients), as stars */
 extern int g_map_legend;           /* a legend of the marks shown, under the place's name */
+extern int g_mapmarks_round;       /* the map shown round around the hero (no legend then: out of its view) */
 extern int g_interior_maps;        /* inside a house (the game shows the town): the room's plan instead, from its walls */
 
 #define MAPMARKS_R 3               /* overlay pixels per DS pixel */
@@ -33,3 +34,27 @@ void mapmarks_hover(float x, float y);
 #define SHOP_DESC_X    18
 #define SHOP_DESC_ICON 32
 int mapmarks_shop(uint32_t* px, uint8_t* info, int desc_y, const uint8_t** rgba, int* changed);
+/* The bag's list's lines on show (hero: the leader's things instead): their
+ * items' keys; *sel the chosen line (-1: unknown). 0: not found. */
+int mapmarks_bag_list(int hero, uint16_t keys[8], int* sel);
+/* The bag's list (bag_pieces()): the n lines' items' icons (keys; 0xFFFF
+ * none) at x, from y0, dy apart, size s; the chosen one's big at (bx, by),
+ * size bs (0: none); its path (as mapmarks_menu()); in the overlay's 256 x
+ * 192 units (as mapmarks_shop()). 1: drawn again (gl_set_icons()). */
+int mapmarks_bag(const uint16_t* keys, int n, float x, float y0, float dy, float s, int sel, float bx, float by, float bs,
+                 const char* first, float fx, float fy, float fh, const float* chev, int nchev, float ch, const uint8_t** rgba);
+/* The menus' path: its first word (left at fx, middle at fy, fh high) and
+ * the marks "›" between its words (chev: x, y each, ch high). 1: drawn again. */
+int mapmarks_menu(const char* first, float fx, float fy, float fh, const float* chev, int nchev, float ch, const uint8_t** rgba);
+int mapmarks_menu_off(void);                                      /* (1: there was something) */
+float mapmarks_text_w(const char* s, float h);                    /* a text's width, h high (the overlay's units) */
+
+/* Where the hero is on the top screen's map (DS pixels), for the round
+ * minimap to centre on him; g_map_hero_ok 0: not known now. */
+extern float g_map_hero[2];
+extern int g_map_hero_ok;
+/* The round minimap's list of the kinds of monsters near (their colours on
+ * the map, names, how many): premultiplied RGBA, rows top-down, at the
+ * overlay's scale (MAPMARKS_R pixels per DS pixel); *rgba NULL: none. 1 if
+ * it changed. */
+int mapmarks_species(const uint8_t** rgba, int* w, int* h);

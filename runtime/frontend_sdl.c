@@ -79,6 +79,10 @@ static int g_hints = 1;                                           /* the DS butt
 static int g_hint_pad = -1;                                       /* ...the last used: 1 the controller, 0 the keyboard, -1 not yet */
 static int g_minimap = 1;                                         /* widescreen: the map small in a corner of the one window (no second window), not in battles */
 static int g_map_shown = 1;                                       /* ...shown (Modern > Map in the top right corner) */
+static int g_round_map = 1;                                       /* ...round, centred on the hero, a silver ring round it (Modern > Round map) */
+static int g_place_plate = -1;                                    /* the map's place name plate: its left edge on the top screen (-1: none) */
+static int g_place_txt[2];
+static int g_species_w, g_species_h;                              /* the monsters near's list (mapmarks_species()), its size (overlay pixels; 0: none) */                                        /* ...its letters (x0, x1) */
 static float g_mini_vis = 1.0f;                                   /* ...1 shown, 0 gone (the game's 2D under it: a menu) */
 /* An adventure is loaded (the field's characters, farm.c): before it (the
  * logos, the opening movie, the title) the minimap isn't shown. */
@@ -117,6 +121,75 @@ static int g_stamp[4];                                            /* ...its Comp
 static int g_shop;                                                /* widescreen: a shop's buy list on the field, its item's description from the top screen under it (shop_update) */
 static int g_shop_cut = 118, g_shop_cut2 = 118;                   /* ...the list's rows end at the first, the panels under it start at the second */
 enum { SHOP_TX = 60, SHOP_TY = 33, SHOP_TW = 113, SHOP_TH = 58, SHOP_PAD = 3, SHOP_GAP = 3 };   /* the card's text, beside its icon; the description's window */
+/* modern: the bag's list (Items: the bag, or the leader's things) on the
+ * field, laid out again (bag_pieces()): one window in the middle (the path
+ * to it above, its name, the lines with each item's icon, the chosen one
+ * lit), the chosen item's description in a window under it, the box that
+ * was under the list ("SELECT Sort", the gold) at its right; the menus that
+ * led there hidden (bag_update()) */
+static int g_bag_hold;                                            /* (the bag kept, greyed: its letters grey) */
+static int g_bag;                                                 /* the list's lines shown (0: not up) */
+static int g_bag_sel = -1;                                        /* ...the chosen one */
+static uint16_t g_bag_keys[8]; static int g_bag_keys_n;          /* ...their items */
+static int g_bag_box[4];                                          /* ...the box under it: x, y, w, h (w 0: none) */
+static int g_bag_ink[2];                                          /* ...the card's description's rows on the top screen (y0, y1; y1 < y0: none) */
+static int g_bag_word[3][4];                                      /* ...the path's words: the menus' names ("Items", "Current items") and the chosen line ("Bag", a name); w 0: none */
+static int g_bag_path[3][4], g_bag_path_n;                        /* ...those kept for the windows of choices over it (xmenu_detect()) */
+enum { BAG_X0 = 113, BAG_Y0 = 9, BAG_X1 = 254, BAG_Y1 = 134,     /* the list's window on the DS (its grey line) */
+       BAG_TX = 124, BAG_LY = 14, BAG_DY = 13 };                  /* its names from x 124; its lines from y 14 */
+/* ...on the canvas (k: the DS's pixels to it) */
+#define BAG_K   0.75f
+#define BAG_W   123.0f                                            /* the window's width */
+#define BAG_WY  20.0f                                             /* its top (the path above it) */
+#define BAG_RY  35.5f                                             /* where the DS's y 14 goes (its first line) */
+#define BAG_WY1 (BAG_RY + (BAG_Y1 - 1 - BAG_LY) * BAG_K + 3)       /* its bottom */
+#define BAG_DH  28.0f                                             /* the description's window's height, 5 under */
+#define BAG_IC  8.0f                                              /* an icon's size */
+#define BAG_BIG 17.0f                                             /* the chosen one's, beside its description */
+#define BAG_CK  0.6f                                              /* the path's words' scale */
+static float bag_x0(float cw) { return (cw - BAG_W) / 2; }
+static float bag_mx(float cw, float dx) { return bag_x0(cw) + 16.5f + (dx - BAG_TX) * BAG_K; }
+static float bag_my(float dy) { return BAG_RY + (dy - BAG_LY) * BAG_K; }
+/* The menus' path above their window (the bag's, the X menu's: path_set()):
+ * "Menu" (mapmarks_menu()), then the menus' names on the DS (their light
+ * letters' boxes), small, with "›" between; on the canvas from x, middle y */
+#define PATH_K  0.6f                                              /* the names' scale */
+#define PATH_H  5.5f                                              /* "Menu"'s height */
+static int   g_path_n;                                            /* the names */
+static int   g_path_word[4][4];                                   /* ...their boxes on the DS */
+static float g_path_x[5], g_path_y, g_path_chev[8];               /* ...where they go ([0]: "Menu"), the marks (x, y) */
+static void path_set(float x, float y, const int (*word)[4], int n) {
+    g_path_n = 0; g_path_y = y; g_path_x[0] = x;
+    x += mapmarks_text_w(T("Menu"), PATH_H);
+    for (int i = 0; i < n && g_path_n < 4; i++) {
+        if (!word[i][2]) continue;
+        g_path_chev[2 * g_path_n] = x + 3; g_path_chev[2 * g_path_n + 1] = y;
+        memcpy(g_path_word[g_path_n], word[i], sizeof word[i]);
+        g_path_x[++g_path_n] = x + 8.5f;
+        x += 8.5f + word[i][2] * PATH_K;
+    }
+}
+/* modern: the X menu's windows (the menu, Items, Current items: one at a
+ * time) on the field, laid out again (xmenu_pieces()): the one the hand is
+ * in alone, in the middle (the path above it, its name, its lines, the one
+ * chosen lit no further than its column), the box at the bottom (the gold)
+ * where it was; the others hidden (xmenu_update()) */
+static int g_xmenu;                                               /* up */
+static int g_xm_win[4];                                           /* ...the window on the DS: x0, y0 (its top line), x1, y1 (its bottom one) */
+static int g_xm_sep;                                              /* ...the line under its name (0: none, the menu) */
+static int g_xm_band[4];                                          /* ...the chosen line's: x0, y0, x1, y1 (x1 < x0: none) */
+static int g_xm_box[4];                                           /* ...the box at the bottom: x, y, w, h (w 0: none) */
+static int g_xm_hand[4];                                          /* ...the hand: x, y, w, h (round its yellow) */
+static int g_xm_info[4], g_xm_isep[4], g_xm_nisep;               /* a window right under it, as wide (who: their HP): X0 top X1 bottom; its lines inside */
+static int g_xm_hold;                                             /* ...kept between two windows (xmenu_update()): their lines inside it not drawn */
+static int g_xm_msg[4];                                           /* ...a message under it: its words' box, x, y, w, h (w 0: none) */
+static int g_xm_word[4][4], g_xm_nword;                           /* ...the path: the menus' names before, and its own */
+static int g_xm_free, g_xm_nf, g_xm_fwin[8][5], g_xm_fsep[8][3];  /* windows round it (a spell's cost, its help...): all where the game has them (x0 y0 x1 y1 greyed; its lines inside) */
+static void xm_place(float cw, float* wx, float* wy) {
+    if (g_xm_free) { *wx = (cw - 256) / 2 + g_xm_win[0]; *wy = (float)g_xm_win[1]; return; }
+    *wx = floorf(cw / 2 - (g_xm_win[2] - g_xm_win[0] + 1) / 2.0f);
+    *wy = floorf(85 - (g_xm_win[3] - g_xm_win[1] + 1) / 2.0f);
+}
 static int g_hud_list;                                            /* ...a list open (spells, items, targets): modern, the chooser alone */
 static int g_hud_win[4];                                          /* ...or a window alone there (experience, level up): x, y, w, h (w 0: none) */
 static int g_volume = 100, g_mute;                                /* Game > Volume */
@@ -299,11 +372,11 @@ static int top_page_wide(void) {                                  /* (widescreen
     return WIDE_GL && g_wide && !g_side_by_side && !(g_gl && g_two && !g_single) && g_minimap && in_adventure();
 }
 static int top_page_mode(void) {
-    if (!top_page_wide() || (g_small_blank && !g_shop)) return 0;   /* (a shop's list: the top screen goes blank before its card shows) */
+    if (!top_page_wide() || (g_small_blank && !g_shop && !g_bag)) return 0;   /* (a shop's list: the top screen goes blank before its card shows) */
     int side = 0, which = g_gl ? gl_wide_shown(&side) : -1;
     if (g_cc_n) return 0;                                         /* (the character's creation: its own pop-ups, creation_update) */
     if (which == 0) return g_top_menu && !g_hud_n && !g_hud_win[2] ? 2 : 0;
-    return mapmarks_top_page() || g_shop ? 1 : 0;                 /* (a shop's list: laid out before its card shows) */
+    return mapmarks_top_page() || g_shop || g_bag ? 1 : 0;        /* (a shop's list, the bag's: laid out before the card shows) */
 }
 
 /* A quest's sheet (the top screen while a quest is offered, accepted or
@@ -397,6 +470,9 @@ static int alchemy_list(const uint32_t* list) {                 /* the Alchimana
  * on the top screen): the title's bar, the names' panel, its grey bottom edge */
 enum { CL_ROW0 = 57, CL_RH = 14 };
 static int g_coll_quest;                                          /* (that list: the quests', one column, the quest's sheet beside it) */
+static int g_qt_w = 190, g_qrow = -1, g_qstamp[4];               /* (the quests' page: its title's name's width; the chosen row; its Complete! stamp's box, quest_list_stamp()) */
+static void quest_list_stamp(const uint32_t* top);
+static int stamp_red(uint32_t c);
 static int quest_page(const uint32_t* px);
 static int coll_list(const uint32_t* list) {
     return px_share(list, 20, 12, 10, 0, 10, 130, 162, 70, 100, 8, 32) >= 7            /* the title's bar (146, 81, 16) */
@@ -409,6 +485,24 @@ static int g_bmode, g_bpage;                                     /* the records'
 static int g_bhold;                                               /* (the top screen not told a menu's page a moment: kept modern) */
 static uint64_t g_page2_at;                                       /* (the last frame the top screen was told a menu's page) */
 static uint64_t g_bmode_at;
+/* The records' other menus (the Wardrobe's, the Item list's, the quests'):
+ * the touch screen's parchment with its title bar and its menu, the top
+ * screen a picture with no 3D (a drawing on parchment, the quests' board):
+ * drawn as the monsters' (one window, the light letters), while the battle
+ * records are open (their hub or a list seen not long ago) */
+static uint64_t g_rec_at, g_rec2d_at;                             /* (the records last seen; a menu of these last told) */
+static int rec_bar(const uint32_t* px, int x, int y) {
+    uint32_t c = px[y * 256 + x]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    return r > 6 && g * 100 >= r * 40 && g * 100 <= r * 75 && b * 100 <= r * 30;    /* (146, 81..89, 16; fading: alike, darker, to 8, 4, 0) */
+}
+static int parchment_share(const uint32_t* px);
+static int records_menu2d(const uint32_t* list) {
+    if (!g_rec_at || g_frame - g_rec_at > 300) return 0;
+    if (!(rec_bar(list, 50, 10) && rec_bar(list, 50, 20) && rec_bar(list, 200, 20))) return 0;
+    uint32_t c = list[20 * 256 + 50];
+    if (((c >> 16) & 255) < 40) return g_rec2d_at && g_frame - g_rec2d_at <= 4;   /* (nearly black, fading out: one of these menus a moment ago) */
+    return parchment_share(list) >= 6;
+}
 /* The book's picture, grey in the window's background: drawn from the top
  * screen's parchment when a records' menu shows it (still for a moment:
  * not a fade, not a page sliding by), one for each book (the monsters', the
@@ -794,6 +888,29 @@ static int list_rows_n(const uint32_t* px, int x0, int x1, int row0, float rh, i
     return n;
 }
 static int list_rows(const uint32_t* px, int x0, int x1, int row0, float rh) { return list_rows_n(px, x0, x1, row0, rh, 8); }
+static int g_coll_empty, g_ce[4];                                 /* the Wardrobe's or the Item list's list empty: its words (This list is empty.) across both columns; their box */
+static int coll_empty(const uint32_t* px) {                       /* (letters between the two columns: only those words are there) */
+    const HdGlyph* gl = NULL; int ng = g_list_eng >= 0 ? hdtext_glyphs(g_list_eng, &gl) : 0, ink = 0;
+    int x0 = 256, y0 = 192, x1 = -1, y1 = -1;
+    for (int y = CL_ROW0; y < CL_ROW0 + 8 * CL_RH; y++)
+        for (int x = 14; x < 244; x++) {
+            uint32_t c = px[y * 256 + x]; int R = (c >> 16) & 255, G = (c >> 8) & 255, B = c & 255;
+            int mn = R < G ? (R < B ? R : B) : (G < B ? G : B), mx = R > G ? (R > B ? R : B) : (G > B ? G : B);
+            int light = mn > 95 && mx - mn < 50, gold = R > 200 && G > 150 && B < 110;   /* (light letters; a chosen name's yellow, or the cursor's) */
+            if (!light && !gold) continue;
+            ink += light && x >= 124 && x < 133;
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+    for (int i = 0; i < ng; i++) {
+        const HdGlyph* g = &gl[i];
+        if (!g->has_color || g->y < CL_ROW0 - 4 || g->y >= CL_ROW0 + 8 * CL_RH) continue;
+        ink += 3 * (g->x + g->w / 2 >= 124 && g->x + g->w / 2 < 133);
+        if (g->x < x0) x0 = g->x; if (g->x + g->w > x1) x1 = g->x + g->w; if (g->y < y0) y0 = g->y; if (g->y + 12 > y1) y1 = g->y + 12;
+    }
+    if (ink < 3 || x1 < x0 || y0 < CL_ROW0 + CL_RH - 2) return 0;   /* (a list's first row has a name: those words sit lower) */
+    g_ce[0] = x0 - 2 < 0 ? 0 : x0 - 2; g_ce[1] = y0 - 2; g_ce[2] = (x1 + 3 > 256 ? 256 : x1 + 3) - g_ce[0]; g_ce[3] = y1 + 3 - g_ce[1];
+    return 1;
+}
 static int g_menu_bar = -1;                                       /* the records' menus (the book on the top screen) 1, Al Embic's 0, not told yet -1 */
 static int g_list_ghost;                                          /* a list's screen a moment, its names gone (leaving for the menu): the window alone */
 static void card_slots(const uint32_t* tp);
@@ -801,10 +918,12 @@ static int card_plates(void);
 static void card_jobs(GlPresent* v, float X, float Y, float k, int n);
 static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
+    if (g_bmode) g_rec_at = g_frame;                              /* (the records still open) */
     logo_load();
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
     g_list_eng = a_on_top ? 1 : 0;
-    int m = BM_NONE, page = top_page_mode();
+    int m = BM_NONE, page = top_page_mode(), rec2d = g_winstyle == 2 && page != 2 && records_menu2d(list);
+    if (rec2d) { page = 2; g_rec2d_at = g_frame; }
     if (page == 2) g_page2_at = g_frame;
     /* a frame or two where the top screen isn't told a menu's page (its 3D
      * late a frame, on a slower PC): the records' screen as it was, not the
@@ -824,7 +943,7 @@ static void bestiary_update(int a_on_top) {
         if (g_frame - g_titles_at < 90 && !(tit_black && tmean >= 8)) return;
     }
     if (g_bmode == BM_TITLES) g_bmode = BM_NONE;
-    if (g_winstyle == 2 && coll_list(list)) {                     /* the Wardrobe, the Item list, the quests' list: one window too (coll_pieces()) */
+    if (g_winstyle == 2 && coll_list(list) && !(monster_list(list) && monster_page(top)) && !alchemy_list(list)) {   /* (the monsters' list is laid out alike: told by its monster's page on the top screen; its own window then) */                     /* the Wardrobe, the Item list, the quests' list: one window too (coll_pieces()) */
         int icons = 0;                                            /* (the quests': a sign before each, its light ring (186, 251, 251)) */
         for (int r = 0; r < 8; r++) icons += (list[(CL_ROW0 + 3 + r * CL_RH) * 256 + 22] & 0xFFFFFF) == 0xBAFBFB;
         g_coll_quest = icons > 0 || quest_page(top);
@@ -832,10 +951,19 @@ static void bestiary_update(int a_on_top) {
         if (g_bpage) { item_icon(top, g_engine_layer[a_on_top ? 0 : 1]); card_slots(top); } else g_icon[2] = 0;
         g_recipe = 0;
         g_rows[0] = list_rows(list, 14, 122, CL_ROW0, CL_RH); g_rows[1] = list_rows(list, 134, 244, CL_ROW0, CL_RH);
+        g_coll_empty = !g_coll_quest && coll_empty(list);
+        if (g_coll_quest) {                                       /* the quest's title's name: how wide (its light letters, or its HD letters) */
+            const HdGlyph* gl = NULL; int ng = hdtext_glyphs(a_on_top ? 0 : 1, &gl), x1 = 0;
+            for (int y = 18; y < 33; y++) for (int x = 46; x < 239; x++) { uint32_t c = top[y * 256 + x]; if (((c >> 16) & 255) > 150 && ((c >> 8) & 255) > 150 && (c & 255) > 130 && x > x1) x1 = x; }
+            for (int i = 0; i < ng; i++) if (gl[i].y >= 14 && gl[i].y < 33 && gl[i].x + gl[i].w > x1 && gl[i].x + gl[i].w < 240) x1 = gl[i].x + gl[i].w;
+            g_qt_w = x1 > 60 ? x1 - 44 + 3 : 190;
+            quest_list_stamp(top);
+        }
         bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], 1);
         g_bmode = BM_COLL; g_bmode_at = g_frame; return;
     }
-    if (g_bmode == BM_COLL && g_frame - g_bmode_at < 8) return;   /* (a page turned: as it was a moment) */
+    if (g_bmode == BM_COLL && g_frame - g_bmode_at < 8 && !records_menu2d(list)
+        && px_share(list, 20, 52, 20, 0, 10, 70, 102, 54, 84, 24, 54) >= 7) return;   /* (a page turned, its names' panel still there: as it was a moment; not the menu come back) */
     if (g_bmode == BM_COLL) g_bmode = BM_NONE;
     g_bhold = page != 2 && g_bmode && g_winstyle == 2 && g_frame - g_page2_at <= 10 && parchment_share(list) >= 6;
     if (g_bhold) return;
@@ -857,7 +985,8 @@ static void bestiary_update(int a_on_top) {
         if (m == BM_LIST) { logo_tell(0); logo_show(0); }
         else if (m == BM_ALCH) { logo_tell(1); logo_show(1); }
         else if (dark_screen(top)) ;                              /* (a fade: as it was) */
-        else if (parchment_share(top) >= 9) logo_make(top);       /* a records' menu: its book's picture */
+        else if (parchment_share(top) >= 9) { if (!logo_make(top) && rec2d) logo_show(-1); }   /* a records' menu: its book's picture (not the last book's while it comes) */
+        else if (rec2d) logo_show(-1);                            /* (the quests' board: no picture) */
         else logo_show(1);                                        /* Al Embic's menus (the pot): the Alchimanach's */
         bestiary_cursor(list, g_engine_layer[a_on_top ? 1 : 0], m != BM_MENU);
         {   /* the records' (the book's parchment on the top screen), not Al Embic's
@@ -866,7 +995,7 @@ static void bestiary_update(int a_on_top) {
             static int seen = -1, n;
             if (m == BM_MENU && g_bmode != BM_MENU) g_menu_bar = -1;      /* (just come: not told yet) */
             if (!dark_screen(top)) {
-                int rec = parchment_share(top) >= 9;
+                int rec = parchment_share(top) >= 9 || rec2d;
                 if (g_menu_bar < 0) { g_menu_bar = rec; n = 0; }
                 else if (rec == g_menu_bar) n = 0;
                 else if (rec == seen) { if (++n >= 3) { g_menu_bar = rec; n = 0; } }
@@ -878,6 +1007,7 @@ static void bestiary_update(int a_on_top) {
         else if (!(m == BM_MENU && g_menu_bar == 0)) g_npanel = 0;  /* (fading: the windows as they were) */
     }
     g_bmode = m;
+    if (m) g_rec_at = g_frame;
 }
 static float* bestiary_piece(GlPresent* v, int screen, float sx, float sy, float sw, float sh, int mode, float x, float y, float k) {
     static float spare[10];
@@ -1078,7 +1208,9 @@ static void alchemy_pieces(GlPresent* v) {
 /* The Wardrobe, the Item list, modern: one window; left, the title, the
  * kind shown (its tab), the names in one column (the left column's, then the
  * right one's), the page, SELECT Sort; right of a line, the item's card. */
+static void quest_list_pieces(GlPresent* v);
 static void coll_pieces(GlPresent* v) {
+    if (g_coll_quest) { quest_list_pieces(v); return; }       /* (the quests': their own page) */
     const float M = 5, H = v->ch - 2 * M;
     float k = (H - 10) / (12 + 4 + 12 + 2 + 2 * 8 * CL_RH + 12 + 22), lw = 122 * k + 8, x = M + 4, y = M + 3;
     if (g_coll_quest) { k = fminf((H - 10) / (12 + 4 + 12 + 2 + 8 * CL_RH + 12 + 22) * 0.85f, (v->cw * 0.5f - 8) / 180); lw = 180 * k + 8; }   /* (one wide column) */
@@ -1086,6 +1218,7 @@ static void coll_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + lw, M + 6, 0.75f, H - 12);
     bestiary_piece(v, 1, 9, 15, 110, 12, 12, x - 3 * k, y, k); y += 12 * k + 2;           /* the title (12: not its bar's pattern) */
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), M + 3, y, lw - 6, 0.75f); y += 4 * k;
+    float y_kind = y;                                             /* (the quests' sheet: its title on this row) */
     bestiary_piece(v, 1, 12, 35, 100, 11, 6, x - 3 * k, y, k); y += 14 * k;               /* the kind shown (its tab's dark letters) */
     if (g_coll_quest) {                                           /* the quests: their signs and names, one column */
         int nq = g_rows[0];                                       /* (the rows with a quest: the empty ones' panel brown not kept as specks) */
@@ -1095,6 +1228,10 @@ static void coll_pieces(GlPresent* v) {
         }
         if (g_cur[2]) bestiary_cursor_at(v, 3, CL_ROW0, x - 2, y, k);
         y += 8 * CL_RH * k + 4 * k;
+    } else if (g_coll_empty) {                                    /* (This list is empty.: its words whole, in the column's middle) */
+        float ke = fminf(k, (lw - 10) / (float)g_ce[2]);
+        bestiary_piece(v, 1, g_ce[0], g_ce[1], g_ce[2], g_ce[3], 13, M + (lw - g_ce[2] * ke) / 2, y + (2 * 8 * CL_RH * k - g_ce[3] * ke) / 2, ke);
+        y += 2 * 8 * CL_RH * k;
     } else {
         float y0 = y; int n1 = g_rows[0] ? g_rows[0] : 8;
         bestiary_piece(v, 1, 14, CL_ROW0, 108, n1 * CL_RH, 13, x - 2 + 17 * k, y, k);
@@ -1105,6 +1242,7 @@ static void coll_pieces(GlPresent* v) {
         if (g_cur[2] && cr) bestiary_cursor_at(v, 123, CL_ROW0, x - 2, y, k);
         y = y0 + 2 * 8 * CL_RH * k;
     }
+    float y_page = y;                                             /* (...its date on this one) */
     bestiary_piece(v, 1, 104, 172, 48, 9, 3, M + (lw - 48 * k) / 2, y, k);              /* the page and its arrows */
     bestiary_piece(v, 1, 11, 172, 10, 10, 3, M + (lw - 48 * k) / 2 - 16 * k, y, k);
     bestiary_piece(v, 1, 235, 172, 10, 10, 3, M + (lw + 48 * k) / 2 + 6 * k, y, k);
@@ -1113,13 +1251,128 @@ static void coll_pieces(GlPresent* v) {
     bestiary_piece(v, 1, 206, 19, 32, 8, 12, sx + 30 * k, sy + 4 * k, k);
     bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 18 * k, sy + 14 * k, k);
     if (g_bpage) book_card(v, M, H, lw);
-    if (g_coll_quest && g_quest_page && g_pop_win[2]) {          /* the quest's sheet beside the list, its parts on the window */
-        float rx = M + lw + 4, rw = v->cw - M - 4 - rx, kq = fminf(rw / QS_W, (H - 4) / QS_H), keep[3];
-        memcpy(keep, g_pop_at, sizeof keep);
-        g_pop_at[2] = kq; g_pop_at[0] = rx + (rw - QS_W * kq) / 2; g_pop_at[1] = M + (H - QS_H * kq) / 2;
-        g_quest_nowin = 1; quest_pieces(v); g_quest_nowin = 0;
-        memcpy(g_pop_at, keep, sizeof keep);
+    if (g_coll_quest && g_quest_page && g_pop_win[2]) {
+        /* the quest's sheet beside the list, laid out on the window's right
+         * part: its title on the list's first row (the kind shown), a line
+         * under it, its description, and its date on the page's row, a line
+         * over it; each part's letters alone, inside its bar's gold edges */
+        float rx = M + lw + 8, rw = v->cw - M - 6 - rx, kq = fminf(rw / (QS_IN_W - 1), (y_page - y_kind - 12) / (QS_TITLE_H - 4 + QS_DESC_H + 8));
+        float dw = (QS_IN_W - 1) * kq, px = rx + (rw - dw) / 2, ty = y_kind - 2;
+        bestiary_piece(v, 0, QS_BAR_X + 3, QS_TITLE_Y + 2, QS_BAR_W - 6, QS_TITLE_H - 4, 3, px, ty, kq);   /* the title (light on its bar) */
+        ty += (QS_TITLE_H - 4) * kq + 3;
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), px, ty, dw, 0.75f);
+        bestiary_piece(v, 0, QS_IN_X - 1, QS_DESC_Y + 1, QS_IN_W - 1, QS_DESC_H - 2, 6, px, ty + 4, kq);   /* (its lines from their first letters (16) to their last (238); not the torn edge at 14) */    /* the description (its dark letters made light) */
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), px, y_page - 4, dw, 0.75f);
+        bestiary_piece(v, 0, QS_BAR_X + 3, QS_DATE_Y + 1, QS_BAR_W - 6, QS_DATE_H - 2, 3, px, y_page, kq);   /* the date (light on its bar) */
     }
+}
+/* The quests' list, its own page for a wide screen (the mockup): two
+ * windows side by side. Left, the list: the kind shown (a gold line under
+ * it), each quest's sign and its number and name, the chosen one lit gold
+ * with the hand, the page and how it is sorted under them. Right, the chosen
+ * quest: its sign big, its number small over its name in big letters, its
+ * Complete! stamp, its description's lines spaced out, its date at the bottom
+ * (the words left, the date right). The game's letters, their own pieces. */
+static void quest_list_pieces(GlPresent* v) {
+    const float M = 5, t = 0.75f, G = 4, top = M + 1, H = v->ch - 2 * M - 2;
+    #define QL_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), 0, 0, v->cw, v->ch);   /* (the backdrop: dark) */
+    float lw = floorf((v->cw - 2 * M - G) * 0.47f), lx = M, rx = M + lw + G, rw = v->cw - M - rx;
+    /* the list */
+    QL_WIN(lx, top, lw, H);
+    float kl = fminf(0.85f, (lw - 30) / (14.0f + 142.0f)), tabh = 15, foot = 16;
+    bestiary_piece(v, 1, 12, 35, 100, 11, 6, lx + 10, top + 4, kl);           /* the kind shown */
+    for (int i = 0; i < 4; i++) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 21, 0, 0, 1), lx + 8, top + 4 + 12 * kl, 72 * kl + 6, 1.2f);   /* its gold line */
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), lx + 4, top + tabh + 2, lw - 8, t);
+    float ry0 = top + tabh + 6, rp = fminf((H - tabh - foot - 10) / 8, CL_RH * kl * 1.45f);
+    int nq = g_rows[0];
+    int sel = g_cur[2] ? (g_cur[1] + g_cur[3] / 2 - CL_ROW0) / CL_RH : -1;
+    if (sel >= nq) sel = -1;
+    g_qrow = sel;
+    if (sel >= 0) {
+        for (int i = 0; i < 2; i++) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 21, 0, 0, 1), lx + 22, ry0 + sel * rp + (rp - CL_RH * kl) / 2 - 1, lw - 28, CL_RH * kl + 2);   /* the chosen one, lit */
+        bestiary_cursor_at(v, 3, CL_ROW0 + sel * CL_RH, lx + 3, ry0 + sel * rp + (rp - CL_RH * kl) / 2, kl);   /* the hand */
+    }
+    for (int r = 0; r < nq; r++) {
+        float yy = ry0 + r * rp + (rp - CL_RH * kl) / 2;
+        bestiary_piece(v, 1, 22, CL_ROW0 + r * CL_RH + 1, 11, 11, 20, lx + 27.5f * 1, yy + kl, kl);   /* its sign (11 by 11: not the hand at its left) */
+        bestiary_piece(v, 1, 35, CL_ROW0 + r * CL_RH, 142, CL_RH, 13, lx + 26 + 16 * kl, yy, kl);   /* its number and name */
+    }
+    float fy = top + H - foot;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), lx + 4, fy, lw - 8, t);
+    float kf = 0.62f;
+    bestiary_piece(v, 1, 11, 172, 10, 10, 3, lx + 10, fy + 4, kf);           /* the page, its arrows */
+    bestiary_piece(v, 1, 104, 172, 48, 9, 3, lx + 10 + 12 * kf, fy + 4, kf);
+    bestiary_piece(v, 1, 235, 172, 10, 10, 3, lx + 10 + 56 * kf, fy + 4, kf);
+    float sx = lx + lw - 6 - (26 + 34 + 52) * kf;                            /* SELECT Sort by what, on one line */
+    bestiary_key(v, GL_LAYER_KEY0, CA_SELECT, sx, fy + 3, 11 * kf);
+    bestiary_piece(v, 1, 206, 19, 32, 8, 12, sx + 26 * kf, fy + 5, kf);
+    bestiary_piece(v, 1, 194, 29, 52, 9, 6, sx + 60 * kf, fy + 4.5f, kf);
+    /* the chosen quest */
+    QL_WIN(rx, top, rw, H);
+    if (!(g_quest_page && g_pop_win[2])) { g_qstamp[2] = 0; return; }
+    float kq = fminf(0.9f, (rw - 16) / (QS_IN_W - 1)), hh = 30;
+    float ix = rx + 10, iy = top + 6;
+    if (sel >= 0) bestiary_piece(v, 1, 22, CL_ROW0 + sel * CL_RH + 1, 11, 11, 20, ix + 1.5f * 1.7f, iy + 2.7f, 1.7f);   /* its sign, big (11 by 11: not the hand at its left) */
+    float nx = ix + 14 * 1.7f + 8, kt = fminf(1.15f, (rw - (nx - rx) - 10 - (g_qstamp[2] ? 34 : 0)) / (float)g_qt_w);
+    bestiary_piece(v, 0, QS_BAR_X + 2, QS_TITLE_Y + 2, 24, QS_TITLE_H - 4, 3, nx, iy, 0.62f);      /* its number, small */
+    bestiary_piece(v, 0, 44, QS_TITLE_Y + 2, (float)g_qt_w, QS_TITLE_H - 4, 3, nx - 2 * kt, iy + 9, kt);   /* its name, big */
+    if (g_qstamp[2]) {                                                        /* Complete!: the stamp, at the right */
+        float ks = fminf(0.5f, 46.0f / g_qstamp[3]), *l = v->layer[GL_LAYER_STAMP];
+        l[2] = g_qstamp[2] * ks; l[3] = g_qstamp[3] * ks; l[0] = rx + rw - 6 - l[2]; l[1] = top + 3;
+    }
+    float ly = top + hh + 6;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, ly, rw - 8, t);
+    float dx = rx + (rw - (QS_IN_W - 1) * kq) / 2, lp = fminf(16 * kq * 1.3f, (H - hh - 6 - 22 - 8) / 8);
+    for (int i = 0; i < 8; i++)                                               /* its lines, spaced out */
+        bestiary_piece(v, 0, QS_IN_X, QS_DESC_Y + 1 + 16 * i, QS_IN_W - 2, 14, 35, dx + kq, ly + 6 + kq + i * lp, kq);   /* (39 to 53: not the bar's edge over the first, the page's under the last; 35: no stamp's edge) */
+    float dy = top + H - 16;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, dy, rw - 8, t);
+    float kd = 0.62f;
+    bestiary_piece(v, 0, QS_BAR_X + 2, QS_DATE_Y + 1, 100, QS_DATE_H - 2, 3, rx + 10, dy + 4, kd);          /* Started:/Completed: */
+    bestiary_piece(v, 0, 134, QS_DATE_Y + 1, 102, QS_DATE_H - 2, 3, rx + rw - 10 - 102 * kd, dy + 4, kd);   /* (to 236: not the bar's end) */   /* the date */
+    #undef QL_WIN
+}
+/* The Complete! stamp on a quest's sheet beside the quests' list: the game
+ * sets it over the sheet's top right corner (turned, cut by the screen's top);
+ * its red alone, in clean ink, at the page's resolution times STAMP_S. */
+static void quest_list_stamp(const uint32_t* px) {
+    enum { X0 = 140, Y0 = 0, W = 116, H = 80, QL_S = 6 };   /* (QL_S: as quest_stamp()'s STAMP_S) */
+    static uint8_t mask[H][W], *img; static uint32_t shown;
+    int x0 = W, y0 = H, x1 = -1, y1 = -1, n = 0;
+    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+        int m = stamp_red(px[(Y0 + y) * 256 + X0 + x]); mask[y][x] = (uint8_t)m; n += m;
+        if (m) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    g_qstamp[2] = 0;
+    if (n < 150) return;
+    int w = x1 - x0 + 1, h = y1 - y0 + 1;
+    uint32_t key = 2166136261u;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) key = (key ^ mask[y][x]) * 16777619u;
+    key = (key ^ (uint32_t)(w << 8 | h)) * 16777619u;
+    g_qstamp[0] = X0 + x0; g_qstamp[1] = Y0 + y0; g_qstamp[2] = w; g_qstamp[3] = h;
+    if (key == shown) return;
+    shown = key;
+    int IW = w * QL_S, IH = h * QL_S;
+    uint8_t* nb = realloc(img, (size_t)IW * IH * 4);
+    if (!nb) { g_qstamp[2] = 0; return; }
+    img = nb;
+    for (int j = 0; j < IH; j++)
+        for (int i = 0; i < IW; i++) {
+            float sx = (i + 0.5f) / QL_S - 0.5f, sy = (j + 0.5f) / QL_S - 0.5f, v = 0;
+            int ix = (int)floorf(sx), iy = (int)floorf(sy); float fx = sx - ix, fy = sy - iy;
+            for (int k = 0; k < 4; k++) {                         /* (bilinear, cut at half: smooth edges) */
+                int xx = x0 + ix + (k & 1), yy = y0 + iy + (k >> 1);
+                float wk = ((k & 1) ? fx : 1 - fx) * ((k >> 1) ? fy : 1 - fy);
+                if (xx >= 0 && xx < W && yy >= 0 && yy < H) v += wk * mask[yy][xx];
+            }
+            float a = fminf(fmaxf((v - 0.38f) / 0.16f, 0), 1) * 0.92f;
+            uint8_t* o = img + ((size_t)j * IW + i) * 4;          /* premultiplied */
+            o[0] = (uint8_t)(206 * a + 0.5f); o[1] = (uint8_t)(28 * a + 0.5f); o[2] = (uint8_t)(34 * a + 0.5f); o[3] = (uint8_t)(255 * a + 0.5f);
+        }
+    gl_set_layer(GL_LAYER_STAMP, img, IW, IH);
 }
 /* The records' menus over the monster list (how to show it, its families):
  * one window, the touch screen's light letters and its gold cursor alone
@@ -1289,17 +1542,19 @@ static void jb_load(void) {
     }
     g_jb_ok = 1;
 }
-static int equip_job(int eng) {
+static int job_at(int eng, int dy);
+static int equip_job(int eng) { return job_at(eng, 0); }
+static int job_at(int eng, int dy) {                              /* (dy: the bar lower down (Attributes': on the top screen, its foot)) */
     jb_load();
     if (g_jb_ok != 1) return -1;
     for (int i = 0; i < g_hdsprite_n[eng]; i++) {                 /* its HD picture (the pack on) */
         const HdSprite* s = &g_hdsprites[eng][i];
-        if (s->x < 50 || s->x > 90 || s->y < 145 || s->y > 175) continue;
+        if (s->x < 50 || s->x > 90 || s->y < 145 + dy || s->y > 175 + dy) continue;
         for (int k = 0; k < 13; k++) if (s->key == g_jb_key[k]) return k;
     }
     const uint32_t* px = g_engine_out[eng]; const uint8_t* ly = g_engine_layer[eng];
     for (int k = 0; k < 13; k++)                                  /* ...or its pixels, where they are */
-        for (int sy = 152; sy <= 168; sy++)
+        for (int sy = 152 + dy; sy <= 168 + dy && sy + 16 <= 192; sy++)
             for (int sx = 56; sx <= 80; sx++) {
                 int bad = 0, n = 0;
                 for (int y = 0; y < 16 && bad < 3; y++) for (int x = 0; x < 16 && bad < 3; x++) {
@@ -1567,6 +1822,18 @@ static void modern_window(GlPresent* v, float x, float y, float w, float h) {
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x + w - t, y, t, h);
 }
 
+/* the job's plaque into its layer (premultiplied), once per job: 0 none */
+static int plaque_layer(int job) {
+    const UiPic* p = plate_pic(job);
+    static int shown = -1;
+    if (!p || p->w > 256 || p->h > 256) return 0;
+    if (shown != job) {
+        static uint8_t img[256 * 256 * 4];
+        for (int i = 0; i < p->w * p->h; i++) { const uint8_t* s = &p->px[i * 4]; uint8_t* o = &img[i * 4]; o[0] = (uint8_t)(s[0] * s[3] / 255); o[1] = (uint8_t)(s[1] * s[3] / 255); o[2] = (uint8_t)(s[2] * s[3] / 255); o[3] = s[3]; }
+        gl_set_layer(GL_LAYER_PLAQUES, img, p->w, p->h); shown = job;
+    }
+    return 1;
+}
 static void equip_pieces(GlPresent* v, int ww, int wh) {
     const float C = fminf(v->ch / 1080.0f, v->cw / 1920.0f);     /* (mockup units -> canvas: narrower than 16:9, in a band across its middle) */
     float cw = v->cw, mid = cw / 2, oy = (v->ch - 1080 * C) / 2;
@@ -1591,18 +1858,7 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
         float x = bx + pad;
         bestiary_piece(v, 4, 6, 161, 56, 13, 11, x, by + (bh - 13 * KB) / 2, KB); x += nw + gap;
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
-        const UiPic* p = plate_pic(g_eq_job);
-        if (p) {
-            static int shown = -1;
-            if (shown != g_eq_job) {                              /* (premultiplied for the layer) */
-                static uint8_t img[256 * 256 * 4];
-                if (p->w <= 256 && p->h <= 256) {
-                    for (int i = 0; i < p->w * p->h; i++) { const uint8_t* s = &p->px[i * 4]; uint8_t* o = &img[i * 4]; o[0] = (uint8_t)(s[0] * s[3] / 255); o[1] = (uint8_t)(s[1] * s[3] / 255); o[2] = (uint8_t)(s[2] * s[3] / 255); o[3] = s[3]; }
-                    gl_set_layer(GL_LAYER_PLAQUES, img, p->w, p->h); shown = g_eq_job;
-                }
-            }
-            float* q = v->layer[GL_LAYER_PLAQUES]; q[0] = x; q[1] = by + (bh - IS) / 2; q[2] = IS; q[3] = IS;
-        }
+        if (plaque_layer(g_eq_job)) { float* q = v->layer[GL_LAYER_PLAQUES]; q[0] = x; q[1] = by + (bh - IS) / 2; q[2] = IS; q[3] = IS; }
         x += IS + gap;
         set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, by + 8 * C, 0.75f, bh - 16 * C); x += gap;
         bestiary_piece(v, 4, 80, 161, 44, 13, 11, x, by + (bh - 13 * KB) / 2, KB);
@@ -1617,7 +1873,14 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
             { float* q = v->layer[GL_LAYER_KEY0]; q[0] = bx - 16 * C - q[2]; }
             g_key_pad = CTL_PAD_RT; bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);
             g_key_pad = 0;
-        } else bestiary_key(v, GL_LAYER_KEY1, CA_Y, bx + bw + 16 * C, by + (bh - kh) / 2, kh);   /* (else Y: the next one) */
+        } else {                                                  /* (else Y: the next one; under the card at the left, with what it does: the game's own words, "Changer perso.") */
+            float ky = MY(932), kl = KB * 1.2f;
+            bestiary_key(v, GL_LAYER_KEY1, CA_Y, MX(44), ky, kh);
+            const float* q = v->layer[GL_LAYER_KEY1];
+            float tx = q[0] + q[2] + 12 * C;
+            modern_window(v, MX(26), ky - 10 * C, tx + 68 * kl + 16 * C - MX(26), kh + 20 * C);   /* (in a window of its own: seen on the wall) */
+            bestiary_piece(v, 1, 60, 180, 68, 9, 30, tx, ky + (kh - 9 * kl) / 2, kl);
+        }
     }
     /* the list (or the bag's grid) at the right */
     const float WY = MY(170), WH = 730 * C, WW = 520 * C;
@@ -1694,7 +1957,10 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
     y += (dh + 2) * KD * u + 28 * u;
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), cx + 12 * C, y, CW - 24 * C, 0.75f);
     y += 30 * u;
-    bestiary_piece(v, 0, 19, g_eq_stat[0] - 1, 155, sh + 2, 3, tx - 2 * KT * u, y, KT * u);
+    {   /* (28: a value going down (red) or up in its colour; "125 -> 119" kept inside the window) */
+        float sx = tx - 2 * KT * u, sk = fminf(KT * u, (cx + CW - 14 * C - sx) / 152);
+        bestiary_piece(v, 0, 19, g_eq_stat[0] - 1, 152, sh + 2, 28, sx, y, sk);
+    }
     y += (sh + 2) * KT * u + 28 * u;
     set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), cx + 12 * C, y, CW - 24 * C, 0.75f);
     y += 30 * u;
@@ -1713,7 +1979,316 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
 #undef MY
 }
 
+/* The round minimap's ring (GL_LAYER_RING): silver, a dark line either side,
+ * the compass' marks (a silver arrow at the north, knobs at the east, south and
+ * west, dots between), at the window's pixels: radius R, ring T (pixels). */
+static void round_ring(int D, float R, float T) {
+    static uint8_t* img; static int had;
+    if (img && had == D) return;
+    uint8_t* n = (uint8_t*)realloc(img, (size_t)D * D * 4);
+    if (!n) return;
+    img = n; had = D;
+    float c = D / 2.0f;
+    for (int y = 0; y < D; y++)
+        for (int x = 0; x < D; x++) {
+            float px = x + 0.5f - c, py = y + 0.5f - c, r = sqrtf(px * px + py * py), ang = atan2f(px, -py);   /* (0 at the north, clockwise) */
+            float a = 0, cr = 0, cg = 0, cb = 0;
+#define OVER(al, R_, G_, B_) do { float a_ = (al); if (a_ > 0) { cr = (R_) * a_ + cr * (1 - a_); cg = (G_) * a_ + cg * (1 - a_); cb = (B_) * a_ + cb * (1 - a_); a = a_ + a * (1 - a_); } } while (0)
+            float ri = R - 0.5f, ro = R + T;                       /* the ring: from just inside the map's edge */
+            float dark = fminf(fmaxf(0, 1 - fabsf(r - (ri - 0.6f))), 1) + fminf(fmaxf(0, 1 - fabsf(r - (ro + 0.6f))), 1);
+            float in = fminf(fmaxf(0, r - ri + 0.5f), 1) * fminf(fmaxf(0, ro - r + 0.5f), 1);
+            if (in > 0) {                                          /* silver (the modern windows' grey), lit from the top left */
+                float t = (r - ri) / (ro - ri), lit = 0.5f + 0.5f * cosf(ang + 0.8f);
+                float g = 0.72f + 0.28f * (1 - fabsf(t - 0.4f) * 2) + 0.12f * lit;
+                OVER(in, fminf(255, 200 * g), fminf(255, 204 * g), fminf(255, 212 * g));
+            }
+            OVER(fminf(dark, 1) * 0.85f, 30, 32, 36);
+            for (int k = 0; k < 8; k++) {                          /* the compass' marks */
+                float aa = k * 0.78539816f, mx = sinf(aa) * (R + T * 0.5f), my = -cosf(aa) * (R + T * 0.5f);
+                float d = sqrtf((px - mx) * (px - mx) + (py - my) * (py - my));
+                if (k == 0) {                                      /* the north: a silver arrow out of the ring */
+                    float ty = -(R + T * 0.5f), h = T * 2.2f, w = T * 1.25f, yy = py - ty;   /* (its tip above the ring) */
+                    if (yy < 0.5f && yy > -h) {
+                        float half = w * (yy + h) / h, e = half - fabsf(px);
+                        float al = fminf(fmaxf(e + 0.5f, 0), 1);
+                        if (al > 0) { float sh = px < 0 ? 1.1f : 0.8f; OVER(fminf(fmaxf(e + 1.3f, 0), 1) * 0.9f, 30, 32, 36); OVER(al, fminf(255, 236 * sh), fminf(255, 240 * sh), fminf(255, 246 * sh)); }
+                    }
+                } else if (k % 2 == 0) {                           /* east, south, west: a knob */
+                    float rk = T * 0.75f;
+                    OVER(fminf(fmaxf(rk + 1.2f - d, 0), 1) * 0.9f, 30, 32, 36);
+                    float al = fminf(fmaxf(rk + 0.5f - d, 0), 1); float sh = 0.85f + 0.35f * ((-(px - mx) - (py - my)) / (rk + 0.01f));
+                    OVER(al, fminf(255, 232 * sh), fminf(255, 236 * sh), fminf(255, 242 * sh));
+                } else {                                           /* between: a dot */
+                    float rk = T * 0.32f;
+                    OVER(fminf(fmaxf(rk + 0.5f - d, 0), 1), 64, 67, 74);
+                }
+            }
+#undef OVER
+            uint8_t* o = &img[((size_t)y * D + x) * 4];             /* (premultiplied) */
+            o[0] = (uint8_t)fminf(255, cr * a); o[1] = (uint8_t)fminf(255, cg * a); o[2] = (uint8_t)fminf(255, cb * a); o[3] = (uint8_t)(a * 255);
+        }
+    gl_set_layer(GL_LAYER_RING, img, D, D);
+}
+/* The minimap round: in the corner the small screen was given, the map's
+ * part around the hero in a circle (gl_render.c draw_round()), the silver ring
+ * over it, the place's name in a little modern window under it. */
+static void round_minimap(GlPresent* v, const float* small, int z) {
+    static const float RAD[3] = { 19, 25, 34 }, SRC = 60;          /* (canvas; DS pixels of the map shown from its centre to its edge) */
+    static float hx = 128, hy = 96; static int was;
+    float R = RAD[z < 0 || z > 2 ? 1 : z], T = R * 0.09f + 0.8f, m = 3 + T, lab = 10;
+    int c = g_small_corner & 3;
+    float cx = c == 0 || c == 3 ? m + R : v->cw - m - R, cy = c < 2 ? m + R + 1.5f * T : 192 - m - R - lab;
+    if (g_map_hero_ok) {                                          /* (follows the hero, smoothly; at once on a new map) */
+        if (!was || fabsf(g_map_hero[0] - hx) > 40 || fabsf(g_map_hero[1] - hy) > 40) { hx = g_map_hero[0]; hy = g_map_hero[1]; }
+        else { hx += (g_map_hero[0] - hx) * 0.35f; hy += (g_map_hero[1] - hy) * 0.35f; }
+        was = 1;
+    } else was = 0;
+    v->round[0] = cx; v->round[1] = cy; v->round[2] = R; v->round[3] = v->alpha;
+    v->round_src[0] = hx; v->round_src[1] = hy; v->round_src[2] = SRC;
+    {   /* the ring, at the window's pixels */
+        float s = g_lay_s, D = 2 * (R + T * 3.6f);
+        int Dp = (int)(D * s + 0.5f);
+        if (Dp > 8 && Dp < 2048) {
+            round_ring(Dp, R * s, T * s);
+            float* q = v->layer[GL_LAYER_RING]; q[0] = cx - D / 2; q[1] = cy - D / 2; q[2] = D; q[3] = D;
+        }
+    }
+    if (g_place_plate >= 0 && v->npiece + 6 <= GL_MAX_PIECES && v->alpha > 0.5f) {   /* the place's name (the map's plate at its top right: its letters) */
+        float k = 0.62f, w = (float)(g_place_txt[1] - g_place_txt[0] + 2), lw = w * k + 8, lh = 9 * k + 3.5f, lx = cx - lw / 2, ly = cy + R + T + 1.5f;
+        if (c >= 2) ly = cy + R + T + 1.5f;
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), lx, ly, lw, lh);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, lw, 0.6f);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly + lh - 0.6f, lw, 0.6f);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, 0.6f, lh);
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + lw - 0.6f, ly, 0.6f, lh);
+        bestiary_piece(v, 0, g_place_txt[0] - 1, 3, w, 10, 3, lx + 4, ly + 1.75f, k);
+        if (g_species_w > 0 && g_mapmarks_monsters && c < 2) {     /* under it, the monsters near: their colours and names */
+            float ks = 0.24f, sw = g_species_w * ks, sh = g_species_h * ks;
+            float* q = v->layer[GL_LAYER_SPECIES]; q[0] = cx - sw / 2; q[1] = ly + lh + 1.5f; q[2] = sw; q[3] = sh;
+            if (q[0] + sw > v->cw - 2) q[0] = v->cw - 2 - sw;
+            if (q[0] < 2) q[0] = 2;
+            if (v->npiece + 5 <= GL_MAX_PIECES) {                 /* (in a modern window, as the name's) */
+                float wx = q[0] - 1, wy = q[1] - 0.5f, ww2 = sw + 1, wh2 = sh + 0.5f;
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), wx, wy, ww2, wh2);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy, ww2, 0.6f);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy + wh2 - 0.6f, ww2, 0.6f);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx, wy, 0.6f, wh2);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx + ww2 - 0.6f, wy, 0.6f, wh2);
+            }
+        }
+    }
+    (void)small;
+}
+
+static void path_pieces(GlPresent* v) {
+    for (int i = 0; i < g_path_n; i++) {
+        const int* w = g_path_word[i];
+        bestiary_piece(v, 3, w[0], w[1], w[2], w[3], 3, g_path_x[i + 1], g_path_y - w[3] * PATH_K / 2, PATH_K);
+    }
+}
+
 /* second: the layout of the second window (two windows) */
+/* The bag's list, laid out again over the field (the 2D apart: gl_set_split(),
+ * none of it shown but these pieces): see g_bag. The list's letters (light,
+ * mode 3) on a window of the modern style; the icons, the big one and the
+ * path's marks: mapmarks_bag() (bag_update()). */
+static void bag_pieces(GlPresent* v) {
+    float cw = v->cw, x0 = bag_x0(cw), x1 = x0 + BAG_W, t = 0.75f, y1 = BAG_WY1;
+    #define BAG_WIN(X, Y, W, H) do { set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), X, Y, W, H); \
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X, Y, W, t); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X, (Y) + (H) - t, W, t); \
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X, Y, t, H); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), (X) + (W) - t, Y, t, H); } while (0)
+    BAG_WIN(x0, BAG_WY, BAG_W, y1 - BAG_WY);
+    path_pieces(v);                                               /* the path ("Menu", the marks: mapmarks_bag()) */
+    if (g_bag_word[2][2]) {                                       /* its name, the chosen line's in the menu before */
+        const int* w = g_bag_word[2];
+        bestiary_piece(v, 3, w[0], w[1], w[2], w[3], g_bag_hold ? 29 : 3, x0 + 8, (BAG_WY + 33) / 2 - w[3] * BAG_K / 2, BAG_K);
+    }
+    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x0 + 4, 33, BAG_W - 8, t);
+    for (int i = 0; i < 3 && g_bag_sel >= 0; i++)                 /* the chosen line lit (three times, as the menus') */
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), x0 + 2.5f, bag_my(BAG_LY + BAG_DY * g_bag_sel) + 0.5f, BAG_W - 5, BAG_DY * BAG_K);
+    bestiary_piece(v, 3, BAG_TX, BAG_LY, 253 - BAG_TX, 8 * BAG_DY, g_bag_hold ? 29 : 3, bag_mx(cw, BAG_TX), bag_my(BAG_LY), BAG_K);   /* the names, the numbers */
+    bestiary_piece(v, 3, BAG_X0 + 2, BAG_LY + 8 * BAG_DY, BAG_X1 - BAG_X0 - 3, BAG_Y1 - BAG_LY - 8 * BAG_DY, g_bag_hold ? 29 : 3,      /* the pages: 1/4, the arrows */
+                   bag_mx(cw, BAG_X0 + 2), bag_my(BAG_LY + 8 * BAG_DY), BAG_K);
+    if (g_bag_box[2]) {                                          /* the box: at the right, their bottoms in line */
+        const int* b = g_bag_box;                                 /* (one window of the style; its letters, light, inside the game's edges) */
+        float bw = b[2] * BAG_K, bh = b[3] * BAG_K, bx = x1 + 5, by = y1 - bh;
+        BAG_WIN(bx, by, bw, bh);
+        bestiary_piece(v, 3, b[0] + 2, b[1] + 2, b[2] - 4, b[3] - 4, 3, bx + 2 * BAG_K, by + 2 * BAG_K, BAG_K);
+    }
+    {   /* the description: the chosen item's icon big (mapmarks_bag()), its text beside it */
+        float wy = y1 + 5;
+        BAG_WIN(x0, wy, BAG_W, BAG_DH);
+        if (g_bag_ink[1] >= g_bag_ink[0]) {
+            float h = (float)(g_bag_ink[1] - g_bag_ink[0] + 3), k = fminf(0.6f, (BAG_DH - 5) / h);
+            bestiary_piece(v, 0, 60, g_bag_ink[0] - 1, 110, h, 6, x0 + 6 + BAG_BIG + 6, wy + (BAG_DH - h * k) / 2, k);
+        }
+    }
+    #undef BAG_WIN
+    v->icons[0] = (cw - 256) / 2; v->icons[1] = 0; v->icons[2] = 256; v->icons[3] = 192;
+}
+
+static void xmenu_pieces(GlPresent* v);
+extern int g_comp_has3d;
+static int xm_field(void) { return in_adventure(); }   /* (not on the title: its own menus, its own picture) */
+/* Attributes, modern (as the menus' windows): on one dark window, the
+ * character alone (its model, its blue backdrop left out) over its name's
+ * bar; its equipment (names and icons, not their panel); the category shown
+ * (its title, its lines, its page) and the buttons' help under them. In the
+ * screens' pixels (the top screen 0, the bottom one 1): */
+enum { CA_MX = 6, CA_MY = 6, CA_MW = 114, CA_MH = 166,            /* the model, top screen (the 3D alone) */
+       CA_NX = 6, CA_NY = 177, CA_NW = 114, CA_NH = 13,             /* its name's bar (inside its white corners) */
+       CA_EX = 152, CA_EY = 24, CA_EW = 98, CA_EH = 160,            /* the equipment's names, inside their panel (their slots' icons left out) */
+       CA_BX = 2, CA_BY = 2, CA_BW = 252, CA_BH = 172 };            /* the category, bottom screen */
+#define CA_EQUIP 0x020F5794u                                       /* the first character's equipment: a u16 item key per slot, 0x2C apart; the others' 0x964 lower each (their records, name at +0x2E0 less), */
+#define CA_WHO 0x02112794u                                         /* the character shown (0: the first) */
+static const int CA_SLOT[8] = { 0, 2, 3, 1, 4, 5, 6, 7 };         /* ...the slots in the screen's order: weapon, shield, head, body, arms, legs, feet, accessory */
+static uint64_t g_ca_at; static float g_ca_ic[4]; static int g_ca_job = -1;   /* (the icons' column: x, first y, pitch, size) */
+/* Battle records' first page (Sandy's: her pink touch screen, the buttons
+ * of the records; the parchment of numbers on the top screen), modern: on one
+ * dark window, the records' buttons as a menu's lines (the chosen one lit, the
+ * hand), the numbers in a window (the parchment's dark letters made light),
+ * Sandy's words (when she talks) in a window under them. In the screens'
+ * pixels (the top screen 0, the touch screen 1): */
+static int g_rs_parch;                                            /* (the parchment of numbers there this frame: else its window left empty) */
+static int g_rs_cer;                                              /* (a title given over it: the curtain on the top screen; its plate and words in a window over the page) */
+static int results_hub(void) {                                    /* (the touch screen Sandy's pink, the other the parchment of numbers; by their hues: fading in or out too) */
+    #define RH_RGB(c_) int r = ((c_) >> 16) & 255, g = ((c_) >> 8) & 255, b = (c_) & 255
+    static int last; static uint64_t seen;
+    g_rs_cer = 0;
+    for (int e = 0; e < 2; e++) {
+        const uint32_t* px = g_engine_out[e]; int n = 0;
+        static const int at[5][2] = { { 128, 170 }, { 10, 150 }, { 200, 180 }, { 240, 186 }, { 60, 188 } };
+        for (int i = 0; i < 5; i++) { RH_RGB(px[at[i][1] * 256 + at[i][0]]); n += r > 30 && g * 100 >= r * 30 && g * 100 <= r * 70 && b * 100 >= r * 45 && b * 100 <= r * 80; }   /* (dimmed under a ceremony too: 178, 65, 89) */
+        if (n < 3) continue;
+        const uint32_t* tp = g_engine_out[!e];
+        int bar, pan;
+        { RH_RGB(tp[10 * 256 + 50]); bar = r > 20 && g * 100 >= r * 62 && g * 100 <= r * 88 && b * 100 >= r * 35 && b * 100 <= r * 65 ? r : 0; }
+        { RH_RGB(tp[40 * 256 + 50]); pan = r > 30 && g * 100 >= r * 78 && g * 100 <= r * 96 && b * 100 >= r * 38 && b * 100 <= r * 68 ? r : 0; }
+        int btn;                                                  /* (or the records' blue buttons there, whatever the top screen shows a moment (black, fading in, after a ceremony): not the curtain) */
+        { RH_RGB(px[12 * 256 + 60]); btn = b > 20 && b * 10 > r * 13 + 80; }   /* (blue, however dim: fading in) */
+        int curtain; { RH_RGB(tp[96 * 256 + 128]); curtain = r > 60 && r > 2 * g && r > 2 * b; }   /* (a ceremony: the curtain over the parchment; the game's own) */
+        if (curtain) { g_rs_cer = 1; g_rs_parch = 0; last = e + 1; seen = g_rec_at = g_frame; return last; }   /* (a title given: the page kept, the ceremony in a window over it) */
+        g_rs_parch = bar && pan > bar * 3 / 2 && pan > 225;   /* (bright: not fading, its dark letters made light would be blocks) */
+        if (n >= 4 && ((bar && pan > bar * 3 / 2) || btn)) { last = e + 1; seen = g_rec_at = g_frame; return last; }
+        if (last == e + 1 && g_frame - seen <= 20) return last;   /* (its pink still, the parchment gone a moment: leaving it, or a window over it) */
+    }
+    #undef RH_RGB
+    return 0;
+}
+static void results_pieces(GlPresent* v, int eng) {
+    const float M = 5, t = 0.75f, kl = 0.62f;
+    #define RS_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    const uint32_t* bp = g_engine_out[eng];
+    int sel = -1;                                                 /* the hand (yellow) left of the buttons: the chosen one */
+    for (int y = 4; y < 110 && sel < 0; y++) for (int x = 0; x < 20 && sel < 0; x++) {
+        uint32_t c = bp[y * 256 + x];
+        if (((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100) sel = (y - 4) / 16;
+    }
+    int msg = 0;                                                  /* (a ceremony: the game's black window of its words over the lower buttons) */
+    if (g_rs_cer) for (int x = 20; x < 236; x += 24) { uint32_t c = bp[118 * 256 + x]; msg += ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255) < 30; }
+    msg = msg >= 7;
+    int talk = 0;                                                 /* Sandy's words: dark letters on her page, under the buttons */
+    for (int y = 112; y < 188; y++) for (int x = 10; x < 246; x++) { uint32_t c = bp[y * 256 + x]; talk += ((c >> 16) & 255) < 130 && ((c >> 8) & 255) < 90; }
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, v->ch - 2 * M);   /* the backdrop: one dark window */
+    float lw = 136 * kl + 18, rw = v->cw - 2 * M - 10 - lw - 4, kr = fminf(0.62f, (rw - 10) / 244.0f);
+    float rh = (18 + 94 + 66) * kr + 14, lh = 6 * 16 * kl + 10, mh = 64 * kl + 10, ks = 0.42f;
+    float H = rh + mh + 4, top = floorf((v->ch - H) / 2), x = M + 5;
+    /* the records' buttons: a menu */
+    RS_WIN(x, top, lw, lh);
+    if (sel >= 0 && sel < 6 && !g_rs_cer)                        /* (a ceremony: its window over the page instead; the pieces kept for it) */
+        for (int i = 0; i < 3; i++) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 21, 0, 0, 1), x + 12, top + 5 + sel * 16 * kl, lw - 16, 14 * kl);
+    for (int i = 0; i < (msg ? 4 : 6); i++) bestiary_piece(v, 3, 20, 9 + 16 * i, 128, 14, 30, x + 14, top + 5 + i * 16 * kl, kl);   /* (30: the letters, not the button; not under the ceremony's window) */
+    if (sel >= 0 && sel < 6) bestiary_piece(v, 3, 0, 3 + 16 * sel, 20, 16, 27, x + 1, top + 5 + sel * 16 * kl - 2, kl);   /* the hand */
+    /* the numbers: the parchment's title, its two panels, its percentages */
+    float rx = x + lw + 4, y = top;
+    if (!g_rs_cer) RS_WIN(rx, y, rw, rh);
+    if (g_rs_parch) bestiary_piece(v, 0, 2, 2, 252, 18, 3, rx + (rw - 252 * kr) / 2, y + 4, kr);   /* its title (light on its bar) */
+    if (!g_rs_cer) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 4 + 19 * kr, rw - 8, t);
+    if (g_rs_parch) bestiary_piece(v, 0, 8, 26, 90, 86, 6, rx + 5, y + 6 + 21 * kr, kr);                       /* (6: the dark letters made light) */
+    if (g_rs_parch) bestiary_piece(v, 0, 100, 26, 146, 80, 6, rx + 5 + 92 * kr, y + 6 + 21 * kr, kr);
+    if (!g_rs_cer) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), rx + 4, y + 8 + 113 * kr, rw - 8, t);
+    if (g_rs_parch) bestiary_piece(v, 0, 11, 122, 230, 60, 3, rx + 5 + 5 * kr, y + 10 + 114 * kr, kr);                   /* the percentages (light on their panel) */
+    {   /* Sandy (her 3D alone) at the bottom right, her words in a window beside her */
+        float my = top + rh + 4, sw = 80 * ks, sx = v->cw - M - 5 - sw;
+        bestiary_piece(v, 4, 144, 0, 80, 116, 11, sx, my + mh - 116 * ks, ks);   /* (above her words: they are 3D too) */
+        if (talk > 40) {
+            RS_WIN(x, my, sx - 4 - x, mh);                         /* (her words: white (34), in her dark box on her page; not the pink's pattern) */
+            bestiary_piece(v, 1, 10, 120 + 8 * msg, 236, 64 - 8 * msg, 34, x + 8, my + 5 + 8 * msg * fminf(kl, (sx - 4 - x - 16) / 236.0f), fminf(kl, (sx - 4 - x - 16) / 236.0f));
+        }
+    }
+    if (g_rs_cer) {   /* a title given: one window in the middle, its gold plate (the top screen's), why it was given (the game's words under the page say it again) */
+        const float kc = fminf(0.8f, (v->cw * 0.6f) / 232.0f), cw = 232 * kc + 16;
+        float ch = AC_PH * kc + 8 + 78 * kc + 12, cx = floorf((v->cw - cw) / 2), cy = floorf((v->ch - ch) / 2);
+        RS_WIN(cx, cy, cw, ch);
+        float px = cx + (cw - AC_PW * kc) / 2, py = cy + 6;      /* (the plate: as accolade_plate(), its corners (the curtain) left out; once it is there, not the curtain alone) */
+        if (px_share(g_engine_out[!eng], 25, 30, 0, 6, 8, 180, 255, 140, 255, 0, 170) >= 6) {
+        bestiary_piece(v, 0, AC_PX + 3, AC_Y + 0.5f, AC_PW - 6, AC_PH - 1, 0, px + 3 * kc, py + 0.5f * kc, kc);
+        bestiary_piece(v, 0, AC_PX + 0.5f, AC_Y + 3, 2.5f, AC_PH - 6, 0, px + 0.5f * kc, py + 3 * kc, kc);
+        bestiary_piece(v, 0, AC_PX + AC_PW - 3, AC_Y + 3, 2.5f, AC_PH - 6, 0, px + (AC_PW - 3) * kc, py + 3 * kc, kc);
+        }
+        float ty = py + AC_PH * kc + 6;
+        bestiary_piece(v, 0, 12, 106, 232, 74, 34, cx + 8, ty, kc);   /* why (white letters on its black window; not the curtain) */
+    }
+    #undef RS_WIN
+}
+static int caract_screen(void) {                                  /* (the equipment's panel: its frame, top and bottom, on the top screen, one colour (the character's: blue, cyan...), not a grey) */
+    for (int e = 0; e < 2; e++) {
+        const uint32_t* px = g_engine_out[e]; int n = 0;
+        static const int at[4][2] = { { 131, 19 }, { 200, 19 }, { 131, 187 }, { 200, 187 } };
+        uint32_t c0 = px[at[0][1] * 256 + at[0][0]];
+        int r0 = (c0 >> 16) & 255, g0 = (c0 >> 8) & 255, b0 = c0 & 255, hi = r0 > g0 ? (r0 > b0 ? r0 : b0) : (g0 > b0 ? g0 : b0), lo = r0 < g0 ? (r0 < b0 ? r0 : b0) : (g0 < b0 ? g0 : b0);
+        if (hi - lo < 60) continue;
+        #define CA_SAME(c_) (abs((int)(((c_) >> 16) & 255) - r0) < 20 && abs((int)(((c_) >> 8) & 255) - g0) < 20 && abs((int)((c_) & 255) - b0) < 20)
+        if (CA_SAME(px[25 * 256 + 140]) || CA_SAME(px[100 * 256 + 165]) || !CA_SAME(px[100 * 256 + 131])) continue;   /* (a frame: not the colour inside it; its side down too: not a screen of one colour) */
+        #undef CA_SAME
+        for (int i = 1; i < 4; i++) { uint32_t c = px[at[i][1] * 256 + at[i][0]]; n += abs((int)((c >> 16) & 255) - r0) < 20 && abs((int)((c >> 8) & 255) - g0) < 20 && abs((int)(c & 255) - b0) < 20; }
+        if (n >= 3) return e + 1;
+    }
+    return 0;
+}
+static void caract_pieces(GlPresent* v) {
+    const float M = 5, t = 0.75f, km = 0.66f, kn = 0.62f, ke = 0.56f, gap = 4, IC = 10;
+    #define CA_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 7, 0, 0, 1), M, M, v->cw - 2 * M, v->ch - 2 * M);   /* the backdrop: one dark window */
+    float mw = CA_MW * km + 4, mh = CA_MH * km + CA_NH * kn + 12;
+    float ew = 4 + IC + 3 + CA_EW * ke + 4, eh = CA_EH * ke + 8;
+    float x = M + 5, bx = x + mw + gap + ew + gap, bw = v->cw - M - 5 - bx, bk = (bw - 6) / CA_BW, bh = CA_BH * bk + 6;
+    float H = fmaxf(mh, fmaxf(eh, bh)), top = floorf((v->ch - H) / 2);
+    /* the character, its name, its job's plaque */
+    CA_WIN(x, top, mw, H);
+    bestiary_piece(v, 4, CA_MX, CA_MY, CA_MW, CA_MH, 11, x + 2, top + 3, km);                  /* (4: the 3D alone, not its backdrop) */
+    float ny = top + H - CA_NH * kn - 4;
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), x + 4, ny - 2, mw - 8, t);
+    bestiary_piece(v, 0, CA_NX, CA_NY, CA_NW, CA_NH, 30, x + (mw - CA_NW * kn) / 2, ny, kn);   /* its name, its level (30: not the bar's lines) */
+    {   int j = job_at(0, 20); if (j < 0) j = job_at(1, 20);
+        if (j > 0) g_ca_job = j;
+        if (plaque_layer(g_ca_job)) { float* q = v->layer[GL_LAYER_PLAQUES]; q[0] = x + mw - 22; q[1] = top + 4; q[2] = 18; q[3] = 18; } }
+    x += mw + gap;
+    /* the equipment: each item's own icon (menu_icons_update()), its name */
+    CA_WIN(x, top, ew, H);
+    float ey = top + (H - eh) / 2 + 4;
+    bestiary_piece(v, 0, CA_EX, CA_EY, CA_EW, CA_EH, 32, x + 4 + IC + 3, ey, ke);
+    g_ca_ic[0] = x + 4; g_ca_ic[1] = ey + (26 - CA_EY) * ke - (IC - 16 * ke) / 2; g_ca_ic[2] = 20 * ke; g_ca_ic[3] = IC;
+    g_ca_at = g_frame;
+    v->icons[0] = 0; v->icons[1] = 0; v->icons[2] = 256; v->icons[3] = 192;   /* (the overlay: the canvas' own units) */
+    x += ew + gap;
+    /* the category shown: its title, its lines, its page */
+    CA_WIN(bx, top, bw, H);
+    float by = top + (H - bh) / 2 + 3;
+    bestiary_piece(v, 1, CA_BX, CA_BY, CA_BW, CA_BH, 30, bx + 3, by, bk);                      /* (30: its letters, not the game's lines) */
+    {   /* under its title (a category's name alone in the middle of its first row; not the stats' first row) */
+        int e = caract_screen(); const uint32_t* bp = g_engine_out[e == 1 ? 1 : 0];
+        int mid = 0, side = 0;
+        for (int y = 3; y < 14; y++) for (int x = 2; x < 254; x++) { uint32_t c = bp[y * 256 + x]; if (((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 200) { if (x > 90 && x < 166) mid++; else if (x < 50) side++; } }
+        if (mid > 6 && !side) set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), bx + 4, by + (17 - CA_BY) * bk, bw - 8, t);
+    }
+    set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), bx + 4, by + (161 - CA_BY) * bk, bw - 8, t);   /* over its page */
+    #undef CA_WIN
+}
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
     if (wh > 0) g_lay_s = (float)wh / 192.0f;
@@ -1771,6 +2346,11 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             if (g_mini_vis < 0.02f || !g_map_shown) small[2] = small[3] = 0;
         } else if (g_minimap) v->alpha = 1.0f;                   /* battles: solid */
         if (g_small_hide && !pop) small[2] = small[3] = 0;
+        int round_z = -1; float round_at[4] = { 0 };               /* the map round, not the screen small: decided at the end (a screen of its own (Equip, a card...) may take it) */
+        if (g_minimap && g_round_map && which != 0 && small[2] > 0 && !g_peek && !second) {
+            round_z = g_small_size < 0 || g_small_size > 2 ? 1 : g_small_size;
+            memcpy(round_at, small, sizeof round_at);
+        }
         if (g_peek && !pop) { small[0] = (v->cw - 256) / 2; small[1] = 0; small[2] = 256; small[3] = 192; v->alpha = 1.0f; }   /* the other screen, whole */
         else if (g_accolade_small && small == v->top && !second && top_page_mode() != 1 && v->npiece + 3 <= GL_MAX_PIECES) {   /* a title given, the top screen small (not its page: pop_update()): its gold plate instead */
             small[0] = small[1] = small[2] = small[3] = 0;
@@ -1804,17 +2384,21 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         int page = top_page_mode();
+        if (page != 2 && g_rec2d_at && g_rec2d_at == g_frame) page = 2;         /* (the records' menus with no 3D: bestiary_update()) */
         if (page == 2) g_page2_at = g_frame;
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
         if (g_bmode == BM_TITLES || g_bmode == BM_COLL) page = 2;   /* (these lists: no 3D, their window all the same) */                       /* (the titles' list: no 3D, its window all the same) */
+        int hub = 0;
+        static int bare; static uint64_t bare_f;                   /* (a menu of neither the records nor Al Embic, a few frames on (Attributes, its model on the top screen): the two screens, not an empty window) */
+        if (bare_f != g_frame) { bare_f = g_frame; bare = page == 2 && caract_screen() ? bare + 1 : 0; }   /* (Attributes: its equipment's panel on the top screen, two frames on) */
         if (g_equip && !second && !g_peek && v->npiece + 80 <= GL_MAX_PIECES) {
             /* Equip, modern: drawn again whole (equip_pieces()), no screen whole */
             v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
             v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
             v->alpha = 1.0f; v->front = 0;
             equip_pieces(v, ww, wh);
-        } else if (page == 2 && bmode && !second && v->npiece + 40 <= GL_MAX_PIECES) {
+        } else if (page == 2 && bmode && !(bare >= 2) && !second && v->npiece + 40 <= GL_MAX_PIECES) {
             /* the monster list, modern: drawn again in two windows (bestiary_pieces()),
              * the window's shape, no screen whole */
             v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
@@ -1823,6 +2407,14 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
             v->alpha = 1.0f; v->front = 0;
             if (bmode == BM_LIST) bestiary_pieces(v); else if (bmode == BM_ALCH) alchemy_pieces(v); else if (bmode == BM_COLL) coll_pieces(v); else if (bmode == BM_TITLES) titles_pieces(v); else bestiary_menu_pieces(v);
+        } else if (page == 2 && bare >= 2 && !second && v->npiece + 24 <= GL_MAX_PIECES) {
+            /* Attributes (its character's 3D model on the top screen), modern: drawn again in windows (caract_pieces()) */
+            v->ch = 192; v->cw = ww > 0 && wh > 0 ? fmaxf(300.0f, 192.0f * (float)ww / (float)wh) : 341.0f;
+            v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
+            v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
+            v->topx[0] = v->botx[0] = (float)side; v->topx[1] = v->botx[1] = 256;
+            v->alpha = 1.0f; v->front = 0;
+            caract_pieces(v);
         } else if (page == 2) {
             /* a menu with its 3D model on the top screen (the monster list):
              * both screens whole, side by side, the top one on the left, until it closes */
@@ -1861,6 +2453,17 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
                 q[0] = x + (SHOP_DESC_X + SHOP_DESC_ICON + 8) * k; q[1] = (L + gap + SHOP_PAD) * k; q[2] = SHOP_TW * k; q[3] = SHOP_TH * k;
             }
             v->icons[0] = x; v->icons[1] = 0; v->icons[2] = 256 * k; v->icons[3] = 192 * k;
+        } else if (page == 1 && g_bag && !second && v->npiece + 22 <= GL_MAX_PIECES) {
+            small[0] = small[1] = small[2] = small[3] = 0;           /* (the card: its description under the list) */
+            bag_pieces(v);
+        } else if (!g_xmenu && !g_bag && !second && (hub = results_hub()) && v->npiece + 64 <= GL_MAX_PIECES) {
+            /* the battle records' first page (Sandy's), modern: drawn again in windows (results_pieces()) */
+            small[0] = small[1] = small[2] = small[3] = 0;
+            big[0] = big[1] = big[2] = big[3] = 0;
+            results_pieces(v, hub - 1);
+        } else if (g_xmenu && xm_field() && !second && v->npiece + 44 <= GL_MAX_PIECES) {   /* (over the field: not the title's menus, its own picture) */
+            small[0] = small[1] = small[2] = small[3] = 0;
+            xmenu_pieces(v);
         } else if (page == 1 && which < 0 && g_pop_win[2] && !g_quest_page && !g_card_page && !second) {
             /* a page on the top screen over a menu without the field (allocating
              * skill points: the skill's table over the list of skills, after a
@@ -1938,6 +2541,10 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
                     }
                 }
             }
+        }
+        if (round_z >= 0 && !memcmp(round_at, small, sizeof round_at) && v->npiece + 8 <= GL_MAX_PIECES) {   /* (the small screen still the minimap) */
+            round_minimap(v, small, round_z);
+            small[0] = small[1] = small[2] = small[3] = 0;
         }
         if (g_movie2 && !second) {
             /* a movie in two halves (the opening, "to be continued"): one
@@ -2105,6 +2712,7 @@ static void settings_load(void) {
          * chosen, the one layout is widescreen with the map in the corner, stacked in Classic) */
         else if (!strcmp(key, "small_screen_size")) { int v = atoi(val); if (v >= 0 && v <= 2) g_small_size = v; }
         else if (!strcmp(key, "minimap")) g_map_shown = atoi(val) != 0;
+        else if (!strcmp(key, "round_minimap")) g_round_map = atoi(val) != 0;
         else if (!strcmp(key, "volume")) { int v = atoi(val); if (v >= 0 && v <= 100) g_volume = v; }
         else if (!strcmp(key, "mute")) g_mute = atoi(val) != 0;
         else if (!strcmp(key, "widescreen_battle_hud")) g_hud = atoi(val) != 0;
@@ -2218,6 +2826,7 @@ static void settings_save(void) {
     fprintf(f, "hd_movies = %d\n", g_hdmovie);
     fprintf(f, "# the map in the top right corner (gone during battles): 0 or 1; its size 0 small, 1 medium, 2 large\n");
     fprintf(f, "minimap = %d\n", g_map_shown);
+    fprintf(f, "round_minimap = %d\n", g_round_map);
     fprintf(f, "small_screen_size = %d\n", g_small_size);
     fprintf(f, "# widescreen battles: the party's panels along the top and the commands in the bottom left, over the 3D: 0 or 1\n");
     fprintf(f, "widescreen_battle_hud = %d\n", g_hud);
@@ -2752,21 +3361,44 @@ static void save_screenshot(void) {
 /* tests: DQIX_MEMFIND="frame,hex,hex...": at that frame, the main RAM / DTCM
  * addresses holding each 32-bit value, and the projection matrix */
 static void memfind_hook(void) {
+    {   /* DQIX_MEMSNAP="f1,f2,...": the main RAM at those frames; at the last, the bytes (and u16s) whose values went as DQIX_MEMPAT "a,b,c..;a,b,c.." */
+        static uint8_t* snap[8]; static long long fr[8]; static int nf = -1;
+        if (nf < 0) { nf = 0; const char* e = getenv("DQIX_MEMSNAP"); while (e && *e && nf < 8) { fr[nf++] = atoll(e); e = strchr(e, ','); if (e) e++; } }
+        for (int i = 0; i < nf; i++) if ((long long)g_frame == fr[i]) {
+            snap[i] = malloc(MAIN_RAM_SIZE); memcpy(snap[i], g_main_ram, MAIN_RAM_SIZE);
+            if (i == nf - 1) for (const char* p = getenv("DQIX_MEMPAT"); p && *p; ) {
+                int want[8], nw = 0; const char* q = p;
+                while (nw < nf) { want[nw++] = atoi(q); q = strpbrk(q, ",;"); if (!q || *q == ';') break; q++; }
+                int hits = 0;
+                for (uint32_t a = 0; a < MAIN_RAM_SIZE && hits < 60; a++) { int ok = 1; for (int j = 0; j < nf && ok; j++) ok = snap[j][a] == want[j]; if (ok) { fprintf(stderr, "pat %s byte %08x\n", p, 0x02000000u + a); hits++; } }
+                p = strchr(p, ';'); if (p) p++;
+            }
+        }
+    }
+    {   const char* e = getenv("DQIX_MEMDUMP2");                 /* "frame:addr:words;..." */
+        for (const char* c = e; c && *c; ) { unsigned long long f; unsigned a, n;
+            if (sscanf(c, "%llu:%x:%u", &f, &a, &n) == 3 && f == g_frame)
+                for (unsigned i = 0; i < n; i += 8) { fprintf(stderr, "d2 %llu %08x:", f, a + i * 4); for (unsigned j = 0; j < 8; j++) { uint32_t w; memcpy(&w, g_main_ram + ((a + (i + j) * 4) & (MAIN_RAM_SIZE - 4)), 4); fprintf(stderr, " %08x", w); } fprintf(stderr, "\n"); }
+            c = strchr(c, ';'); if (c) c++; } }
     static long long at = -2; static unsigned vals[8]; static int nv;
     if (at == -2) {
         at = -1; const char* e = getenv("DQIX_MEMFIND");
         if (e) { at = atoll(e); const char* c = e; while ((c = strchr(c, ',')) && nv < 8) { c++; vals[nv++] = (unsigned)strtoul(c, NULL, 16); } }
     }
     if (at < 0 || g_frame != (uint64_t)at) return;
+    {   const char* e = getenv("DQIX_PTRFIND");                  /* "lo,hi": the words pointing in there */
+        unsigned lo, hi; int n = 0;
+        if (e && sscanf(e, "%x,%x", &lo, &hi) == 2)
+            for (uint32_t a = 0; a + 4 <= MAIN_RAM_SIZE && n < 80; a += 4) { uint32_t w; memcpy(&w, g_main_ram + a, 4); if (w >= lo && w < hi) { fprintf(stderr, "ptr %08x at %08x\n", w, 0x02000000u + a); n++; } } }
     extern void gpu3d_debug_proj(void);
     gpu3d_debug_proj();
     {   const char* d = getenv("DQIX_MEMDUMP");                  /* "addr,addr,...": 0x20 bytes before and after each */
         while (d && *d) { uint32_t a = (uint32_t)strtoul(d, NULL, 16) & 0x3FFFFC;
-            fprintf(stderr, "dump %08x:", 0x02000000u + a - 0x20); for (int i = -8; i < 8; i++) { uint32_t v; memcpy(&v, g_main_ram + a + i * 4, 4); fprintf(stderr, " %08x", v); } fprintf(stderr, "\n");
+            fprintf(stderr, "dump %08x:", 0x02000000u + a - 0x20); for (int i = -8; i < (getenv("DQIX_MEMDUMP_N") ? atoi(getenv("DQIX_MEMDUMP_N")) : 8); i++) { uint32_t v; memcpy(&v, g_main_ram + a + i * 4, 4); fprintf(stderr, " %08x", v); } fprintf(stderr, "\n");
             d = strchr(d, ','); if (d) d++; } }
     for (int k = 0; k < nv; k++) {
         int n = 0;
-        for (uint32_t a = 0; a + 4 <= MAIN_RAM_SIZE && n < 200; a += 2) { uint32_t v; memcpy(&v, g_main_ram + a, 4); if (v == vals[k]) { fprintf(stderr, "memfind %08x at %08x\n", vals[k], 0x02000000u + a); n++; } }
+        for (uint32_t a = 0; a + 4 <= MAIN_RAM_SIZE && n < 200; a += 2) { uint32_t v; memcpy(&v, g_main_ram + a, 4); if (v == vals[k]) { fprintf(stderr, "memfind %08x at %08x\n", vals[k], 0x02000000u + a); n++; if (getenv("DQIX_MEMFIND_DUMP") && k == 0) { fprintf(stderr, "fdump %08x:", 0x02000000u + (a & ~3u) - 0x40); for (int i = -16; i < 48; i++) { uint32_t w; memcpy(&w, g_main_ram + ((a & ~3u) + i * 4) % MAIN_RAM_SIZE, 4); fprintf(stderr, " %08x", w); } fprintf(stderr, "\n"); } } }
         for (uint32_t a = 0; a + 4 <= DTCM_SIZE; a += 2) { uint32_t v; memcpy(&v, g_dtcm + a, 4); if (v == vals[k]) fprintf(stderr, "memfind %08x at dtcm+%04x\n", vals[k], a); }
     }
 }
@@ -2925,6 +3557,22 @@ static void wide_update(int a_on_top) {
         int blank = 1;
         for (int i = 0; i < 256 * 192 && blank; i += 7) if (px[i] & 0xFFFFFF) blank = 0;
         g_small_blank = blank;
+    }
+    if (g_minimap && which == 1) {                                /* the map's place name plate at the top screen's top right: where it starts */
+        const uint32_t* tp = g_engine_out[a_on_top ? 0 : 1];
+        int x = 255, n = 0;
+        for (; x > 120; x--) {                                    /* (its dark brown, gold edge or white letters along row 7) */
+            uint32_t q = tp[7 * 256 + x] & 0xFFFFFF; int r = q >> 16, g = (q >> 8) & 255, b = q & 255;
+            int brown = r >= 80 && r <= 112 && g >= 56 && g <= 80 && b >= 32 && b <= 56, gold = r > 190 && g > 130 && g < 160 && b < 70, white = r > 230 && g > 230 && b > 230;
+            if (!(brown || gold || white)) break;
+            n += brown;
+        }
+        g_place_plate = n > 20 && x < 245 ? x + 1 : -1;
+        if (g_place_plate >= 0) {                                 /* its white letters, from the first to the last */
+            int a = 256, b = -1;
+            for (int y = 2; y < 15; y++) for (int xx = g_place_plate; xx < 256; xx++) { uint32_t q = tp[y * 256 + xx]; if ((q & 0xF0F0F0) == 0xF0F0F0) { if (xx < a) a = xx; if (xx > b) b = xx; } }
+            if (b < a) g_place_plate = -1; else { g_place_txt[0] = a; g_place_txt[1] = b + 1; }
+        }
     }
     if (g_minimap && which == 1 && g_comp_has3d) {   /* the minimap: is the game's 2D (a menu) under it? Then it fades out, and back once that's gone */
         /* (only while it can show: no popping back over a shop's menu after its card) */
@@ -3633,10 +4281,443 @@ static void shop_update(int a_on_top) {
         }
 }
 
+/* The light letters' box (the menus' names: grey 186) in a part of the screen; w 0: none. */
+static void bag_word(const uint32_t* px, int x0, int y0, int x1, int y1, int* box) {
+    int bx0 = 256, by0 = 192, bx1 = -1, by1 = -1;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            uint32_t c = px[y * 256 + x];
+            if (((c >> 16) & 255) > 170 && ((c >> 8) & 255) > 170 && (c & 255) > 170) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+        }
+    box[2] = 0;
+    if (bx1 >= bx0) { box[0] = bx0 - 1; box[1] = by0 - 1; box[2] = bx1 - bx0 + 3; box[3] = by1 - by0 + 3; }
+}
+
+/* The bag's list on the field's screen (Items: the bag, or the leader's
+ * things), modern: laid out again (bag_pieces(), g_bag). Up while its window
+ * is where the game draws it (its grey line whole round it) and its items are
+ * read (mapmarks_bag_list()); the card's description: its dark letters' rows;
+ * the path: the menus' names at the left, and the line their (grey) hand
+ * points at. */
+static void bag_update(int a_on_top) {
+    int side = 0, n = 0, sel = -1;
+    uint16_t keys[8];
+    const uint32_t* px = g_engine_out[0];
+    int ok = top_page_wide() && g_gl && !a_on_top && g_comp_has3d && g_winstyle == 2 && !g_shop && !g_equip && !g_cc_n
+          && gl_wide_shown(&side) == 1;
+    static uint64_t bag_seen; static int bag_n;                   /* (an item chosen: the list not read a few frames while its window stays, the last one kept) */
+    int keep = bag_n > 0 && g_frame - bag_seen <= 12;
+    uint32_t gl = keep && (px[BAG_Y0 * 256 + BAG_X1 - 6] & 0xFFFFFF) == 0xA2A2A2 ? 0xA2A2A2 : 0x828282;   /* (just greyed, before the window of what to do with it) */
+    int hand = 0, odd = 0, tol = gl == 0x828282 ? 0 : 4;          /* its line: grey, whole (no window over it; the hand over its left one) */
+    for (int y = BAG_Y0; ok && y <= BAG_Y1; y++) {               /* (greyed: its round corners a little darker, a few pixels) */
+        odd += (px[y * 256 + BAG_X1] & 0xFFFFFF) != gl; ok = odd <= tol;
+        hand += (px[y * 256 + BAG_X0] & 0xFFFFFF) != gl;
+    }
+    if (hand > 10) ok = 0;
+    odd = 0;
+    for (int x = BAG_X0; ok && x <= BAG_X1; x++) {
+        odd += ((px[BAG_Y0 * 256 + x] & 0xFFFFFF) != gl) + ((px[BAG_Y1 * 256 + x] & 0xFFFFFF) != gl); ok = odd <= 2 * tol;
+    }
+    if (ok) ok = (px[12 * 256 + 116] & 0xFFFFFF) != 0x828282 && (g_comp_info[(12 * 256 + 116) * 4] & 3) != 1;
+    if (ok) {                                                     /* the bag's lines have their numbers at the right; a character's things none */
+        int nums = 0;
+        for (int y = BAG_LY; y < BAG_LY + 8 * BAG_DY; y++)
+            for (int x = 230; x < BAG_X1 - 2; x++) { uint32_t c = px[y * 256 + x]; nums += ((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 200 && (c & 255) > 200; }
+        n = mapmarks_bag_list(nums < 8, keys, &sel);
+    }
+    if (getenv("DQIX_XMDBG") && ok && (n <= 0 || gl != 0x828282)) fprintf(stderr, "bag f%llu list %d grey %06x (kept %d)\n", (unsigned long long)g_frame, n, gl, keep);
+    g_bag_hold = 0;
+    int held = ok && keep && (n <= 0 || gl != 0x828282);
+    if (held) { n = bag_n; memcpy(keys, g_bag_keys, sizeof keys); sel = g_bag_sel; g_bag_hold = gl != 0x828282; }
+    else if (ok && n > 0) { bag_seen = g_frame; bag_n = n; }
+    if (n <= 0) ok = 0;
+    if (ok && sel < 0)                                            /* the hand (yellow) left of the names: the chosen line */
+        for (int i = 0; i < n; i++) {
+            int yellow = 0;
+            for (int y = BAG_LY + BAG_DY * i; y < BAG_LY + BAG_DY * (i + 1); y++)
+                for (int x = 104; x < BAG_TX; x++) { uint32_t c = px[y * 256 + x]; yellow += ((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100; }
+            if (yellow >= 6) sel = i;
+        }
+    g_bag = ok ? n : 0;
+    g_bag_box[2] = 0;
+    if (ok && !held) {                                            /* (not while kept: its box goes blank) */                                                     /* the box under the list: what isn't the field there */
+        int x0 = 256, y0 = 192, x1 = -1, y1 = -1;
+        for (int y = BAG_Y1 + 1; y < 192; y++)
+            for (int x = BAG_TX; x < 256; x++)
+                if ((g_comp_info[(y * 256 + x) * 4] & 3) != 1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 >= x0) { g_bag_box[0] = x0; g_bag_box[1] = y0; g_bag_box[2] = x1 - x0 + 1; g_bag_box[3] = y1 - y0 + 1; }
+    }
+    g_bag_ink[0] = 1; g_bag_ink[1] = 0;
+    if (ok) {                                                     /* the card's description (dark letters on its parchment, x 60..171) */
+        const uint32_t* t = g_engine_out[1];
+        for (int y = 30; y < 96; y++) {
+            int ink = 0;
+            for (int x = 60; x < 170; x++) { uint32_t c = t[y * 256 + x]; ink += ((c >> 16) & 255) < 110 && ((c >> 8) & 255) < 90 && (c & 255) < 80; }
+            if (ink >= 2) { if (g_bag_ink[1] < g_bag_ink[0]) g_bag_ink[0] = y; g_bag_ink[1] = y; }
+        }
+    }
+    g_bag_sel = sel;
+    static int word2[4];                                          /* (the menu's grey hand blinks: the line it last pointed at kept) */
+    if (!ok) word2[2] = 0;
+    g_bag_word[0][2] = g_bag_word[1][2] = g_bag_word[2][2] = 0;
+    if (ok) {
+        bag_word(px, 16, 12, 64, 28, g_bag_word[0]);              /* "Items" */
+        bag_word(px, 16, 38, 104, 52, g_bag_word[1]);             /* "Current items" */
+        int best = 0, at = -1;                                    /* the line the grey hand points at */
+        for (int y = 64; y + 10 < 192; y += BAG_DY) {
+            int k = 0;
+            for (int yy = y - 1; yy < y + 8; yy++)
+                for (int x = 10; x < 19; x++) {                   /* (its greys: not the field (see-through)) */
+                    uint32_t c = px[yy * 256 + x]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                    k += r > 90 && r == g && g == b && (g_comp_info[(yy * 256 + x) * 4] & 3) != 1;
+                }
+            if (k > best) { best = k; at = y; }
+        }
+        if (best >= 8) bag_word(px, 20, at - 3, 106, at + 10, word2);
+        memcpy(g_bag_word[2], word2, sizeof word2);
+        g_bag_path_n = 0;
+        for (int i = 0; i < 3; i++) if (g_bag_word[i][2]) memcpy(g_bag_path[g_bag_path_n++], g_bag_word[i], sizeof g_bag_word[i]);
+    }
+    g_bag_keys_n = ok ? n : 0;
+    if (ok) memcpy(g_bag_keys, keys, sizeof keys);
+}
+
+/* The X menu's windows (g_xmenu): up while the hand (yellow) is in a window
+ * of the menu's column (its grey line from x 9, one or two lines across: the
+ * name's, the bottom) and no other window is up but the box at the bottom
+ * (what isn't one of these menus: the game's layout kept). The menus before
+ * it (greyed) give the path: their names, above it. */
+/* (letters: white, grey; the chosen line's yellow; chosen with the mouse, held: green 81, 195, 24 on the DS (shown yellow)) */
+#define XM_INK2(c) (xm_light(c) || ((((c) >> 16) & 255) > 180 && (((c) >> 8) & 255) > 140 && ((c) & 255) < 100) \
+                    || ((((c) >> 8) & 255) > 150 && (((c) >> 16) & 255) < 130 && ((c) & 255) < 80))
+static int xm_light(uint32_t c) { return ((c >> 16) & 255) > 170 && ((c >> 8) & 255) > 170 && (c & 255) > 170; }
+static int xmenu_detect(int a_on_top) {
+    const uint32_t* px = g_engine_out[0];
+    const uint8_t* info = g_comp_info;
+    int side = 0, ok = g_gl && !a_on_top && g_comp_has3d && g_winstyle == 2 && !g_shop && !g_equip && !g_cc_n && !g_bag
+                    && gl_wide_shown(&side) == 1 && !party_in_battle();   /* (the field's menus only) */
+    if (!ok) return 0;
+    #define GREY(x, y) ((px[(y) * 256 + (x)] & 0xFFFFFF) == 0x828282)
+    int hx0 = 256, hy0 = 192, hx1 = -1, hy1 = -1, hn = 0;          /* the hand: the leftmost run of columns with yellow (the chosen line's letters,
+                                                                     * yellow when chosen with the mouse, after it) */
+    static int ycol[256], ylo[256], yhi[256];
+    for (int x = 0; x < 256; x++) { ycol[x] = 0; ylo[x] = 192; yhi[x] = -1; }
+    for (int y = 0; y < 192; y++)
+        for (int x = 0; x < 256; x++) {
+            uint32_t c = px[y * 256 + x];
+            if (((c >> 16) & 255) > 180 && ((c >> 8) & 255) > 140 && (c & 255) < 100 && (info[(y * 256 + x) * 4] & 3) != 1) {
+                ycol[x]++; if (y < ylo[x]) ylo[x] = y; if (y > yhi[x]) yhi[x] = y;
+            }
+        }
+    for (int x = 0, x0 = -1; x < 256; x++) {                     /* (the hand's 14 columns from its first yellow one: gaps inside it) */
+        if (x0 >= 0 && x > x0 + 13) break;
+        if (!ycol[x]) continue;
+        if (x0 < 0) x0 = hx0 = x;
+        hx1 = x; hn += ycol[x];
+        if (ylo[x] < hy0) hy0 = ylo[x]; if (yhi[x] > hy1) hy1 = yhi[x];
+    }
+    static int dbg = -1; if (dbg < 0) dbg = getenv("DQIX_XMDBG") ? atoi(getenv("DQIX_XMDBG")) : 0;
+    #define XMFAIL(c) do { if (dbg && (dbg > 1 || g_frame % 30 == 0)) fprintf(stderr, "xm f%llu fail %d hand %d %d-%d %d-%d\n", (unsigned long long)g_frame, c, hn, hx0, hx1, hy0, hy1); return 0; } while (0)
+    if (hn < 6 || hn > 120 || hx1 - hx0 > 24 || hy1 - hy0 > 14) XMFAIL(1);
+    int ry[32], rx0[32], rx1[32], nr = 0;                         /* the grey lines across (25 pixels or more) */
+    for (int y = 0; y < 192 && nr < 32; y++)
+        for (int x = 0; x < 256; ) {
+            if (!GREY(x, y)) { x++; continue; }
+            int e = x; while (e < 256 && GREY(e, y)) e++;
+            if (e - x >= 25 && nr < 32) { ry[nr] = y; rx0[nr] = x; rx1[nr] = e - 1; nr++; }
+            x = e;
+        }
+    int hy = (hy0 + hy1) / 2, below = -1;                         /* the window's line under the hand: the menu's column */
+    for (int i = 0; i < nr; i++) if (ry[i] > hy && rx0[i] <= hx1 && rx1[i] > hx1 + 20) { below = i; break; }   /* (the menus' column, or a window of choices over them: what to do, where to...) */
+    if (below < 0) XMFAIL(2);
+    int X0 = rx0[below], X1 = rx1[below], top = ry[below], bot = ry[below];
+    for (int i = below - 1; i >= 0; i--) {                        /* ...its lines above, its side whole between them (but by the hand) */
+        if (abs(rx0[i] - X0) > 1 || abs(rx1[i] - X1) > 1) continue;
+        int whole = 1;
+        for (int y = ry[i]; y < top && whole; y++) whole = GREY(X0, y) || (y >= hy0 - 3 && y <= hy1 + 3);
+        if (!whole) break;
+        top = ry[i];
+    }
+    if (top >= hy0) XMFAIL(3);
+    int sep = 0;
+    for (int i = 0; i < nr; i++) if (ry[i] > top && ry[i] < hy0 && abs(rx0[i] - X0) <= 1 && abs(rx1[i] - X1) <= 1) sep = ry[i];
+    int bx0 = 256, by0 = 192, bx1 = -1, by1 = -1, free = 0;       /* any other grey line: the box at the bottom, or other windows round it (free) */
+    g_xm_info[2] = 0; g_xm_nisep = 0;
+    for (int i = 0, at = bot; i < nr; i++) {                      /* a window as wide right under it (who: their HP): shown with it */
+        if (abs(rx0[i] - X0) > 2 || abs(rx1[i] - X1) > 2 || ry[i] <= at || ry[i] > at + 40) continue;
+        if (!g_xm_info[2]) { if (ry[i] > bot + 8) break; g_xm_info[0] = X0; g_xm_info[1] = ry[i]; g_xm_info[2] = X1; }
+        else if (g_xm_nisep < 4) g_xm_isep[g_xm_nisep++] = ry[i];
+        g_xm_info[3] = at = ry[i];
+    }
+    if (g_xm_info[2] && g_xm_nisep) g_xm_nisep--;                 /* (its last line: its bottom, not a line inside) */
+    else g_xm_info[2] = 0;
+    for (int i = 0; i < nr; i++) {
+        if (abs(rx0[i] - X0) <= 1 && abs(rx1[i] - X1) <= 1 && ry[i] >= top && ry[i] <= bot) continue;
+        if (g_xm_info[2] && abs(rx0[i] - X0) <= 2 && abs(rx1[i] - X1) <= 2 && ry[i] >= g_xm_info[1] && ry[i] <= g_xm_info[3]) continue;
+        if (ry[i] < 140 || rx0[i] < 128) { free = 1; continue; }
+        if (rx0[i] < bx0) bx0 = rx0[i]; if (rx1[i] > bx1) bx1 = rx1[i]; if (ry[i] < by0) by0 = ry[i]; if (ry[i] > by1) by1 = ry[i];
+    }
+    g_xm_box[2] = 0; g_xm_free = 0; g_xm_nf = 0;
+    if (free) {                                                   /* windows round it: each window found (its top line, its side down to its bottom line, the game's grey or greyed) */
+        g_xm_free = 1; g_xm_info[2] = 0;
+        static uint8_t used[192][256]; memset(used, 0, sizeof used);
+        for (int y = 0; y < 186 && g_xm_nf < 8; y++)
+            for (int x = 0; x < 256 && g_xm_nf < 8; ) {
+                uint32_t c = px[y * 256 + x] & 0xFFFFFF;
+                if ((c != 0x828282 && c != 0xA2A2A2) || used[y][x]) { x++; continue; }
+                int e = x; while (e < 256 && (px[y * 256 + e] & 0xFFFFFF) == c) e++;
+                int x0 = x, x1 = e - 1; x = e;
+                if (x1 - x0 < 24) continue;                       /* (a line of its own first: not a window's side) */
+                {   /* (back past a window over its left: its corner hidden, its side seen under it) */
+                    int g = x0 - 1; while (g >= 0 && x0 - g <= 140 && (px[y * 256 + g] & 0xFFFFFF) != c && (info[(y * 256 + g) * 4] & 3) != 1) g--;
+                    if (g >= 0 && x0 - g > 8) {                       /* (its left side under the window over it, a few rows down) */
+                        int sx = -1;
+                        for (int xx = g + 1; xx < x0 && sx < 0; xx++) {
+                            int n = 0; for (int yy = y + 1; yy < y + 40 && yy < 192; yy++) n += (px[yy * 256 + xx] & 0xFFFFFF) == c;
+                            if (n >= 10) sx = xx;
+                        }
+                        if (sx >= 0) x0 = sx;
+                    }
+                }
+                for (int more = 1; more; ) {                       /* (on past a window over it: the same line again after it, all it covers drawn) */
+                    more = 0;
+                    int g = x1 + 1; while (g < 256 && g - x1 <= 140 && (px[y * 256 + g] & 0xFFFFFF) != c && (info[(y * 256 + g) * 4] & 3) != 1) g++;
+                    if (g < 256 && g - x1 > 8 && (px[y * 256 + g] & 0xFFFFFF) == c && !used[y][g]) {
+                        int e2 = g; while (e2 < 256 && (px[y * 256 + e2] & 0xFFFFFF) == c) e2++;
+                        if (e2 - g >= 8) { x1 = e2 - 1; x = e2; more = 1; }
+                    }
+                }
+                if (x1 - x0 < 24) continue;
+                int bot = -1, nsep = 0, sp[3] = { 0 };
+                #define FSIDE(yy) ({ int sd_ = 0; for (int d_ = -1; d_ <= 1 && !sd_; d_++) sd_ = (x0 + d_ >= 0 && (px[(yy) * 256 + x0 + d_] & 0xFFFFFF) == c) || (x1 + d_ < 256 && (px[(yy) * 256 + x1 + d_] & 0xFFFFFF) == c); sd_; })
+                for (int yy = y + 1, miss = 0; yy < 192 && miss <= 12; yy++) {   /* (down its sides (a pixel either way: a greyed one's round edge); a window over it hides a little) */
+                    int side = FSIDE(yy);
+                    miss = side ? 0 : miss + 1;
+                    int across = 1;
+                    for (int xx = x0 + 2; xx < x1 - 1 && across; xx += 3) across = (px[yy * 256 + xx] & 0xFFFFFF) == c;
+                    if (!across || !side) continue;
+                    if (bot > 0 && nsep < 3 && bot > y + 2) sp[nsep++] = bot;
+                    bot = yy;
+                    if (yy + 1 >= 192 || !FSIDE(yy + 1)) break;           /* (nothing under it: its bottom, not a line inside) */
+                }
+                #undef FSIDE
+                while (nsep && sp[nsep - 1] >= bot - 2) nsep--;          /* (a greyed one's line doubled at its bottom) */
+                if (bot < y + 8) continue;
+                for (int xx = x0; xx <= x1; xx++) { used[y][xx] = used[bot][xx] = 1; for (int k = 0; k < nsep; k++) used[sp[k]][xx] = 1; }   /* (its lines: not windows of their own) */
+                if (abs(x0 - X0) <= 1 && abs(x1 - X1) <= 1 && y == top) continue;   /* (its own: drawn apart) */
+                int twice = 0;                                     /* (a greyed one's line doubled: found again a row down) */
+                for (int k = 0; k < g_xm_nf && !twice; k++) { const int* o = g_xm_fwin[k]; twice = abs(o[0] - x0) <= 2 && abs(o[1] - y) <= 2 && abs(o[2] - x1) <= 2 && abs(o[3] - bot) <= 2; }
+                if (twice) continue;
+                int* f = g_xm_fwin[g_xm_nf]; f[0] = x0; f[1] = y; f[2] = x1; f[3] = bot; f[4] = c == 0xA2A2A2;
+                for (int k = 0; k < 3; k++) g_xm_fsep[g_xm_nf][k] = k < nsep ? sp[k] : 0;
+                g_xm_nf++;
+            }
+    } else if (bx1 >= bx0 && by1 > by0) {                                /* (not with a list shown greyed at the right (the bag's): its box) */
+        int list = 0;
+        for (int y = 0; y < 140 && !list; y++) list = (px[y * 256 + 200] & 0xFFFFFF) == 0xA2A2A2 && (px[y * 256 + 230] & 0xFFFFFF) == 0xA2A2A2;
+        if (!list) { g_xm_box[0] = bx0; g_xm_box[1] = by0; g_xm_box[2] = bx1 - bx0 + 1; g_xm_box[3] = by1 - by0 + 1; }
+    }
+    g_xm_win[0] = X0; g_xm_win[1] = top; g_xm_win[2] = X1; g_xm_win[3] = bot; g_xm_sep = sep;
+    g_xm_hand[0] = hx0 - 4 < 0 ? 0 : hx0 - 4; g_xm_hand[1] = hy0 - 3; g_xm_hand[2] = hx1 + 3 - g_xm_hand[0]; g_xm_hand[3] = hy1 + 4 - g_xm_hand[1];
+    {   /* the chosen line: from after the hand to its column's end (the
+         * first gap of 10 columns empty in all its lines after the text), over its letters' rows (but the
+         * accents': 3 letter pixels a row) with 4 pixels round; the chosen line's letters may be yellow */
+        int ly0 = (sep ? sep : top) + 2, ly1 = bot - 2, end = X1 - 2, seen = 0, gap = 0;
+        #define XM_INK(c) XM_INK2(c)
+        for (int x = hx1 + 2; x < X1 - 1; x++) {
+            int any = 0;
+            for (int y = ly0; y <= ly1 && !any; y++) any = XM_INK(px[y * 256 + x]);
+            if (any) { seen = 1; gap = 0; } else if (seen && ++gap >= 10) { end = x - 5; break; }
+        }
+        int t0 = -1, t1 = -1;                                      /* its letters' rows: the run round the hand's middle */
+        for (int y = hy - 9, c0 = -1, c1 = -1; y <= hy + 10; y++) {   /* (the runs of rows apart by 3 or more; the nearest the hand's middle) */
+            int k = 0;
+            if (y >= ly0 && y <= ly1 && y <= hy + 9) for (int x = hx1 + 1; x < end; x++) k += XM_INK(px[y * 256 + x]);
+            if (k >= 3) { if (c0 < 0 || y > c1 + 2) c0 = y; c1 = y; continue; }
+            if (c0 >= 0 && y > c1 + 2) {
+                if (t0 < 0 || abs((c0 + c1) - 2 * hy) < abs((t0 + t1) - 2 * hy)) { t0 = c0; t1 = c1; }
+                c0 = -1;
+            }
+        }
+        #undef XM_INK
+        if (t0 < 0) { t0 = hy - 3; t1 = hy + 3; }
+        int tx = hx1 + 1;                                         /* (from 2 before its letters: the hand stays out, the band still while the hand moves) */
+        for (int found = 0; tx < end && !found; tx++)
+            for (int y = t0; y <= t1 && !found; y++) found = XM_INK2(px[y * 256 + tx]);
+        g_xm_band[0] = tx - 3; g_xm_band[2] = end;
+        g_xm_band[1] = t0 - 4; g_xm_band[3] = t1 + 5;
+        if (g_xm_band[1] < ly0 - 1) g_xm_band[1] = ly0 - 1;
+        if (g_xm_band[3] > ly1 + 1) g_xm_band[3] = ly1 + 1;
+    }
+    g_xm_nword = 0;                                               /* the path: the greyed menus' names above it (one a line), then its own */
+    for (int y = 0; y < top && g_xm_nword < 3 && X0 <= 12; ) {   /* (a window of choices over the menus: its own name only) */
+        int any = 0;
+        for (int x = X0 + 2; x < X1 - 1 && !any; x++) any = xm_light(px[y * 256 + x]);
+        if (!any) { y++; continue; }
+        int e = y; while (e < top) { int a2 = 0; for (int x = X0 + 2; x < X1 - 1 && !a2; x++) a2 = xm_light(px[e * 256 + x]); if (!a2 && e - y > 3) break; e++; }
+        int* wd = g_xm_word[g_xm_nword];
+        bag_word(px, X0 + 2, y, X1 - 1, e, wd);
+        if (wd[2] && wd[3] > 4) {                                 /* (not a line: a window's edge, light) */                                              /* (its first word's letters: a gap of 6 columns ends it (a menu behind showing)) */
+            int gap = 0, last = wd[0];
+            for (int x = wd[0]; x < wd[0] + wd[2]; x++) {
+                int any = 0;
+                for (int yy = wd[1]; yy < wd[1] + wd[3] && !any; yy++) any = xm_light(px[yy * 256 + x]);
+                if (any) { last = x; gap = 0; } else if (++gap >= 6 && last > wd[0]) break;
+            }
+            wd[2] = last - wd[0] + 2;
+            if (wd[0] <= X0 + 24) g_xm_nword++;                   /* (a name: at the window's left, not what a menu behind shows) */
+        }
+        y = e + 1;
+    }
+    if (X0 > 12 && g_bag_path_n) {                               /* a window of choices over the bag: the bag's path (its menus' names still there, greyed) */
+        for (int i = 0; i < g_bag_path_n && g_xm_nword < 4; i++) memcpy(g_xm_word[g_xm_nword++], g_bag_path[i], sizeof g_bag_path[i]);
+    } else if (sep && g_xm_nword < 4) { bag_word(px, X0 + 2, top + 1, X1 - 1, sep, g_xm_word[g_xm_nword]); if (g_xm_word[g_xm_nword][2]) g_xm_nword++; }
+    #undef GREY
+    if (dbg && (dbg > 1 || g_frame % 30 == 0)) fprintf(stderr, "xm f%llu ok win %d %d %d %d sep %d words %d band %d %d %d %d hand %d-%d %d-%d\n", (unsigned long long)g_frame, X0, top, X1, bot, sep, g_xm_nword, g_xm_band[0], g_xm_band[1], g_xm_band[2], g_xm_band[3], hx0, hx1, hy0, hy1);
+    return 1;
+}
+
+/* The X menu's windows (xmenu_detect()); between two of them (the hand gone
+ * for a few frames, the next window opening) the last layout kept, without
+ * its hand, while its window's line is still there: no frame of the game's. */
+static void xmenu_update(int a_on_top) {
+    static uint64_t last, seen;                                  /* (the frame it was last seen; it or the bag) */
+    if (g_bag) seen = g_frame;
+    g_xm_msg[2] = 0;
+    g_xm_hold = 0;
+    if (xmenu_detect(a_on_top)) { g_xmenu = 1; last = seen = g_frame; if (g_xm_win[0] <= 12) g_bag_path_n = 0; return; }   /* (back in the menus' column: not over the bag) */
+    const uint32_t* px = g_engine_out[0];
+    uint32_t wl = px[g_xm_win[1] * 256 + g_xm_win[0] + 6] & 0xFFFFFF;   /* (the last window's top line still there: the menus up) */
+    if ((g_xmenu || g_frame - seen <= 90) && seen && (wl == 0x828282 || wl == 0xA2A2A2) && !a_on_top && !g_bag && !party_in_battle()) {   /* a message under the menus ("... has no items."): the layout kept with it, as long as it's up */
+        #define MGREY(x, y) ((px[(y) * 256 + (x)] & 0xFFFFFF) == 0x828282)
+        int empty = 0;
+        for (int y0 = 100; y0 < 180 && !g_xm_msg[2]; y0++) {
+            if (!MGREY(12, y0) || !MGREY(128, y0) || !MGREY(236, y0) || MGREY(128, y0 - 1)) continue;   /* (its top line: across the screen) */
+            int x0 = 12, x1 = 236, y1 = y0 + 8;
+            while (x0 > 0 && MGREY(x0 - 1, y0)) x0--;
+            while (x1 < 255 && MGREY(x1 + 1, y0)) x1++;
+            while (y1 < 191 && !MGREY(128, y1)) y1++;                /* (its bottom line) */
+            if (y1 - y0 < 16) continue;
+            int box[4];
+            bag_word(px, x0 + 2, y0 + 2, x1 - 1, y1, box);         /* (its words) */
+            if (!box[2]) { empty = 1; continue; }                  /* (opened, its words not out yet) */
+            g_xm_msg[0] = box[0]; g_xm_msg[1] = box[1]; g_xm_msg[2] = box[2]; g_xm_msg[3] = box[3];
+        }
+        #undef MGREY
+        if (g_xm_msg[2] || (empty && g_xmenu)) { g_xmenu = 1; g_xm_hand[2] = 0; g_xm_hold = 1; last = g_frame; return; }   /* (an empty one: the layout kept, no popup yet) */
+    }
+    int ok = g_xmenu && g_frame - last <= 12 && !a_on_top && !g_bag && !party_in_battle();
+    if (ok) {                                                     /* (its top line: grey, the game's or greyed) */
+        uint32_t c = px[g_xm_win[1] * 256 + g_xm_win[0] + 6] & 0xFFFFFF;
+        ok = c == 0x828282 || c == 0xA2A2A2;
+    }
+    if (ok) { g_xm_hand[2] = 0; g_xm_hold = 1; return; }
+    g_xmenu = 0;
+    if (!g_bag && g_frame - seen > 60) g_bag_path_n = 0;         /* (out of the menus a second: the bag's path forgotten) */
+}
+
+/* The icons' overlay over the field's screen (gl_set_icons()): the bag's
+ * (its items' icons, its path) or the X menu's (its path), else none. */
+static void menu_icons_update(void) {
+    const uint8_t* rgba = NULL; int changed = 0;
+    float cw = 256 + 2 * (float)wide_side_target(), X0 = (cw - 256) / 2;   /* (the overlay: the canvas' middle 256) */
+    float chev[8];
+    if (g_bag) {
+        float x0 = bag_x0(cw), wy = BAG_WY1 + 5;
+        path_set(x0 + 1, 13, (const int (*)[4])g_bag_word, 3);
+        for (int i = 0; i < g_path_n; i++) { chev[2 * i] = g_path_chev[2 * i] - X0; chev[2 * i + 1] = g_path_chev[2 * i + 1]; }
+        changed = mapmarks_bag(g_bag_keys, g_bag_keys_n, x0 - X0 + 7, bag_my(BAG_LY) + (BAG_DY * BAG_K - BAG_IC) / 2 + 0.5f, BAG_DY * BAG_K, BAG_IC, g_bag_sel,
+                               x0 - X0 + 6, wy + (BAG_DH - BAG_BIG) / 2, g_bag_ink[1] >= g_bag_ink[0] ? BAG_BIG : 0,
+                               T("Menu"), g_path_x[0] - X0, g_path_y, PATH_H, chev, g_path_n, 5.0f, &rgba);
+    } else if (g_ca_at && g_frame - g_ca_at <= 2) {               /* Attributes: the equipment's icons (the character shown's) */
+        uint16_t keys[8];
+        int who = g_main_ram[CA_WHO & (MAIN_RAM_SIZE - 1)]; if (who > 21) who = 0;   /* (the character shown: his column) */
+        for (int i = 0; i < 8; i++) {
+            uint16_t k; memcpy(&k, g_main_ram + ((CA_EQUIP - 0x964 * who + 0x2C * CA_SLOT[i]) & (MAIN_RAM_SIZE - 1)), 2);
+            keys[i] = k ? k : 0xFFFF;
+        }
+        changed = mapmarks_bag(keys, 8, g_ca_ic[0], g_ca_ic[1], g_ca_ic[2], g_ca_ic[3], -1, 0, 0, 0, "", 0, 0, 0, chev, 0, 0, &rgba);
+    } else if (g_xmenu && !g_xm_free) {                          /* (its windows all where they are: no path, the menus behind shown) */
+        float wx, wy;
+        xm_place(cw, &wx, &wy);
+        path_set(wx + 1, wy - 7, (const int (*)[4])g_xm_word, g_xm_nword);
+        for (int i = 0; i < g_path_n; i++) { chev[2 * i] = g_path_chev[2 * i] - X0; chev[2 * i + 1] = g_path_chev[2 * i + 1]; }
+        changed = mapmarks_menu(T("Menu"), g_path_x[0] - X0, g_path_y, PATH_H, chev, g_path_n, 5.0f, &rgba);
+    } else if (mapmarks_menu_off()) changed = 1;
+    if (changed && !g_shop) gl_set_icons(g_bag || g_xmenu || (g_ca_at && g_frame - g_ca_at <= 2) ? rgba : NULL, MAPMARKS_W, MAPMARKS_H);
+}
+
+/* The X menu's window alone in the middle (g_xmenu), as the bag's (the 2D
+ * apart): its panel and line of the modern style, its name and lines (light
+ * letters, the hand kept), the chosen one lit to its column's end; the box
+ * at the bottom where it was, of the style; the path above. */
+static void xmenu_pieces(GlPresent* v) {
+    float wx, wy, t = 0.75f, X = (v->cw - 256) / 2;
+    xm_place(v->cw, &wx, &wy);
+    const int X0 = g_xm_win[0], top = g_xm_win[1], X1 = g_xm_win[2], bot = g_xm_win[3], sep = g_xm_sep;
+    float ox = wx - X0, oy = wy - top, w = (float)(X1 - X0 + 1), h = (float)(bot - top + 1);
+    #define XM_WIN(X_, Y_, W_, H_) do { set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), X_, Y_, W_, H_); \
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, W_, t); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X_, (Y_) + (H_) - t, W_, t); \
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), X_, Y_, t, H_); set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), (X_) + (W_) - t, Y_, t, H_); } while (0)
+    for (int pass = 1; g_xm_free && pass >= 0; pass--)          /* the windows round it, where they are (the greyed ones first: under) */
+        for (int i = 0; i < g_xm_nf; i++) {
+            const int* f = g_xm_fwin[i];
+            if (f[4] != pass || v->npiece + 9 + 26 > GL_MAX_PIECES) continue;
+            float fx = X + f[0], fw = (float)(f[2] - f[0] + 1), fh = (float)(f[3] - f[1] + 1);
+            XM_WIN(fx, (float)f[1], fw, fh);
+            for (int k = 0; k < 3 && g_xm_fsep[i][k]; k++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), fx + 4, (float)g_xm_fsep[i][k], fw - 8, t);
+            int in = f[4] ? 2 : 1;                               /* (a greyed one: its lines doubled, left out) */
+            bestiary_piece(v, 3, f[0] + in, f[1] + in, f[2] - f[0] - 2 * in + 1, f[3] - f[1] - 2 * in + 1, 30, fx + in, (float)f[1] + in, 1);   /* (30: its letters, greyed too, not the lines of the windows over it) */
+        }
+    XM_WIN(wx, wy, w, h);
+    int ly0 = (sep ? sep : top) + 1, in = g_xm_hold ? 3 : 1;   /* (kept between two windows: 3 pixels in, the lines of a window greyed not taken) */
+    if (sep) {
+        bestiary_piece(v, 3, X0 + in, top + in, X1 - X0 - 2 * in + 1, sep - top - 2 * in + 1, g_xm_hold ? 29 : 3, X0 + in + ox, top + in + oy, 1);   /* its name */
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx + 4, sep + oy, w - 8, t);
+    }
+    for (int i = 0; i < 3 && g_xm_band[2] > g_xm_band[0]; i++)  /* the chosen line lit (three times: seen over a bright field too) */
+        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 21, 0, 0, 1), g_xm_band[0] + ox, g_xm_band[1] + oy, g_xm_band[2] - g_xm_band[0], g_xm_band[3] - g_xm_band[1]);
+    bestiary_piece(v, 3, X0 + in, ly0 + in - 1, X1 - X0 - 2 * in + 1, bot - ly0 - 2 * in + 2, g_xm_hold ? 29 : 3, X0 + in + ox, ly0 + in - 1 + oy, 1);   /* its lines */
+    if (g_xm_hand[2]) {                                          /* the hand: its own colours, whole (over the window's left line too) */
+        const int* h = g_xm_hand;
+        bestiary_piece(v, 3, h[0], h[1], h[2], h[3], 27, h[0] + ox, h[1] + oy, 1);
+    }
+    if (g_xm_info[2]) {                                          /* the window under it (who: their HP), under it still */
+        const int* f = g_xm_info; float fy = f[1] + oy, fh = (float)(f[3] - f[1] + 1);
+        XM_WIN(wx, fy, w, fh);
+        for (int i = 0; i < g_xm_nisep; i++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), wx + 4, g_xm_isep[i] + oy, w - 8, t);
+        bestiary_piece(v, 3, X0 + 2, f[1] + 2, X1 - X0 - 3, f[3] - f[1] - 3, 30, X0 + 2 + ox, f[1] + 2 + oy, 1);   /* (30: its words, not its lines) */
+    }
+    if (g_xm_box[2]) {                                           /* the box at the bottom, where it was */
+        const int* b = g_xm_box;
+        XM_WIN(X + b[0], (float)b[1], (float)b[2], (float)b[3]);
+        bestiary_piece(v, 3, b[0] + 2, b[1] + 2, b[2] - 4, b[3] - 4, 3, X + b[0] + 2, (float)b[1] + 2, 1);
+    }
+    if (g_xm_msg[2]) {                                           /* the message: a window of the style under it, as wide as its words */
+        const int* m = g_xm_msg;
+        float mw = m[2] + 16.0f, mh = m[3] + 10.0f, mx = floorf((v->cw - mw) / 2), my = fmaxf(wy + h + 6, (float)m[1] - 6);
+        if (my + mh > 190) my = 190 - mh;
+        XM_WIN(mx, my, mw, mh);
+        bestiary_piece(v, 3, m[0], m[1], m[2], m[3], 3, mx + 8, my + 5, 1);
+    }
+    if (!g_xm_free) path_pieces(v);
+    #undef XM_WIN
+    v->icons[0] = X; v->icons[1] = 0; v->icons[2] = 256; v->icons[3] = 192;
+}
+
 /* The map's markers (mapmarks.c) over the top screen, in whichever window
  * shows it whole, while it shows the map (the 3D on the bottom screen, or the
  * map kept during a battle); the mouse over that window points at them. */
 static void map_overlay(GlPresent* v, SDL_Window* win, int a_on_top) {
+    if (v->round[2] > 0) {                                        /* the round minimap: its marks drawn with it; the mouse in its circle */
+        if (SDL_GetMouseFocus() != win || mapmarks_top_page()) return;
+        int ww, wh, dw, dh, mx, my; SDL_GetWindowSize(win, &ww, &wh); SDL_GL_GetDrawableSize(win, &dw, &dh);
+        SDL_GetMouseState(&mx, &my);
+        float lx = (((float)mx + 0.5f) * (float)dw / (float)ww - v->ox) / v->sc, ly = (((float)my + 0.5f) * (float)dh / (float)wh - v->oy) / v->sc;
+        float dx = (lx - v->round[0]) / v->round[2], dy = (ly - v->round[1]) / v->round[2];
+        if (dx * dx + dy * dy < 1) mapmarks_hover(v->round_src[0] + dx * v->round_src[2], v->round_src[1] + dy * v->round_src[2]);
+        return;
+    }
     const float* t = v->top;
     float least = g_minimap ? 48 : 128;                          /* the minimap: small, but it's the map */
     if (t[2] < least || t[3] < least * 0.75f || v->topx[1] != 256 || (a_on_top && !v->held) || (g_minimap && g_mini_vis < 0.99f) || mapmarks_top_page()) return;
@@ -3800,11 +4881,36 @@ static void present_gl(void) {
     hud_update((pow >> 15) & 1);                                 /* (before composing: the minimal style cuts the cards out for it) */
     gl_set_hud_cut(g_winstyle && (g_hud_n > 0 || g_hud_win[2]));
     shop_update((pow >> 15) & 1);
+    bag_update((pow >> 15) & 1);
+    xmenu_update((pow >> 15) & 1);
+    menu_icons_update();
     pop_update((pow >> 15) & 1);
     creation_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
-    gl_set_split(g_shop);
+    gl_set_split(g_shop || g_bag || (g_xmenu && xm_field()) || results_hub());   /* (Sandy's page: her 3D apart from her page) */
+    {   /* between two of our menus' layouts (one window closing, the next not yet found), the
+         * game's own windows on the field a few frames: the last picture kept instead (up to 10 frames);
+         * DQIX_RAWCHK: the frames where they show all the same */
+        static int chk = -1, held; static uint64_t modern;
+        if (chk < 0) chk = getenv("DQIX_RAWCHK") != NULL;
+        if (g_shop || g_bag || g_xmenu || g_equip) { modern = g_frame; held = 0; }
+        else if (modern && g_frame - modern < 600 && !((pow >> 15) & 1) && !g_classic) {
+            const uint32_t* px = g_engine_out[0]; int best = 0, by = -1, bx = -1;   /* (the game's menus: a grey line, the game's or greyed) */
+            for (int y = 0; y < 192; y++)
+                for (int x = 0, run = 0; x < 256; x++) {
+                    uint32_t c = px[y * 256 + x] & 0xFFFFFF;
+                    run = c == 0x828282 || c == 0xA2A2A2 ? run + 1 : 0;
+                    if (run > best) { best = run; by = y; bx = x - run + 1; }
+                }
+            if (best >= 40 && held < 10 && g_frame - modern <= (uint64_t)held + 1) {
+                held++;
+                if (chk) fprintf(stderr, "HELD f%llu\n", (unsigned long long)g_frame);
+                return;
+            }
+            if (chk && best >= 40) fprintf(stderr, "RAW f%llu line %d at %d,%d\n", (unsigned long long)g_frame, best, bx, by);
+        }
+    }
     g_win_outline = g_hud_win[2] != 0;                           /* (the next frames: the experience and level-up windows outlined) */
     g_dlg_outline = (pow >> 15) & 1;                             /* battles (the 3D on the top screen): the text box too */
     {   /* the 3D gone for a single frame in widescreen (a shop's menu after an item's
@@ -3834,7 +4940,10 @@ static void present_gl(void) {
     }
     {   /* the map's markers: drawn when they change */
         const uint8_t* rgba;
+        g_mapmarks_round = g_minimap && g_round_map;
         if (mapmarks_update(&rgba)) gl_set_overlay(rgba, MAPMARKS_W, MAPMARKS_H);
+        int sw, sh;                                               /* the round minimap's list of the monsters near */
+        if (mapmarks_species(&rgba, &sw, &sh)) { gl_set_layer(GL_LAYER_SPECIES, rgba, sw, sh); g_species_w = rgba ? sw : 0; g_species_h = rgba ? sh : 0; }
     }
     int w, h; SDL_GL_GetDrawableSize(g_win, &w, &h);
     {   /* the in-game menu (Esc) or the journal (J), over everything; else a trophy's notice */
@@ -3967,6 +5076,7 @@ static void menu_sync(void) {
     menu_check(MI_MAPMARKS, g_mapmarks); menu_enable(MI_MAPMARKS, g_gl);
     menu_check(MI_MAPMARKS_OPENED, g_mapmarks_opened); menu_enable(MI_MAPMARKS_OPENED, g_gl && g_mapmarks);
     menu_check(MI_MAPMONSTERS, g_mapmarks_monsters); menu_enable(MI_MAPMONSTERS, g_gl && g_mapmarks);
+    menu_check(MI_ROUND_MAP, g_round_map); menu_enable(MI_ROUND_MAP, g_gl);
     menu_check(MI_MAPGATHER, g_mapmarks_gather); menu_enable(MI_MAPGATHER, g_gl && g_mapmarks);
     menu_check(MI_INTERIOR_MAPS, g_interior_maps); menu_enable(MI_INTERIOR_MAPS, g_gl);
     menu_check(MI_MAP_LEGEND, g_map_legend); menu_enable(MI_MAP_LEGEND, g_gl && g_mapmarks);
@@ -4604,6 +5714,7 @@ static void do_action(int id) {
     case MI_MAPMARKS: g_mapmarks = !g_mapmarks; break;
     case MI_MAPMARKS_OPENED: g_mapmarks_opened = !g_mapmarks_opened; break;
     case MI_MAPMONSTERS: g_mapmarks_monsters = !g_mapmarks_monsters; break;
+    case MI_ROUND_MAP: g_round_map = !g_round_map; break;
     case MI_MAPGATHER: g_mapmarks_gather = !g_mapmarks_gather; break;
     case MI_INTERIOR_MAPS: g_interior_maps = !g_interior_maps; break;
     case MI_MAP_LEGEND: g_map_legend = !g_map_legend; break;
