@@ -898,6 +898,17 @@ static void ctl_fill(HWND h) {
     if (sel >= 0) SendMessageW(l, LB_SETCURSEL, (WPARAM)sel, 0);
     ctl_status(h);
 }
+/* The game waits for the new key or button (controls_window_request). The game's
+ * window gets the focus now, from this window that has it: Windows lets a
+ * window of the program in front take it, and SDL hears a controller only
+ * while one of its windows has the focus (a DualSense's or an Xbox
+ * controller's buttons did nothing while this window kept it). The game puts
+ * this window back in front once the key or button is in. */
+static void ctl_ask(HWND h, int action, int what) {
+    g_ctl_req = action; g_ctl_req_what = what;
+    HWND game = GetWindow(h, GW_OWNER);
+    if (game) SetForegroundWindow(game);
+}
 static INT_PTR CALLBACK ctl_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     (void)lp;
     switch (msg) {
@@ -922,10 +933,10 @@ static INT_PTR CALLBACK ctl_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_COMMAND: {
         int sel = (int)SendDlgItemMessageW(h, ID_CTL_LIST, LB_GETCURSEL, 0, 0);
         switch (LOWORD(wp)) {
-        case ID_CTL_LIST: if (HIWORD(wp) == LBN_DBLCLK && sel >= 0) { g_ctl_req = sel; g_ctl_req_what = 0; } return TRUE;
-        case ID_CTL_K1: if (sel >= 0) { g_ctl_req = sel; g_ctl_req_what = 0; } return TRUE;
-        case ID_CTL_K2: if (sel >= 0) { g_ctl_req = sel; g_ctl_req_what = 1; } return TRUE;
-        case ID_CTL_PAD: if (sel >= 0) { g_ctl_req = sel; g_ctl_req_what = 2; } return TRUE;
+        case ID_CTL_LIST: if (HIWORD(wp) == LBN_DBLCLK && sel >= 0) ctl_ask(h, sel, 0); return TRUE;
+        case ID_CTL_K1: if (sel >= 0) ctl_ask(h, sel, 0); return TRUE;
+        case ID_CTL_K2: if (sel >= 0) ctl_ask(h, sel, 1); return TRUE;
+        case ID_CTL_PAD: if (sel >= 0) ctl_ask(h, sel, 2); return TRUE;
         case ID_CTL_CLEAR:
             if (sel >= 0) {
                 if (g_ctl_key[sel][1]) g_ctl_key[sel][1] = 0;

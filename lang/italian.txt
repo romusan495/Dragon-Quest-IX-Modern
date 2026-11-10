@@ -488,6 +488,12 @@ it = Fai doppio clic su un'azione, poi premi un tasto o un pulsante del controll
 en = Press a key or a controller button for: %s (Esc cancels)
 it = Premi un tasto o un pulsante del controller per: %s (Esc annulla)
 
+en = Press a controller button for: %s (Esc cancels)
+it = Premi un pulsante del controller per: %s (Esc annulla)
+
+en = No controller connected: plug it in, or press Esc
+it = Nessun controller collegato: collegalo o premi Esc
+
 en = Action
 it = Azione
 

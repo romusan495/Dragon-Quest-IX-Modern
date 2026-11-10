@@ -6181,7 +6181,7 @@ static void capture_done(const char* what) {
 }
 static void capture_key(SDL_Scancode k, Uint16 mod) {
     if (k == SDL_SCANCODE_ESCAPE) { capture_done(NULL); return; }
-    if (g_cap_what == 2) g_cap_what = 0;                         /* a key, though a button was asked: its key */
+    if (g_cap_what == 2) return;                                 /* a controller button was asked: keys wait (only Esc cancels) */
     int is_mod = k == SDL_SCANCODE_LCTRL || k == SDL_SCANCODE_RCTRL || k == SDL_SCANCODE_LALT || k == SDL_SCANCODE_RALT ||
                  k == SDL_SCANCODE_LSHIFT || k == SDL_SCANCODE_RSHIFT;
     int key = (int)k;
@@ -6211,7 +6211,9 @@ static void capture_wait(void) {                                /* the game wait
     }
     while (g_cap_action >= 0) {
         char ask[160];
-        snprintf(ask, sizeof ask, T("Press a key or a controller button for: %s (Esc cancels)"), T(g_ctl[g_cap_action].name));
+        if (g_cap_what != 2) snprintf(ask, sizeof ask, T("Press a key or a controller button for: %s (Esc cancels)"), T(g_ctl[g_cap_action].name));
+        else if (g_pad) snprintf(ask, sizeof ask, T("Press a controller button for: %s (Esc cancels)"), T(g_ctl[g_cap_action].name));
+        else snprintf(ask, sizeof ask, "%s", T("No controller connected: plug it in, or press Esc"));
         snprintf(g_notice, sizeof g_notice, "%s", ask);
         controls_window_prompt(ask);
         g_notice_until = SDL_GetPerformanceCounter() + g_perf_freq;
@@ -6225,6 +6227,14 @@ static void capture_wait(void) {                                /* the game wait
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "0");
     g_next_frame = SDL_GetPerformanceCounter();
     g_pad_resync = 1;
+}
+
+/* Game > Controls asked for a new key or button: wait for it. Asked from
+ * wherever the game is waiting too (the in-game menu, the journal, Pause):
+ * the in-game menu's Controls... leaves that menu open. */
+static void capture_poll(void) {
+    int ca, cw;
+    if (g_cap_action < 0 && controls_window_request(&ca, &cw) == 1 && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; capture_wait(); }
 }
 
 static void handle_events(void) {
@@ -6360,8 +6370,7 @@ void frontend_frame(void) {
                 if (++held_for == 1) notice("Resetting... (keep holding Start + Select + L + R)");
                 if (held_for >= 60) { held_for = 0; restart_with(NULL); }
             } else if (held_for) { if (held_for < 60) notice("Reset cancelled"); held_for = 0; }
-            int ca, cw;                                           /* Game > Controls asked for a new key */
-            if (controls_window_request(&ca, &cw) == 1 && ca >= 0 && ca < CA_N) { g_cap_action = ca; g_cap_what = cw; capture_wait(); }
+            capture_poll();                                       /* Game > Controls asked for a new key */
         }
         int mx, my;
         Uint32 mb = SDL_GetMouseState(&mx, &my);
@@ -6392,20 +6401,20 @@ void frontend_frame(void) {
         if (g_autosave_done) { g_autosave_done = 0; notice("Saved"); }   /* Modern > Save by itself */
         if (gamemenu_is_open() && !session_requested()) {      /* the in-game menu: the game waits */
             update_title(0);
-            while (gamemenu_is_open()) { handle_events(); game_menu_stick(); present(); SDL_Delay(15); }
+            while (gamemenu_is_open()) { handle_events(); capture_poll(); game_menu_stick(); present(); SDL_Delay(15); }
             g_next_frame = SDL_GetPerformanceCounter();
             g_fps_t0 = 0;
             g_pad_resync = 1;
         }
         if (journal_open() && !session_requested()) {          /* the journal: the game waits */
-            while (journal_open()) { handle_events(); journal_stick(); present(); SDL_Delay(15); }
+            while (journal_open()) { handle_events(); capture_poll(); journal_stick(); present(); SDL_Delay(15); }
             g_next_frame = SDL_GetPerformanceCounter();
             g_fps_t0 = 0;
             g_pad_resync = 1;
         }
         if (g_paused) {                                       /* Game > Pause: keep the window alive, the game waits */
             update_title(0);
-            while (g_paused) { handle_events(); present(); SDL_Delay(15); }
+            while (g_paused) { handle_events(); capture_poll(); present(); SDL_Delay(15); }
             g_next_frame = SDL_GetPerformanceCounter();
             g_fps_t0 = 0;
         }
