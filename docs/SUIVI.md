@@ -29,6 +29,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Écran Équiper de Tsu (corrections) | Graph | [Graph] Corriger le nouvel écran Équiper | `claude/project-thread-v4a74b` | fusionné | PR #117 | — |
 | Étoiles des points de collecte sur la carte | Dev | [Dev] Étoiles des points de collecte sur la carte | `claude/project-thread-rila1e` | fusionné | PR #121 | — |
 | Trophées style Steam | Dev | [Dev] Ajouter des trophées style Steam | `claude/project-thread-j97l6o` | fusionné | PR #123 (59b08f4) | Téléchargement des images (`tools/trophy_badges.py`, badges RetroAchievements, jamais dans le dépôt) au premier BUILD.bat pas encore testé sur Windows ; sans réseau il s'arrête après 5 échecs ou 4 min et le build continue |
+| Remappage manette (correctif) | Dev | [Dev] Corriger le remappage manette | `claude/project-thread-8ospr7` | fusionné | PR #126 (093342a) | Touche `runtime/frontend_sdl.c`, `runtime/menu_win32.c` et 2 textes de `lang/*.txt` ; `J:\DQIX-Enhanced` pas recompilé ; à inclure dans la prochaine release (v47) |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
 #33 est fusionnée : chaque fil rebase sur `main` avant sa PR, et les PR passent
@@ -36,8 +37,8 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) |
-| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte |
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) |
+| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) |
 | `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
