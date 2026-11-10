@@ -488,6 +488,12 @@ es = Haz doble clic en una acción y pulsa una tecla o un botón del mando. Una 
 en = Press a key or a controller button for: %s (Esc cancels)
 es = Pulsa una tecla o un botón del mando para: %s (Esc cancela)
 
+en = Press a controller button for: %s (Esc cancels)
+es = Pulsa un botón del mando para: %s (Esc cancela)
+
+en = No controller connected: plug it in, or press Esc
+es = No hay ningún mando conectado: conéctalo o pulsa Esc
+
 en = Action
 es = Acción
 

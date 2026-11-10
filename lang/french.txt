@@ -488,6 +488,12 @@ fr = Double-cliquez sur une action, puis appuyez sur une touche ou un bouton de 
 en = Press a key or a controller button for: %s (Esc cancels)
 fr = Appuyez sur une touche ou un bouton de manette pour : %s (Échap annule)
 
+en = Press a controller button for: %s (Esc cancels)
+fr = Appuyez sur un bouton de manette pour : %s (Échap annule)
+
+en = No controller connected: plug it in, or press Esc
+fr = Aucune manette branchée : branchez-la, ou appuyez sur Échap
+
 en = Action
 fr = Action
 
