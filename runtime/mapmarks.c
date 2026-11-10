@@ -801,8 +801,9 @@ static void load_grotto(void) {
 }
 
 /* ---------------------------------------------------------------- the map pictures */
-typedef struct { float x, z; int n; int* rooms; } Door;          /* rooms: places (indices) behind it */
-typedef struct { char name[12]; int nsame, ndoor; int* same; Door* door; } Pic;
+typedef struct { float x, z; int n, big; int* rooms; } Door;     /* rooms: places (indices) behind it; big: one of them
+                                                                  * has a picture of its own (a town, a dungeon) */
+typedef struct { char name[12]; int nsame, ndoor, field; int* same; Door* door; } Pic;   /* field: a field's picture */
 static Pic* g_pics; static int g_npics;
 
 static int in_list(const int* l, int n, int v) { for (int i = 0; i < n; i++) if (l[i] == v) return 1; return 0; }
@@ -852,6 +853,15 @@ static void load_pics(void) {
     }
     free(names);
     gpc_close(&g);
+    /* a field's picture: the caves, huts... on it (H03, S04) show it too, from
+     * the inside; their doors on it: big if a room behind has its own picture */
+    for (int i = 0; i < g_npics; i++) {
+        Pic* pic = &g_pics[i];
+        for (int s = 0; s < pic->nsame; s++) if (g_places[pic->same[s]].num >= 20000 && g_places[pic->same[s]].num < 30000) pic->field = 1;
+        for (int d = 0; d < pic->ndoor; d++)
+            for (int r = 0; r < pic->door[d].n && !pic->door[d].big; r++)
+                for (int j = 0; j < g_npics && !pic->door[d].big; j++) pic->door[d].big = in_list(g_pics[j].same, g_pics[j].nsame, pic->door[d].rooms[r]);
+    }
 }
 
 /* The picture shown (its name from the game's memory) as drawn for place pi:
@@ -888,6 +898,10 @@ static int g_sp_id[SP_MAX], g_sp_n[SP_MAX], g_nsp;
 static const uint32_t SP_COL[SP_MAX] = { 0xE0302A, 0xF08A24, 0xE8C840, 0x5CC060, 0x3CC0E0, 0xB070E0, 0xF070B0 };
 static uint32_t sp_color(int id) { for (int i = 0; i < g_nsp; i++) if (g_sp_id[i] == id) return SP_COL[i]; return SP_COL[0]; }
 static int g_here = -1, g_own, g_plan_on; static const Pic* g_pic;   /* this frame's place, drawn in its own units, on its plan, and picture */
+
+/* On a field's picture, behind a town's or a dungeon's door: only its quests
+ * (its chests are on its own map). */
+static int door_skips(const Door* d, const Spot* b) { return g_pic && g_pic->field && d->big && b->kind != K_QUEST; }
 
 void mapmarks_hover(float x, float y) { g_hx = x; g_hy = y; }
 
@@ -1264,6 +1278,7 @@ static void door_lines(const Mark* m) {
         const Held* h = held(d->rooms[r]);
         for (int i = 0; h && i < h->n; i++) {
             const Spot* b = &h->s[i];
+            if (door_skips(d, b)) continue;
             /* the same room in its other versions (the inn grows as guests
              * come): the same chest (its flag) or shelf (where it stands) */
             int dup = !spot_shown(b);
@@ -1804,6 +1819,23 @@ static int tmap_update(const uint8_t** rgba) {
  * marks are see-through, other palettes; the same in towns), centred on the
  * hero. Kept while it blinks or hides, for this map and scroll. */
 #define HERO_TILE 0x4140
+/* The game's mark of the hero (its top left corner); 0 if none, or two. */
+static int hero_mark(uint32_t top, int* x, int* y) {
+    const uint8_t* o = g_oam + (top ? 0x400 : 0);
+    int found = -1;
+    for (int i = 0; i < 128; i++) {
+        uint16_t a0 = (uint16_t)(o[i * 8] | o[i * 8 + 1] << 8), a2 = (uint16_t)(o[i * 8 + 4] | o[i * 8 + 5] << 8);
+        if ((a0 & 0x300) == 0x200 || (a0 & 0xEC00) || a2 != HERO_TILE) continue;   /* hidden, see-through, not 8x8, another sprite */
+        if (found >= 0) return 0;                                            /* two: not sure which */
+        found = i;
+    }
+    if (found < 0) return 0;
+    *x = (o[found * 8 + 2] | o[found * 8 + 3] << 8) & 0x1FF; *y = o[found * 8];
+    if (*x >= 256) *x -= 512;
+    if (*y >= 192) *y -= 256;
+    return 1;
+}
+
 static void field_origin(uint32_t top, float scale, float* cx, float* cy) {
     uint16_t cnt = IO16(top + 0x08);
     int w = (cnt >> 14) & 1 ? 512 : 256, h = (cnt >> 14) & 2 ? 512 : 256;
@@ -1815,23 +1847,29 @@ static void field_origin(uint32_t top, float scale, float* cx, float* cy) {
         *cy = (float)(IO16(top + 0x12) & 0x1FF) - h / 2 + 96;
     }
     uint32_t a = rd32(FIELD_PTR);
-    if (a < 0x02000000 || a >= 0x02400000) return;
-    const uint8_t* o = g_oam + (top ? 0x400 : 0);
-    int found = -1;
-    for (int i = 0; i < 128; i++) {
-        uint16_t a0 = (uint16_t)(o[i * 8] | o[i * 8 + 1] << 8), a2 = (uint16_t)(o[i * 8 + 4] | o[i * 8 + 5] << 8);
-        if ((a0 & 0x300) == 0x200 || (a0 & 0xEC00) || a2 != HERO_TILE) continue;   /* hidden, see-through, not 8x8, another sprite */
-        if (found >= 0) return;                                              /* two: not sure which */
-        found = i;
-    }
-    if (found < 0) return;
-    int sx = (o[found * 8 + 2] | o[found * 8 + 3] << 8) & 0x1FF, sy = o[found * 8];
-    if (sx >= 256) sx -= 512;
-    if (sy >= 192) sy -= 256;
+    int sx, sy;
+    if (a < 0x02000000 || a >= 0x02400000 || !hero_mark(top, &sx, &sy)) return;
     float hx = (float)(int32_t)rd32(a + 0x44) / 4096.0f, hz = (float)(int32_t)rd32(a + 0x4C) / 4096.0f;
     float nx = hx * scale - (sx + 4) + 128, ny = hz * scale - (sy + 4) + 96;   /* the sprite's middle */
     if (key == seen_key && fabsf(nx - seen_cx) <= 1.5f && fabsf(ny - seen_cy) <= 1.5f) return;   /* (its pixel lags the hero a little: steady) */
     *cx = seen_cx = nx; *cy = seen_cy = ny; seen_key = key;
+}
+
+/* A cave, a hut... drawn on its field's picture (H03 the Spirit Pool, S04):
+ * the party's place there is its door, the picture where the field had it
+ * (the origin seen on that field), else where the game's mark of the hero
+ * puts the door. */
+static char g_fo_pic[10]; static float g_fo_cx, g_fo_cy;          /* the last field's picture and origin */
+static int g_infield;                                            /* this frame: such a place */
+static void infield_origin(uint32_t top, const char* shown, float scale, float* cx, float* cy) {
+    if (g_fo_pic[0] && !strncmp(g_fo_pic, shown, 8)) { *cx = g_fo_cx; *cy = g_fo_cy; return; }
+    *cx = *cy = 0;                                               /* (the field's origin in the middle) */
+    int sx, sy;
+    for (int d = 0; d < g_pic->ndoor; d++)
+        if (in_list(g_pic->door[d].rooms, g_pic->door[d].n, g_here) && hero_mark(top, &sx, &sy)) {
+            *cx = g_pic->door[d].x * scale - (sx + 4) + 128; *cy = g_pic->door[d].z * scale - (sy + 4) + 96;
+            return;
+        }
 }
 
 int mapmarks_update(const uint8_t** rgba) {
@@ -1847,7 +1885,7 @@ int mapmarks_update(const uint8_t** rgba) {
             was = 0; had = 1; last_key = 0;                      /* (the map's marks drawn afresh) */
         }
     }
-    g_nmark = 0; g_here = -1; g_own = 0; g_plan_on = 0; g_pic = NULL; g_in_grotto = 0; g_map_hero_ok = 0; g_nsp = 0;
+    g_nmark = 0; g_here = -1; g_own = 0; g_plan_on = 0; g_pic = NULL; g_infield = 0; g_in_grotto = 0; g_map_hero_ok = 0; g_nsp = 0;
     int ok = (g_mapmarks || g_interior_maps) && rd32(FIELD_PTR) != 0;
     uint32_t mp = rd32(MINIMAP_PTR);
     if (ok && (mp < 0x02000000 || mp >= 0x02400000)) ok = 0;
@@ -1866,7 +1904,7 @@ int mapmarks_update(const uint8_t** rgba) {
         load_pics();
         LOG_INFO("mapmarks: %d places, %d map pictures\n", g_nplaces, g_npics);
     }
-    int pi = ok && !field ? place_index(rd16(MAP_NUM)) : -1;     /* (a field's map isn't drawn like a town's: no spots there) */
+    int pi = ok ? place_index(rd16(MAP_NUM)) : -1;
     if (pi >= 0) {
         char shown[10];
         memcpy(shown, &g_main_ram[(mp + 2) & (MAIN_RAM_SIZE - 1)], 9); shown[9] = 0;
@@ -1875,6 +1913,13 @@ int mapmarks_update(const uint8_t** rgba) {
         if (scale > 0.1f && scale < 64) {
             g_here = pi;
             g_pic = pic_for(pi, shown);
+            if (field) {                                         /* (its origin: the hero's mark) */
+                field_origin(top, scale, &cx, &cy);
+                snprintf(g_fo_pic, sizeof g_fo_pic, "%.8s", shown); g_fo_cx = cx; g_fo_cy = cy;
+            } else if (g_pic && g_pic->field && !in_list(g_pic->same, g_pic->nsame, pi)) {
+                g_infield = 1;
+                infield_origin(top, shown, scale, &cx, &cy);
+            }
             load_names(g_fw_language);
             load_books(g_fw_language);
             load_quests();
@@ -1919,6 +1964,7 @@ int mapmarks_update(const uint8_t** rgba) {
                     const Held* hr = held(door->rooms[r]);
                     for (int i = 0; hr && i < hr->n; i++) {
                         const Spot* b = &hr->s[i];
+                        if (door_skips(door, b)) continue;
                         if (b->kind == K_SHELF) {
                             const Book* bk = find_book(g_places[door->rooms[r]].num, b->idx);
                             if (bk && !bk->dull) { m.shelves++; m.recipes += bk->recipes; }
@@ -1962,8 +2008,12 @@ int mapmarks_update(const uint8_t** rgba) {
         }
     }
     /* the hero on the map (the round minimap centres on him): as the
-     * monsters below; on a plan, as drawn there */
-    if (ok && !g_plan_on) {
+     * monsters below; on a plan, as drawn there; in a cave on its field's
+     * picture, where the game marks him (its door) */
+    int msx, msy;
+    if (ok && !g_plan_on && g_infield) {
+        if (hero_mark(top, &msx, &msy)) { g_map_hero[0] = (float)msx + 4; g_map_hero[1] = (float)msy + 4; g_map_hero_ok = 1; }
+    } else if (ok && !g_plan_on) {
         float scale = (float)(int32_t)rd32(mp + 0x38) / 4096.0f;
         float cx = field ? 0 : (float)(int32_t)rd32(mp + 0x44), cy = field ? 0 : (float)(int32_t)rd32(mp + 0x48);
         if (field) field_origin(top, scale, &cx, &cy);
@@ -2008,7 +2058,7 @@ int mapmarks_update(const uint8_t** rgba) {
     }
     /* the monsters walking around: a town's picture scrolls (its centre at
      * +0x44/+0x48), a field's shows the whole field around its origin */
-    if (ok && g_mapmarks && g_mapmarks_monsters && !g_plan_on) {
+    if (ok && g_mapmarks && g_mapmarks_monsters && !g_plan_on && !g_infield) {   /* (in a cave on a field's picture: not in its units) */
         uint16_t here = rd16(MAP_NUM);
         float scale = (float)(int32_t)rd32(mp + 0x38) / 4096.0f;
         float cx = field ? 0 : (float)(int32_t)rd32(mp + 0x44), cy = field ? 0 : (float)(int32_t)rd32(mp + 0x48);
