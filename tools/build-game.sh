@@ -137,8 +137,11 @@ $PY tools/trophy_badges.py game/trophies || echo "   trophy pictures: not fetche
 # the player's own Dragon Quest VII (3DS) files, whose folder (its romfs, or
 # its CHARACTER folder) is named in rom/dq7-path.txt; remade when the list
 # of townspeople changes. Never kept in the project. Optional.
-DQ7="$(tr -d '\r' < rom/dq7-path.txt 2>/dev/null)"
-case "$(uname -s)" in MINGW*|MSYS*) [ -n "$DQ7" ] && DQ7="$(cygpath -u "$DQ7")" ;; esac
+DQ7=""
+if [ -f rom/dq7-path.txt ]; then
+    DQ7="$(tr -d '\r' < rom/dq7-path.txt)"
+    case "$(uname -s)" in MINGW*|MSYS*) DQ7="$(cygpath -u "$DQ7")" ;; esac
+fi
 if [ -n "$DQ7" ] && [ -d "$DQ7" ]; then
     if [ ! -f game/npc3d/map.txt ] || [ -n "$(find tools/npc3d -newer game/npc3d/map.txt -type f)" ]; then
         echo "== Townspeople in 3D (from Dragon Quest VII)"
