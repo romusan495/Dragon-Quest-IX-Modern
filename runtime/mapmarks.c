@@ -55,8 +55,13 @@
  *    the save (0 while the spot is off), +0x0C the places (x, height, z,
  *    20.12, the monsters' units), +0x6C the next one. The save's word
  *    (func_0208ec88 keeps it): bit 31 on, bits 29-30 what it waits for (2:
- *    flag 0x798, 3: flag 0x796), bits 17-24 the places sparkling now (one
- *    bit each), bits 0-8 the time until it sparkles again.
+ *    flag 0x798, 3: flag 0x796), bits 17-24 the places due to sparkle (one
+ *    bit each), bits 0-8 the time until it sparkles again. The sparkles on
+ *    the ground are made only when the field is entered (func_0208f178),
+ *    from those bits, which it copies to the list's +4 bits 21-28; picking
+ *    one up clears both (ov017 0x0219894C). A place that comes back while
+ *    the party is in the field is only in the save: nothing sparkles there
+ *    until the field is entered again. So what sparkles now is the copy.
  *
  * Read only: the game never sees any of it. */
 #include <stdio.h>
@@ -883,7 +888,7 @@ typedef struct {
     float sx, sy;
     int door;                       /* -1: a spot of this place (spot), -2: a monster, -3: the hero, -4: a gathering spot
                                      * (spot: the item), else a building's door on the picture */
-    int spot, opened;               /* a spot: which, emptied (a gathering spot: nothing sparkling there now) */
+    int spot, opened;               /* a spot: which, emptied (a gathering spot: nothing sparkling there now; closed: back in the save, sparkles once the field is entered again) */
     int closed, emptied, shelves, recipes, quests;   /* a door: what its rooms hold (closed, emptied: chests) */
     int jars, jars_done, barrels;   /* a door: its pots and barrels, closed, emptied, how many are barrels */
     int furn, furn_done;            /* a door: its wardrobes and drawers, not searched, searched */
@@ -1358,7 +1363,10 @@ static void gather_lines(const Mark* m) {
     if (nm) snprintf(line, sizeof line, "%s: %s", head[L], nm);
     else snprintf(line, sizeof line, "%s", head[L]);
     add_line(C_TEXT, line);
-    add_line(m->opened ? C_DONE : C_TODO, m->opened ? later[L] : now[L]);
+    static const char* const reenter[5] = { "Nothing there now, back when you come into this area again", "Rien pour l'instant, reviendra en revenant dans la zone",
+                                            "Gerade nichts, wieder da, wenn du das Gebiet erneut betrittst", "Niente per ora, torner\xC3\xA0 rientrando nella zona",
+                                            "Nada por ahora, volver\xC3\xA1 al volver a entrar en la zona" };
+    add_line(m->opened ? C_DONE : C_TODO, !m->opened ? now[L] : m->closed ? reenter[L] : later[L]);
 }
 
 static void draw_tooltip(const Mark* m) {
@@ -2038,10 +2046,12 @@ int mapmarks_update(const uint8_t** rgba) {
             for (int k = 0; k < GATHER_MAX && p >= 0x02000000 && p < 0x02400000; k++, p = rd32(p + 0x6C)) {
                 uint32_t w0 = rd32(p), w1 = rd32(p + 4), sv = rd32(p + 8);
                 if (sv < 0x02000000 || sv >= 0x02400000) continue;            /* off (not yet in the story...) */
-                uint32_t st = rd32(sv), wait = (st >> 29) & 3, mask = (st >> 17) & 0xFF;
+                uint32_t st = rd32(sv), wait = (st >> 29) & 3, due = (st >> 17) & 0xFF;
+                uint32_t mask = (w1 >> 21) & 0xFF;                            /* sparkling on the ground now (not the save's: see above) */
                 int n = (int)((w1 >> 17) & 15);
                 if (!(st >> 31) || n < 1 || n > 8) continue;
-                if (!mask && ((wait == 2 && !flag_set(0x798)) || (wait == 3 && !flag_set(0x796)))) continue;   /* won't come back yet */
+                mask &= (1u << n) - 1; due &= (1u << n) - 1;
+                if (!mask && !due && ((wait == 2 && !flag_set(0x798)) || (wait == 3 && !flag_set(0x796)))) continue;   /* won't come back yet */
                 float sx = 0, sz = 0;
                 for (int i = 0; i < n; i++) {
                     float x = (float)(int32_t)rd32(p + 0x0C + 12u * (uint32_t)i) / 4096.0f, z = (float)(int32_t)rd32(p + 0x14 + 12u * (uint32_t)i) / 4096.0f;
@@ -2049,8 +2059,8 @@ int mapmarks_update(const uint8_t** rgba) {
                     Mark m = { x * scale - cx + 128, z * scale - cy + 96, -4, (int)(w0 & 0xFFFF), 0, 0, 0, 0, 0, 0 };
                     if ((mask >> i) & 1 && on_screen(m.sx, m.sy)) add_mark(&m);
                 }
-                if (!mask && g_mapmarks_opened) {
-                    Mark m = { sx / (float)n * scale - cx + 128, sz / (float)n * scale - cy + 96, -4, (int)(w0 & 0xFFFF), 1, 0, 0, 0, 0, 0 };
+                if (!mask && g_mapmarks_opened) {                             /* (back already, in the save: once the field is entered again) */
+                    Mark m = { sx / (float)n * scale - cx + 128, sz / (float)n * scale - cy + 96, -4, (int)(w0 & 0xFFFF), 1, due != 0, 0, 0, 0, 0 };
                     if (on_screen(m.sx, m.sy)) add_mark(&m);
                 }
             }
