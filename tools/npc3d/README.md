@@ -14,6 +14,8 @@ which townsperson (`n008a dq7 p0229`). Nothing made here is ever committed
 - `bch.py`: DQVIII BCH model reader (meshes, skin, bones, textures, skeletal
   animations); of the alternate hand meshes (fist, open, pointing), keeps the open one.
 - `bch_export.py`: bakes a DQVIII model's idle and walk animations to `.npc3`.
+- `nds.py`, `nsbmd.py`: files of the DQIX ROM and its NARC archives; Nitro NSBMD models and NSBCA animations (the story characters, `/data/chara_sub/*.chr`).
+- `nsbmd_export.py`: bakes a DQIX character's stand and walk animations to `.npc3` (from the ROM being built, `dq9` in `townsfolk.txt`).
 - `make_all.py`: every line of `townsfolk.txt` (BUILD.bat).
 - `paint.py` (unused since the games' own colours are kept): repaints a model's texture with a DQIX townsperson's colours,
   from its front picture.

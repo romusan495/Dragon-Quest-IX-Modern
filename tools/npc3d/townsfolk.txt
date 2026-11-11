@@ -51,3 +51,10 @@ n075a dq8 p062a
 # n071a-n074a, n076a stay pictures
 # n077a-n082a stay pictures
 # n083a-n092a stay pictures
+# lot 7: animals (n104a sheep: none, stays a picture)
+n096a dq7 p0402
+n097a dq9 s066
+n098a dq7 p0408
+n099a dq7 p0403
+n100a dq7 p0404
+n103a dq7 p0415
