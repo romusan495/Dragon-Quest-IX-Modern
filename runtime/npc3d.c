@@ -24,7 +24,7 @@
 #include "npc3d.h"
 #include "gpu3d.h"
 
-int g_npc3d;
+int g_npc3d = 1;
 
 extern int g_gx_tag, g_gx_hide;
 int gx_tag_begin(int tag);

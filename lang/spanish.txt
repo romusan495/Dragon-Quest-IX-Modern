@@ -86,6 +86,9 @@ es = Sombras suaves en rincones y bajo los mue&bles (Mejorado)
 en = Thin dar&k lines round things (Enhanced)
 es = Finas líneas oscu&ras alrededor de los objetos (Mejorado)
 
+en = Townspeople in &3D (Enhanced)
+es = Habitantes en &3D (Mejorado)
+
 en = Character &outlines (Enhanced)
 es = &Contornos de los personajes (Mejorado)
 

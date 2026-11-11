@@ -2853,8 +2853,9 @@ static int ui_language_wanted(void) { return g_ui_language ? g_ui_language : rom
  * widescreen with the map in the top right corner, the battle HUD, the map
  * markers...). An older settings.ini keeps the player's own things (volume,
  * language, wireless, controls, gold farm) but takes these looks once.
- * settings_version 3: the modern windows, once (window_style 2). */
-#define SETTINGS_VERSION 3
+ * settings_version 3: the modern windows, once (window_style 2).
+ * settings_version 4: the townspeople in 3D, once (npc_3d 1). */
+#define SETTINGS_VERSION 4
 static const char* const LOOK_KEYS[] = {
     "mode", "render_scale", "resolution_3d", "window_scale", "layout", "single_screen", "swap_screens",
     "small_screen_corner", "small_screen_size", "small_screen_hidden", "small_screen_opacity", "small_screen_opacity_chosen",
@@ -2878,6 +2879,7 @@ static void settings_load(void) {
         char key[64]; char val[64];
         if (line[0] == '#' || sscanf(line, " %63[^= ] = %63s", key, val) != 2) continue;
         if (version < 2 && look_key(key)) continue;
+        if (version < 4 && !strcmp(key, "npc_3d")) continue;       /* (on by default since v4) */
         if (!strcmp(key, "player_name")) {                       /* the whole rest of the line (may have spaces) */
             const char* v = strchr(line, '=') + 1; while (*v == ' ') v++;
             snprintf(g_player_name, sizeof g_player_name, "%s", v);
