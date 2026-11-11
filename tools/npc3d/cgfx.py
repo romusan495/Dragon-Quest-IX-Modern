@@ -158,7 +158,10 @@ def load(path):
                 if not mp: break
                 tr = r.rel(mp + 8)
                 tex.append(r.cstr(r.rel(tr + 0x18)) if tr else None)
-            mattex.append((mn, tex))
+            # each texture's coordinates: its coordinator's source uv set (the eyes can take uv2)
+            used = r.u32(mt + 0x168)
+            src = [r.u32(mt + 0x16c + 88 * k) if k < used else k for k in range(3)]
+            mattex.append((mn, tex, [s if s < 3 else k for k, s in enumerate(src)]))
         parts = []
         for me in meshes:
             si, mi = r.u32(me + 0x18), r.u32(me + 0x1c)
@@ -222,6 +225,8 @@ def load(path):
                                 if tw > 0: P[i] = acc / tw
                         tris = idx[:len(idx) // 3 * 3].reshape(-1, 3)
                         texs = mattex[mi][1] if mi < len(mattex) else []
-                        parts.append(dict(raw=pos, off=off, bidx=bidx, bwt=bwt, blist=blist, pos=P + off, uv=uv, uvs=uvs, tris=tris, tex=texs[0] if texs else None, texs=texs, skin=skin, mat=mattex[mi][0] if mi < len(mattex) else ''))
+                        msrc = mattex[mi][2] if mi < len(mattex) else [0, 1, 2]
+                        tuv = [uvs[s] for s in msrc]                        # per texture (layer)
+                        parts.append(dict(raw=pos, off=off, bidx=bidx, bwt=bwt, blist=blist, pos=P + off, uv=tuv[0] if tuv[0] is not None else uv, uvs=tuv, tris=tris, tex=texs[0] if texs else None, texs=texs, skin=skin, mat=mattex[mi][0] if mi < len(mattex) else ''))
         models.append(dict(name=mname, parts=parts, bones=bones, bindworld=dict(bw), bind=bind if skel else {}))
     return models, textures
