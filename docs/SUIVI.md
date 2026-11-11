@@ -34,7 +34,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Trophées dans le menu Échap | Dev | [Dev] Mettre les trophées dans le menu Échap | `claude/project-thread-23jrga` | fusionné | PR #130 (ae07bf5) | Touche `runtime/frontend_sdl.c` : les fils Écran titre et Étoiles de collecte rebasent dessus |
 | Support RecompLauncher | Dev | [Dev] Ajouter le support RecompLauncher | `claude/project-thread-uvlao8` | fusionné | PR #131 (1681bca) | `.github/workflows/release-zip.yml` joint `Dragon-Quest-IX-Modern-vN-Windows-x64.zip` (`tools/make-release.py`) à chaque release publiée : vérifier dans Actions après chaque Publish |
 | Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | fusionné | PR #134 | Film d'intro derrière « Commencer l'aventure », image de fond lue localement dans `game/ui/title-back.png` (jamais commitée), menus en bas à droite ; touche `runtime/gl_render.c` (`FS_COPY` 36-37) et `runtime/frontend_sdl.c` ; pour la v48 |
-| PNJ en 3D | Graph | [Graph] Remplacer les PNJ en image par la 3D | `claude/project-thread-o775tm` | en cours | — (commit local d9a3720, pas poussé) | Touche `runtime/gl_render.c` (`npc3d_batches` + boucle des batches), `runtime/gpu3d.c` (3 lignes dans `submit_vertex` et `gpu3d_vblank`), `runtime/frontend_sdl.c` (clé `npc_3d` de settings.ini) ; rebaser sur `main` avant la PR |
+| PNJ en 3D | Graph | [Graph] Remplacer les PNJ en image par la 3D | `claude/project-thread-o775tm` | en cours | — (commit local f82344d, pas poussé) | Touche `runtime/gl_render.c` (`npc3d_batches` + boucle des batches), `runtime/gpu3d.c` (3 lignes dans `submit_vertex` et `gpu3d_vblank`), `runtime/frontend_sdl.c` (clé `npc_3d`), `runtime/menu_win32.c` (Graphismes > Habitants en 3D), `tools/build-game.sh` (modèles générés si `rom/dq7-path.txt` existe), `BUILD.bat` (`python-numpy`) ; libellé du menu en anglais seulement : traduction `lang/*.txt` à faire par Langues ; rebaser sur `main` avant la PR |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
@@ -44,13 +44,13 @@ une par une. Conflits probables signalés.
 | Fichier | Fils |
 |---|---|
 | `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne (`title_*`, `present_gl`, `canvas_layout_for`), Étoiles de collecte (correctif) ; PNJ en 3D (clé `npc_3d`) |
-| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) |
+| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) ; PNJ en 3D (Habitants en 3D) |
 | `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) ; Écran titre moderne (`FS_COPY` modes 36-37) ; PNJ en 3D (`npc3d_batches`) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
 | `runtime/gpu3d.c` | PNJ en 3D (`submit_vertex`, `gpu3d_vblank`) |
-| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) |
+| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) ; PNJ en 3D (modèles si `rom/dq7-path.txt`) |
 | `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
