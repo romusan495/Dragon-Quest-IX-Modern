@@ -33,7 +33,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Personnage figé après un combat | Dev | — | `claude/project-thread-4de875` | fusionné | PR #129 | — |
 | Trophées dans le menu Échap | Dev | [Dev] Mettre les trophées dans le menu Échap | `claude/project-thread-23jrga` | fusionné | PR #130 (ae07bf5) | Touche `runtime/frontend_sdl.c` : les fils Écran titre et Étoiles de collecte rebasent dessus |
 | Support RecompLauncher | Dev | [Dev] Ajouter le support RecompLauncher | `claude/project-thread-uvlao8` | fusionné | PR #131 (1681bca) | `.github/workflows/release-zip.yml` joint `Dragon-Quest-IX-Modern-vN-Windows-x64.zip` (`tools/make-release.py`) à chaque release publiée : vérifier dans Actions après chaque Publish |
-| Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | en cours | — (rien de poussé) | Touche `runtime/frontend_sdl.c` (`title_update`/`title_pieces`, appels dans `present_gl` et `canvas_layout_for`), `runtime/gl_render.c` (modes 36 et 37 de `FS_COPY`), `runtime/hdmovie.c/.h` ; rebaser sur `main` (après #130) avant la PR |
+| Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | fusionné | PR #134 | Film d'intro derrière « Commencer l'aventure », image de fond lue localement dans `game/ui/title-back.png` (jamais commitée), menus en bas à droite ; touche `runtime/gl_render.c` (`FS_COPY` 36-37) et `runtime/frontend_sdl.c` ; pour la v48 |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
