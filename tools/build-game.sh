@@ -12,8 +12,26 @@ set -e
 cd "$(dirname "$0")/.."
 ROM="$1"
 [ -f "$ROM" ] || { echo "No ROM given (or it doesn't exist): $ROM"; exit 1; }
+PY=python3; command -v $PY >/dev/null 2>&1 || PY=python
+# a step's title; with DQIX_PROGRESS (BUILD.bat --prepare, for RecompLauncher)
+# also a "progress <0-1> <step>" line for the launcher's setup screen
+step() {    # step <fraction> <title>
+    echo "== $2"
+    [ -z "$DQIX_PROGRESS" ] || echo "progress $1 $2"
+}
 
-echo "== Checking the ROM"
+# a zipped ROM: the .nds inside it, taken out into build/
+case "$ROM" in *.zip|*.ZIP)
+    mkdir -p build
+    $PY -c 'import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+n = [i for i in z.namelist() if i.lower().endswith(".nds")]
+if not n: sys.exit("No .nds file in " + sys.argv[1])
+open(sys.argv[2], "wb").write(z.read(n[0]))' "$ROM" build/rom-from-zip.nds
+    ROM=build/rom-from-zip.nds ;;
+esac
+
+step 0.1 "Checking the ROM"
 # no checksum: any version can be tried. The game code in the header says which it is.
 CODE=$(dd if="$ROM" bs=1 skip=12 count=4 2>/dev/null | tr -cd 'A-Za-z0-9') || true
 case "$CODE" in
@@ -27,10 +45,9 @@ YDQJ) echo "   Dragon Quest IX (Japan): only the USA and European versions are s
 *)    echo "   This doesn't look like Dragon Quest IX (game code '$CODE'); trying anyway" ;;
 esac
 
-PY=python3; command -v $PY >/dev/null 2>&1 || PY=python
-echo "== Extracting the game's code"
+step 0.15 "Extracting the game's code"
 $PY tools/extract_rom.py "$ROM" build/extract
-echo "== Recompiling it to C (about a minute)"
+step 0.2 "Recompiling it to C (about a minute)"
 # the symbol map and address lists are the USA version's; region.py moves them for the European one
 REGION=$($PY tools/region.py "$ROM" build/extract build/region)
 if [ "$REGION" = eur ]; then CFG=build/region; CONFIG=build/region/arm9; else CFG=.; CONFIG=config/usa/arm9; fi
@@ -76,7 +93,7 @@ RC
     fi
 }
 
-echo "== Compiling (the first time takes a while; later builds only redo what changed)"
+step 0.3 "Compiling (the first time takes a while; later builds only redo what changed)"
 mkdir -p game
 case "$(uname -s)" in
 MINGW*|MSYS*)
@@ -102,7 +119,7 @@ MINGW*|MSYS*)
          CFLAGS="-O1 -w" DEFS=-DRECOMP_TRACE SDL_CFLAGS="${SDL_CFLAGS:-$(sdl2-config --cflags)}" SDL_LIBS="${SDL_LIBS:-$(sdl2-config --libs)}" "$EXE" core ;;
 esac
 
-echo "== Putting the game folder together"
+step 0.9 "Putting the game folder together"
 mkdir -p game/data game/skins game/fonts game/lang
 rm -rf game/data/code && cp -r build/extract game/data/code     # the overlays (the game checks which is loaded)
 if ! cmp -s "$ROM" game/data/dqix.nds; then cp "$ROM" game/data/dqix.nds; fi
@@ -168,4 +185,5 @@ cd "$(dirname "$0")" && exec ./dqix data/dqix.nds data/code 0 1 dqix.sav
 SH
 chmod +x game/play.sh
 echo
+[ -z "$DQIX_PROGRESS" ] || echo "progress 1 Done"
 case "$(uname -s)" in MINGW*|MSYS*) echo "== Done. The game is in the 'game' folder: double-click dqix.exe." ;; *) echo "== Done. The game is in the 'game' folder: run play.sh." ;; esac
