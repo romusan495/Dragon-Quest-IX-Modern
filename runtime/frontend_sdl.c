@@ -2442,9 +2442,8 @@ static void title_pieces(GlPresent* v) {
     if (title_back(v, pic)) {
         const float L[2][4] = { { 0.02f, 0.16f, 0.76f, 0.48f }, { 0.09f, 0.60f, 0.63f, 0.17f } };   /* (parts of the picture: x, y, w, h) */
         for (int i = 0; i < 2; i++) { avoid[i][0] = pic[0] + L[i][0] * pic[2]; avoid[i][1] = pic[1] + L[i][1] * pic[3]; avoid[i][2] = L[i][2] * pic[2]; avoid[i][3] = L[i][3] * pic[3]; }
-    } else {                                                      /* no picture: the game's logo screen whole at the left, the rest of the canvas the same, dimmed */
-        bestiary_piece(v, 0, (256 - sw) / 2, 0, sw, sh, 0, 0, 0, k);
-        set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 256, 0, cw - 256, ch);
+    } else {                                                      /* no picture: the game's logo screen whole at the left, blurred and dark at its right */
+        bestiary_piece(v, 0, (256 - sw) / 2, 0, sw, sh, 37, 0, 0, k);
         bestiary_piece(v, 0, 0, 0, 256, 192, 0, 0, 0, ch / 192.0f);
         const float L[2][4] = { { 8, 20, 240, 82 }, { 0, 143, 218, 48 } };
         memcpy(avoid, L, sizeof avoid);
