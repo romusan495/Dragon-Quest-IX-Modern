@@ -2289,6 +2289,189 @@ static void caract_pieces(GlPresent* v) {
     set_rect(bestiary_piece(v, 1, 0, 0, 1, 1, 4, 0, 0, 1), bx + 4, by + (161 - CA_BY) * bk, bw - 8, t);   /* over its page */
     #undef CA_WIN
 }
+/* ---- The title, modern ----
+ * The game's first screens, drawn again for a wide window:
+ * 1. "Begin your adventure" and its START button (the touch screen, black)
+ *    while the opening movie plays on the top screen: the movie behind them,
+ *    as tall as the window, its sides blurred (the HD movie when it is
+ *    there: hdmovie.c draws it on the top screen), the button's black
+ *    see-through.
+ * 2. The adventure logs' menu (Continue, the log's window...) over the
+ *    title's picture: the picture ui/title-back.png fills the window if the
+ *    player put one there (never in this project: it is the player's own),
+ *    else the game's top screen (the logo); the touch screen's windows
+ *    (found by the game's grey line round them) sit small at the bottom
+ *    right, in windows of the modern style, so the logo stays in view. A
+ *    touch on them goes to where they are on the touch screen. */
+static int g_title;                                               /* 1 the movie and START, 2 the menu; 0 neither */
+static int g_title_n, g_title_box[6][4];                          /* 1: the button's box; 2: each window (its grey line included): x, y, w, h on the touch screen */
+static UiPic g_title_pic;
+
+static int title_near_black(uint32_t c) { return ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255) < 40; }
+
+/* the touch screen's windows: a grey line (130, 130, 130) round each */
+static int title_windows(const uint32_t* px, int box[][4], int max) {
+#define TW_LINE(x, y) ((px[(y) * 256 + (x)] & 0xFFFFFF) == 0x828282)
+    int n = 0;
+    for (int y = 0; y < 186 && n < max; y++)
+        for (int x = 0; x < 196 && n < max; x++) {
+            if (!TW_LINE(x, y) || !TW_LINE(x, y + 1) || (x > 0 && TW_LINE(x - 1, y))) continue;
+            int inside = 0;
+            for (int i = 0; i < n; i++)
+                if (x >= box[i][0] && x < box[i][0] + box[i][2] && y >= box[i][1] && y < box[i][1] + box[i][3]) inside = 1;
+            if (inside) continue;
+            int x1 = x; while (x1 + 1 < 256 && TW_LINE(x1 + 1, y)) x1++;   /* its top line */
+            if (x1 - x < 60) continue;
+            int y1 = y + 1;                                       /* its left line (to its bottom, or the screen's; the hand over it a few rows) */
+            for (int yy = y1 + 1, gap = 0; yy < 192 && gap <= 6; yy++) { if (TW_LINE(x, yy) || TW_LINE(x1, yy)) { y1 = yy; gap = 0; } else gap++; }
+            if (y1 - y < 12) continue;
+            box[n][0] = x; box[n][1] = y; box[n][2] = x1 - x + 1; box[n][3] = y1 - y + 1; n++;
+            x = x1;
+        }
+#undef TW_LINE
+    return n;
+}
+
+static void title_update(int a_on_top) {
+    static int phase;                                             /* 1 START seen, 2 the menu seen */
+    g_title = 0; g_title_n = 0;
+    if (!g_gl || g_classic || !(WIDE_GL && g_wide && !g_side_by_side && !(g_two && !g_single))) { phase = 0; return; }
+    if (in_adventure() || g_cc_n) { phase = 0; return; }
+    const uint32_t* bot = g_engine_out[a_on_top ? 1 : 0];
+    if (hdmovie_playing("TD_nouhin_DS_form")) {                    /* the opening movie: START on the touch screen? (black, an orange button) */
+        int black = 0, orange = 0, x0 = 256, y0 = 192, x1 = -1, y1 = -1;
+        for (int y = 0; y < 192; y++)
+            for (int x = 0; x < 256; x++) {
+                uint32_t c = bot[y * 256 + x]; int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                if (title_near_black(c)) { black++; continue; }
+                if (r > 180 && g > 70 && g < 170 && b < 80) orange++;
+                if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            }
+        if (black * 100 >= 256 * 192 * 85 && (orange >= 40 || x1 < 0)) {   /* (no button: fading in or out) */
+            phase = 1; g_title = 1;
+            if (x1 >= 0) { g_title_n = 1; g_title_box[0][0] = x0; g_title_box[0][1] = y0; g_title_box[0][2] = x1 - x0 + 1; g_title_box[0][3] = y1 - y0 + 1; }
+            return;
+        }
+    }
+    if (!phase) return;
+    g_title = 2;                                                  /* after the movie: the menu (until a log is loaded or a character made) */
+    g_title_n = title_windows(bot, g_title_box, 6);
+    if (g_title_n) {                                              /* the title's picture round them, as it first was (not a story's scene with windows) */
+        static uint32_t was[12 * 16]; static int have;
+        if (phase == 1) { have = 0; phase = 2; }
+        long d = 0; int n = 0;
+        for (int i = 0; i < 12 * 16; i++) {
+            int x = (i % 16) * 16 + 8, y = (i / 16) * 16 + 8, in = 0;
+            for (int j = 0; j < g_title_n; j++) { const int* b = g_title_box[j]; in |= x >= b[0] && x < b[0] + b[2] && y >= b[1] && y < b[1] + b[3]; }
+            uint32_t c = bot[y * 256 + x] & 0xFFFFFF;
+            if (!have) { was[i] = c; continue; }
+            if (in) continue;
+            d += abs((int)(c >> 16) - (int)(was[i] >> 16)) + abs((int)((c >> 8) & 255) - (int)((was[i] >> 8) & 255)) + abs((int)(c & 255) - (int)(was[i] & 255)); n++;
+        }
+        if (!have) have = 1;
+        else if (n && d > (long)n * 60) { phase = 0; g_title = 0; g_title_n = 0; return; }
+    }
+    if (!g_title_n) {                                             /* no window: fading (dark), or another screen (the Wi-Fi settings...): as the game shows it */
+        long sum = 0;
+        for (int i = 0; i < 256 * 192; i += 7) { uint32_t c = bot[i]; sum += ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255); }
+        if (sum > 150L * (256 * 192 / 7)) g_title = 0;
+    }
+}
+
+/* the title's picture (ui/title-back.png) as wide as the canvas, at its
+ * bottom (cut at its top on a wider screen: sky there), over it its top
+ * row's colour (the sky), the picture fading into it; at the window's pixels. *pic = where it is on
+ * the canvas: x, y, w, h */
+static int title_back(GlPresent* v, float* pic) {
+    const UiPic* p = ui_pic(&g_title_pic, "ui/title-back.png");
+    if (!p) return 0;
+    static uint8_t* img; static int iw, ih;
+    float s = fminf(g_lay_s > 0 ? g_lay_s : 5.625f, 11.25f);
+    int W = (int)(v->cw * s + 0.5f), H = (int)(v->ch * s + 0.5f);
+    if (W <= 0 || H <= 0) return 0;
+    float ph = (float)W * p->h / p->w;                           /* (its height at the canvas' width, window pixels) */
+    if (!img || iw != W || ih != H) {
+        uint8_t* n = (uint8_t*)realloc(img, (size_t)W * H * 4);
+        if (!n) return 0;
+        img = n; iw = W; ih = H;
+        memset(img, 0, (size_t)W * H * 4);
+        ui_draw(img, W, H, p, 0, 0, (float)p->w, (float)p->h, 0, (float)H - ph, (float)W, ph, 1);
+        if (ph < H) {                                             /* the sky over it: its top row's colour, the picture's top fading into it */
+            long c[3] = { 0 };
+            for (int x = 0; x < p->w; x++) for (int i = 0; i < 3; i++) c[i] += p->px[(size_t)x * 4 + i];
+            int top = (int)((float)H - ph), fade = (int)(ph * 0.08f);
+            for (int y = 0; y < top + fade && y < H; y++) {
+                float t = y < top ? 1.0f : 1.0f - (float)(y - top) / (float)fade; t = t * t * (3 - 2 * t);
+                for (int x = 0; x < W; x++) {
+                    uint8_t* o = &img[((size_t)y * W + x) * 4];
+                    for (int i = 0; i < 3; i++) o[i] = (uint8_t)((float)o[i] * (1 - t) + (float)c[i] / p->w * t);
+                    o[3] = 255;
+                }
+            }
+        }
+        gl_set_layer(GL_LAYER_BACK, img, W, H);
+    }
+    float* q = v->layer[GL_LAYER_BACK]; q[0] = 0; q[1] = 0; q[2] = v->cw; q[3] = v->ch;
+    pic[2] = v->cw; pic[3] = v->cw * p->h / p->w; pic[0] = 0; pic[1] = v->ch - pic[3];
+    return 1;
+}
+
+static int title_hits(const float* w, const float r[][4], int n) {   /* the rect w over any of the n rects r */
+    for (int i = 0; i < n; i++)
+        if (w[0] < r[i][0] + r[i][2] && r[i][0] < w[0] + w[2] && w[1] < r[i][1] + r[i][3] && r[i][1] < w[1] + w[3]) return 1;
+    return 0;
+}
+
+static void title_pieces(GlPresent* v) {
+    memset(v->top, 0, sizeof v->top); memset(v->bot, 0, sizeof v->bot);
+    v->front = 0; v->alpha = 1.0f;
+    float cw = v->cw, ch = v->ch, k = fmaxf(cw / 256.0f, ch / 192.0f), sw = cw / k, sh = ch / k;   /* (the top screen covering the canvas) */
+    if (g_title == 1) {
+        float kh = ch / 192.0f;                                   /* the movie as tall as the window, its sides blurred */
+        bestiary_piece(v, 0, (256 - sw) / 2, (192 - sh) / 2, sw, sh, 37, 0, 0, k);
+        bestiary_piece(v, 0, 0, 0, 256, 192, 0, (cw - 256 * kh) / 2, 0, kh);
+        if (g_title_n) {                                          /* "Begin your adventure" and START, where they are, their black see-through */
+            const int* b = g_title_box[0];
+            bestiary_piece(v, 1, (float)b[0], (float)b[1], (float)b[2], (float)b[3], 36, (cw - 256) / 2 + (float)b[0], (float)b[1], 1);
+        }
+        return;
+    }
+    /* the title's words not to cover: on the picture, its logo and the words
+     * under it; on the game's top screen, its logo and its copyright */
+    float avoid[2][4], pic[4];
+    if (title_back(v, pic)) {
+        const float L[2][4] = { { 0.02f, 0.16f, 0.76f, 0.48f }, { 0.09f, 0.60f, 0.63f, 0.17f } };   /* (parts of the picture: x, y, w, h) */
+        for (int i = 0; i < 2; i++) { avoid[i][0] = pic[0] + L[i][0] * pic[2]; avoid[i][1] = pic[1] + L[i][1] * pic[3]; avoid[i][2] = L[i][2] * pic[2]; avoid[i][3] = L[i][3] * pic[3]; }
+    } else {                                                      /* no picture: the game's logo screen whole at the left, blurred and dark at its right */
+        bestiary_piece(v, 0, (256 - sw) / 2, 0, sw, sh, 37, 0, 0, k);
+        bestiary_piece(v, 0, 0, 0, 256, 192, 0, 0, 0, ch / 192.0f);
+        const float L[2][4] = { { 8, 20, 240, 82 }, { 0, 143, 218, 48 } };
+        memcpy(avoid, L, sizeof avoid);
+    }
+    if (!g_title_n) return;
+    /* the windows at the bottom right, in their order, their right edges in
+     * line, as big as they can be without covering those words */
+    float M = 5, gap = 3, tot = 0, wmax = 0;
+    for (int i = 0; i < g_title_n; i++) { tot += (float)g_title_box[i][3]; wmax = fmaxf(wmax, (float)g_title_box[i][2]); }
+    float kw = 0.56f;
+    for (; kw > 0.3f; kw -= 0.01f) {
+        int hit = 0; float y = ch - M - tot * kw - gap * (g_title_n - 1);
+        for (int i = 0; i < g_title_n && !hit; i++) {
+            float w[4] = { cw - M - (float)g_title_box[i][2] * kw, y, (float)g_title_box[i][2] * kw, (float)g_title_box[i][3] * kw };
+            hit = title_hits(w, avoid, 2) || w[1] < M; y += w[3] + gap;
+        }
+        if (!hit) break;
+    }
+    float y = ch - M - tot * kw - gap * (g_title_n - 1);
+    for (int i = 0; i < g_title_n; i++) {
+        const int* b = g_title_box[i];
+        float w = (float)b[2] * kw, h = (float)b[3] * kw, x = cw - M - w;
+        modern_window(v, x, y, w, h);
+        bestiary_piece(v, 1, (float)b[0] + 1, (float)b[1] + 1, (float)b[2] - 2, (float)b[3] - 2, 3, x + kw, y + kw, kw);   /* its letters (not the game's line, nor its see-through panel) */
+        y += h + gap;
+    }
+}
+
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
     if (wh > 0) g_lay_s = (float)wh / 192.0f;
@@ -2383,6 +2566,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
                 w[0] = q[0] - P * k; w[1] = q[1] - P * k; w[2] = q[2] + 2 * P * k; w[3] = q[3] + 2 * P * k;
             }
         }
+        if (g_title && !second && !g_peek && v->npiece + 4 + 6 * g_title_n <= GL_MAX_PIECES) title_pieces(v);   /* the title, modern */
         int page = top_page_mode();
         if (page != 2 && g_rec2d_at && g_rec2d_at == g_frame) page = 2;         /* (the records' menus with no 3D: bestiary_update()) */
         if (page == 2) g_page2_at = g_frame;
@@ -4886,6 +5070,7 @@ static void present_gl(void) {
     menu_icons_update();
     pop_update((pow >> 15) & 1);
     creation_update((pow >> 15) & 1);
+    title_update((pow >> 15) & 1);
     name_typing_step((pow >> 15) & 1);
     gl_set_top_cut(g_pop_win[2] && !g_quest_page && !g_card_page && !g_accolade_page);
     gl_set_split(g_shop || g_bag || (g_xmenu && xm_field()) || results_hub());   /* (Sandy's page: her 3D apart from her page) */
