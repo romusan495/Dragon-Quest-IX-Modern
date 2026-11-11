@@ -39,6 +39,7 @@
 #include "autosave.h"
 #include "cheats.h"
 #include "mapmarks.h"
+#include "npc3d.h"
 #include "journal.h"
 #include "trophies.h"
 #include "version.h"
@@ -2901,6 +2902,7 @@ static void settings_load(void) {
         else if (!strcmp(key, "mute")) g_mute = atoi(val) != 0;
         else if (!strcmp(key, "widescreen_battle_hud")) g_hud = atoi(val) != 0;
         else if (!strcmp(key, "map_markers")) g_mapmarks = atoi(val) != 0;
+        else if (!strcmp(key, "npc_3d")) g_npc3d = atoi(val) != 0;
         else if (!strcmp(key, "map_markers_opened")) g_mapmarks_opened = atoi(val) != 0;
         else if (!strcmp(key, "smooth_textures")) g_smooth = atoi(val) != 0;
         else if (!strcmp(key, "smooth_2d")) g_smooth2d = atoi(val) != 0;
@@ -3016,6 +3018,8 @@ static void settings_save(void) {
     fprintf(f, "widescreen_battle_hud = %d\n", g_hud);
     fprintf(f, "# the map: the chests, pots and barrels of the place marked (the mouse over one: what is in it): 0 or 1\n");
     fprintf(f, "map_markers = %d\n", g_mapmarks);
+    fprintf(f, "# enhanced: townspeople as 3D models where the npc3d folder has one (tools/npc3d.py): 0 or 1\n");
+    fprintf(f, "npc_3d = %d\n", g_npc3d);
     fprintf(f, "# ...also the ones already emptied (greyed): 0 or 1\n");
     fprintf(f, "map_markers_opened = %d\n", g_mapmarks_opened);
     fprintf(f, "# window size: 1 to 8 times the DS screens (F3)\n");

@@ -1,0 +1,93 @@
+"""Export one DQVII character (bcmdl + pack) to a simple baked file for the runtime.
+usage: npc3d_export.py <model.bcmdl> <anims.pack> <out.bin> [fps_step]
+Format (little endian):
+  'NPC3' u32 version=1
+  u32 nanims ; per anim: char name[16], u32 nframes, u32 first_frame (index into frames)
+  u32 nframes_total, u32 nverts
+  u32 ntex ; per tex: u32 w, h, then w*h*4 RGBA
+  u32 nparts ; per part: u32 tex, u32 layer, u32 first_vert, u32 nverts (triangles list, 3 per tri)
+  uv: nverts * 2 f32 (0..1, v down)
+  frames: nframes_total * nverts * 3 f32 (model units, y up)
+"""
+import sys, struct, os
+import numpy as np
+sys.path.insert(0, os.path.dirname(__file__))
+import cgfx, canm, pose
+
+def head_height(m, an):
+    a = next((v for k, v in an.items() if k.endswith('_idle')), None)
+    L = canm.local_mats(m['bind'], a, 0); W = pose.world_from_local(m, L)
+    names = {j: n for j, n, p, mt in m['bones']}
+    for j, M in W.items():
+        if names[j].lower() == 'head': return float(M[1, 3])
+    return None
+
+def export(mdl, pack, out, step=2, anims=('idle', 'run'), sprite=None, sprite_neck=0.34):
+    models, tex = cgfx.load(mdl)
+    m = models[0]
+    an = canm.load(pack) if pack and os.path.exists(pack) else {}
+    if sprite is not None:                     # repainted with the DQIX townsperson's colours
+        import paint
+        a = next((v for k, v in an.items() if k.endswith('_idle')), None)
+        pm = pose.pose_model(m, a, 0)
+        base = m['parts'][0]['texs'][0]
+        tex = dict(tex); tex[base] = paint.paint(pm, tex, sprite, base, neck=head_height(m, an), sprite_neck=sprite_neck)
+    texnames = []
+    def texid(n):
+        if n not in texnames: texnames.append(n)
+        return texnames.index(n)
+    # parts expanded: (tex, layer, tri index array into part verts, uv)
+    parts = []
+    for pi, p in enumerate(m['parts']):
+        texs = p.get('texs') or []
+        for layer, tn in enumerate(texs[:3]):
+            if tn is None or tn not in tex: continue
+            uv = p['uvs'][layer] if p['uvs'][layer] is not None else p['uv']
+            parts.append((pi, texid(tn), layer, p['tris'].reshape(-1), uv))
+    nverts = sum(len(x[3]) for x in parts)
+    frames = []; alist = []
+    names = sorted(an)
+    for want in anims:
+        hit = [n for n in names if n.endswith('_' + want)]
+        if not hit: continue
+        a = an[hit[0]]
+        nf = max(1, int(a['frames'] // step))
+        first = len(frames)
+        for k in range(nf):
+            pm = pose.pose_model(m, a, k * step)
+            frames.append(np.concatenate([pm['parts'][pi]['pos'][idx] for pi, _, _, idx, _ in parts]))
+        alist.append((want, nf, first))
+    if not frames:
+        frames.append(np.concatenate([m['parts'][pi]['pos'][idx] for pi, _, _, idx, _ in parts])); alist.append(('bind', 1, 0))
+    uvs = np.concatenate([uv[idx] for _, _, _, idx, uv in parts])
+    with open(out, 'wb') as f:
+        f.write(b'NPC3' + struct.pack('<I', 1))
+        f.write(struct.pack('<I', len(alist)))
+        for n, nf, first in alist: f.write(n.encode()[:15].ljust(16, b'\0') + struct.pack('<II', nf, first))
+        f.write(struct.pack('<II', len(frames), nverts))
+        f.write(struct.pack('<I', len(texnames)))
+        for n in texnames:
+            t = tex[n]; h, w = t.shape[:2]
+            f.write(struct.pack('<II', w, h)); f.write(np.ascontiguousarray(t, np.uint8).tobytes())
+        f.write(struct.pack('<I', len(parts)))
+        first = 0
+        for pi, ti, layer, idx, uv in parts:
+            f.write(struct.pack('<IIII', ti, layer, first, len(idx))); first += len(idx)
+        u = uvs.astype(np.float32).copy(); u[:, 1] = 1 - u[:, 1]
+        f.write(u.tobytes())
+        for fr in frames: f.write(fr.astype(np.float32).tobytes())
+    return dict(verts=nverts, frames=len(frames), tex=len(texnames), anims=alist, size=os.path.getsize(out))
+
+if __name__ == '__main__':
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('model'); ap.add_argument('pack'); ap.add_argument('out')
+    ap.add_argument('--step', type=int, default=2)
+    ap.add_argument('--sprite', help='RGBA front picture of the DQIX townsperson: repaint with its colours')
+    ap.add_argument('--sprite-neck', type=float, default=0.34)
+    a = ap.parse_args()
+    sp = None
+    if a.sprite:
+        from PIL import Image
+        sp = np.array(Image.open(a.sprite).convert('RGBA'))
+    print(export(a.model, a.pack, a.out, a.step, sprite=sp, sprite_neck=a.sprite_neck))

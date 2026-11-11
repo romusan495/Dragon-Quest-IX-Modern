@@ -20,6 +20,7 @@
 #include <string.h>
 #include "nds.h"
 #include "gpu3d.h"
+#include "npc3d.h"
 #include "gl_render.h"
 #include "hdtext.h"
 #include "farm.h"
@@ -1566,6 +1567,60 @@ static void push_vertex(int* nv, const SVtx* v, float alpha, const Poly* p, floa
 typedef struct { int first, count; GLuint tex; int sampler; float tw, th; int translucent, depth_write, depth_eq, lines, pid, shadow, fog, alpha1; } Batch;
 static Batch* g_batches; static int g_bcap;
 
+/* Enhanced > Townspeople in 3D (npc3d.c): their models, drawn with the solid
+ * polygons (before the see-through ones), where the game put their pictures.
+ * The model's clip space is the DS's: x narrowed for widescreen like the
+ * game's own polygons (gpu3d.c wide_submit). */
+static void npc3d_batches(const Frame3D* f, int* pnv, int* pnb) {
+    const Npc3dItem* items;
+    int n = npc3d_items(&items);
+    float xk = f->width > 256 ? 256.0f / (float)f->width : 1.0f;
+    for (int i = 0; i < n; i++) {
+        const Npc3dItem* it = &items[i];
+        Npc3dModel* m = (Npc3dModel*)it->model;
+        if (!m->gl) {                                            /* its textures, once */
+            GLuint* t = calloc((size_t)m->ntex, sizeof(GLuint));
+            p_glGenTextures(m->ntex, t);
+            for (int k = 0; k < m->ntex; k++) {
+                p_glBindTexture(GL_TEXTURE_2D, t[k]);
+                p_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m->tex[k].w, m->tex[k].h, 0, GL_RGBA, GL_UNSIGNED_BYTE, m->tex[k].rgba);
+                p_glGenerateMipmap(GL_TEXTURE_2D);
+            }
+            m->gl = t;
+        }
+        const float* M = it->clip;
+        const float* P = m->pos + (size_t)it->frame * m->nverts * 3;
+        for (int k = 0; k < m->nparts; k++) {
+            const Npc3dPart* pt = &m->parts[k];
+            if (*pnv + pt->count > g_vcap) { while (*pnv + pt->count > g_vcap) g_vcap = g_vcap ? g_vcap * 2 : 16384; g_verts = realloc(g_verts, sizeof(float) * VTX_FLOATS * (size_t)g_vcap); }
+            const Npc3dTex* tx = &m->tex[pt->tex];
+            Batch b;
+            memset(&b, 0, sizeof b);
+            b.tex = ((GLuint*)m->gl)[pt->tex]; b.tw = (float)tx->w; b.th = (float)tx->h;
+            b.sampler = 9 + 4;                                   /* repeat, filtered */
+            b.alpha1 = 1;                                        /* see-through or not: cut at half */
+            b.depth_write = pt->layer == 0; b.depth_eq = pt->layer != 0;
+            b.pid = 62; b.fog = 1;
+            b.first = *pnv;
+            for (int v = pt->first; v < pt->first + pt->count; v++) {
+                const float* q = P + (size_t)v * 3;
+                float* o = g_verts + (size_t)*pnv * VTX_FLOATS;
+                for (int r = 0; r < 4; r++) o[r] = M[r] * q[0] + M[4 + r] * q[1] + M[8 + r] * q[2] + M[12 + r];
+                o[0] *= xk;
+                o[4] = o[5] = o[6] = 31.0f; o[7] = 31.0f;
+                o[8] = m->uv[v * 2] * (float)tx->w; o[9] = m->uv[v * 2 + 1] * (float)tx->h;
+                o[10] = 0; o[11] = 1; o[12] = 62.0f / 63.0f; o[13] = 1;
+                int corner = (v - pt->first) % 3;
+                o[14] = corner == 0; o[15] = corner == 1; o[16] = corner == 2; o[17] = 0;
+                (*pnv)++;
+            }
+            b.count = *pnv - b.first;
+            if (*pnb == g_bcap) { g_bcap = g_bcap ? g_bcap * 2 : 1024; g_batches = realloc(g_batches, sizeof(Batch) * (size_t)g_bcap); }
+            g_batches[(*pnb)++] = b;
+        }
+    }
+}
+
 static void gl_vblank(void) {
     g_fb_shown = g_fb_latest;                                  /* what was rendered last is visible now */
 }
@@ -1666,7 +1721,9 @@ static void gl_render_(const Frame3D* f) {
     float boxes[DLG_BOXES][4]; int boxid[DLG_BOXES], ndlg = 0;      /* ...and each window apart (the modern line) */
     static float letter_dx[MAX_POLY];
     int spaced = letter_spacing(f, textures_on, letter_dx);
-    for (int i = 0; i < f->n; i++) {
+    for (int i = 0; i <= f->n; i++) {
+        if (i == f->n_opaque && textures_on) npc3d_batches(f, &nv, &nb);   /* townspeople in 3D, with the solid polygons */
+        if (i == f->n) break;
         const Poly* p = f->order[i];
         int fmt = (p->teximg >> 26) & 7;
         int textured = textures_on && fmt != 0;

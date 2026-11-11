@@ -22,3 +22,7 @@ main 02090018 GrottoChestRank              # ActiveGrottoClass::RandomizeChestRa
 # end rolls each monster's item with this (a random number below r0; 0 drops
 # it); the hook makes it 0 for those two calls only (rare item, then common).
 main 02032370 RandBelow                    # a random number from 0 to r0 - 1
+
+# Enhanced > Townspeople in 3D (runtime/npc3d.c): a townsperson's picture
+# (a sprite facing the camera) drawn; its quads hidden, a model drawn there.
+main 0203cd64 DrawSprite                   # one sprite: its quads, for the way it faces as seen from the camera

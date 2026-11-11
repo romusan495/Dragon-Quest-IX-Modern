@@ -18,6 +18,7 @@
 #include <string.h>
 #include "nds.h"
 #include "gpu3d.h"
+#include "npc3d.h"
 #include <time.h>
 #ifdef DQIX_TIMING   /* render timing for performance work (Linux test builds) */
 static double ms_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
@@ -520,6 +521,7 @@ static void submit_polygon(void) {
 
 static void submit_vertex(void) {
     s64 vx = cur_vtx[0], vy = cur_vtx[1], vz = cur_vtx[2], vw = 0x1000;
+    if (g_gx_hide & NPC3D_TAG) { int tg = poly_tag(tex_param); if (tg & NPC3D_TAG) npc3d_vertex(tg, m_pos, m_proj, cur_vtx); }   /* a townsperson's picture: where it stands (npc3d.c) */
     Vtx* t = &tmp_vtx[vtx_in_poly];
     update_clip();
     for (int c = 0; c < 4; c++) t->pos[c] = (s32)((vx * m_clip[c] + vy * m_clip[4 + c] + vz * m_clip[8 + c] + vw * m_clip[12 + c]) >> 12);
@@ -1632,6 +1634,7 @@ void gpu3d_vblank(void) {
         qsort(render_list, nsort, sizeof render_list[0], ysort_cmp);
         render_n = n_poly;
         new_list = 1;
+        npc3d_swap();                                               /* the townspeople drawn in 3D with this list */
         /* the widescreen list, if the whole frame was made with it */
         /* (a frame without polygons - the black of a scene change - keeps the
          * current width: switching to 256 and back rebuilt the renderer's
