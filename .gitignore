@@ -53,3 +53,11 @@ upload-to-github.bat
 /correction-rom-europe/
 /deplacer-jeu/
 setup-log.txt
+
+# your Dragon Quest VII / VIII (3DS) for the townspeople in 3D (game data)
+/rom/3DS/*
+!/rom/3DS/README.txt
+*.3ds
+*.cci
+*.cxi
+*.cia
