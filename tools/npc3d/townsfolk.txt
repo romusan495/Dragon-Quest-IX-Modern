@@ -19,3 +19,10 @@ n005a dq8 p033a
 n009a dq8 p021a
 n010a dq8 p010a
 n011a dq8 p023a
+# lot 2
+n012a dq8 p043a
+n013a dq8 p052a
+n017a dq8 p039a
+n018a dq8 p049a
+n019a dq7 p0171
+n020a dq8 p024b
