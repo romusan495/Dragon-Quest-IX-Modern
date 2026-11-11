@@ -22,16 +22,35 @@ def head_height(m, an):
         if names[j].lower() == 'head': return float(M[1, 3])
     return None
 
-def export(mdl, pack, out, step=2, anims=('idle', 'run'), sprite=None, sprite_neck=0.34):
+def arm_setup(m, pm, an):
+    """the arms' bones (posed like pm) and which side's arm each vertex is on"""
+    a = next((v for k, v in an.items() if k.endswith('_idle')), None)
+    W = pose.world_from_local(m, canm.local_mats(m['bind'], a, 0))
+    names = {j: n for j, n, p, mt in m['bones']}; at = {n: W[j][:, 3] for j, n in names.items() if j in W}
+    arms = {}
+    for side, s in ((+1, 'L'), (-1, 'R')):
+        if not all(s + b in at for b in ('Bicep', 'Forearm', 'Hand')): return None
+        sh, el, wr = at[s + 'Bicep'], at[s + 'Forearm'], at[s + 'Hand']
+        arms[1 if wr[0] > 0 else -1] = [sh, el, wr, wr + (wr - el) * 0.5]
+    for p in pm['parts']:
+        if p.get('bidx') is None: p['arm'] = None; continue
+        bl = list(p['blist']); idx = p['bidx'].astype(int)
+        wt = p['bwt'] if p.get('bwt') is not None else np.ones(idx.shape)
+        dom = [names.get(bl[i[k]], '') for i, k in zip(idx, np.argmax(wt, 1))]
+        p['arm'] = np.array([(1 if d[0] == 'L' else -1) if d[1:] in ('Bicep', 'Forearm', 'Hand') else 0 for d in dom])
+        if not any(at['LHand'][0] > 0 for _ in [0]): p['arm'] = -p['arm']
+    return arms
+
+def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None, pic_neck=0.34):
     models, tex = cgfx.load(mdl)
     m = models[0]
     an = canm.load(pack) if pack and os.path.exists(pack) else {}
-    if sprite is not None:                     # repainted with the DQIX townsperson's colours
+    if front is not None:                      # repainted with the DQIX townsperson's colours
         import paint
         a = next((v for k, v in an.items() if k.endswith('_idle')), None)
         pm = pose.pose_model(m, a, 0)
         base = m['parts'][0]['texs'][0]
-        tex = dict(tex); tex[base] = paint.paint(pm, tex, sprite, base, neck=head_height(m, an), sprite_neck=sprite_neck)
+        tex = dict(tex); tex[base] = paint.paint(pm, tex, front, front if back is None else back, base, neck=head_height(m, an), pic_neck=pic_neck, arms=arm_setup(m, pm, an))
     texnames = []
     def texid(n):
         if n not in texnames: texnames.append(n)
@@ -83,11 +102,10 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('model'); ap.add_argument('pack'); ap.add_argument('out')
     ap.add_argument('--step', type=int, default=2)
-    ap.add_argument('--sprite', help='RGBA front picture of the DQIX townsperson: repaint with its colours')
-    ap.add_argument('--sprite-neck', type=float, default=0.34)
+    ap.add_argument('--front', help='RGBA picture of the DQIX townsperson from the front: repaint with its colours')
+    ap.add_argument('--back', help='the same from the back')
+    ap.add_argument('--neck', type=float, default=0.34, help="the pictures' neck (0 top, 1 feet)")
     a = ap.parse_args()
-    sp = None
-    if a.sprite:
-        from PIL import Image
-        sp = np.array(Image.open(a.sprite).convert('RGBA'))
-    print(export(a.model, a.pack, a.out, a.step, sprite=sp, sprite_neck=a.sprite_neck))
+    from PIL import Image
+    pic = lambda f: np.array(Image.open(f).convert('RGBA')) if f else None
+    print(export(a.model, a.pack, a.out, a.step, front=pic(a.front), back=pic(a.back), pic_neck=a.neck))

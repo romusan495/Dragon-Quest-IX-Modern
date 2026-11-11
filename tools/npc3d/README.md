@@ -11,7 +11,9 @@ romfs. Nothing made here is ever committed (game-derived).
 - `paint.py`: repaints a model's texture with a DQIX townsperson's colours,
   from its front picture.
 - `npc3d_export.py`: bakes a model's idle and run animations to `.npc3`
-  (`--sprite <front picture.png>` to repaint it).
+  (`--front <picture.png> --back <picture.png>`: repaint it with the DQIX
+  townsperson's colours, seen from the front and from the back; its arms
+  follow the front picture's arms down their length).
 
 `npc3d/map.txt` in the game folder holds one `<DQIX sprite type> <model>`
 line per townsperson, e.g. `n008a p0229-n008a`. Option: `npc_3d = 1` in
