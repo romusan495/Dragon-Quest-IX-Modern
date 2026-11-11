@@ -33,7 +33,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Personnage figé après un combat | Dev | — | `claude/project-thread-4de875` | fusionné | PR #129 | — |
 | Trophées dans le menu Échap | Dev | [Dev] Mettre les trophées dans le menu Échap | `claude/project-thread-23jrga` | fusionné | PR #130 (ae07bf5) | Touche `runtime/frontend_sdl.c` : les fils Écran titre et Étoiles de collecte rebasent dessus |
 | Support RecompLauncher | Dev | [Dev] Ajouter le support RecompLauncher | `claude/project-thread-uvlao8` | en cours | — (rien de poussé) | Touche `tools/build-game.sh` (`step()` affiche « progress x y » si `DQIX_PROGRESS`, ROM `.zip` acceptée), `BUILD.bat` (mode `--prepare "<rom>"`), `README.md` (badge) ; nouveaux `recomplauncher.json` et `.github/workflows/release-zip.yml` (zip des sources joint à chaque release publiée : à relire avec la procédure de release, sources seulement) |
-| Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | — | en cours | — | Risque de toucher `runtime/frontend_sdl.c` |
+| Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | en cours | — (rien de poussé) | Touche `runtime/frontend_sdl.c` (`title_update`/`title_pieces`, appels dans `present_gl` et `canvas_layout_for`), `runtime/gl_render.c` (modes 36 et 37 de `FS_COPY`), `runtime/hdmovie.c/.h` ; rebaser sur `main` (après #130) avant la PR |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | — | en cours | — | Risque de toucher `runtime/frontend_sdl.c` (et sans doute `mapmarks.c`) |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
@@ -42,9 +42,9 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne, Étoiles de collecte (correctif) |
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne (`title_*`, `present_gl`, `canvas_layout_for`), Étoiles de collecte (correctif) |
 | `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) |
-| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) |
+| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) ; Écran titre moderne (`FS_COPY` modes 36-37) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
