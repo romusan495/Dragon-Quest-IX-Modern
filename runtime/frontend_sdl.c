@@ -39,6 +39,7 @@
 #include "autosave.h"
 #include "cheats.h"
 #include "mapmarks.h"
+#include "npc3d.h"
 #include "journal.h"
 #include "trophies.h"
 #include "version.h"
@@ -2852,8 +2853,9 @@ static int ui_language_wanted(void) { return g_ui_language ? g_ui_language : rom
  * widescreen with the map in the top right corner, the battle HUD, the map
  * markers...). An older settings.ini keeps the player's own things (volume,
  * language, wireless, controls, gold farm) but takes these looks once.
- * settings_version 3: the modern windows, once (window_style 2). */
-#define SETTINGS_VERSION 3
+ * settings_version 3: the modern windows, once (window_style 2).
+ * settings_version 4: the townspeople in 3D, once (npc_3d 1). */
+#define SETTINGS_VERSION 4
 static const char* const LOOK_KEYS[] = {
     "mode", "render_scale", "resolution_3d", "window_scale", "layout", "single_screen", "swap_screens",
     "small_screen_corner", "small_screen_size", "small_screen_hidden", "small_screen_opacity", "small_screen_opacity_chosen",
@@ -2877,6 +2879,7 @@ static void settings_load(void) {
         char key[64]; char val[64];
         if (line[0] == '#' || sscanf(line, " %63[^= ] = %63s", key, val) != 2) continue;
         if (version < 2 && look_key(key)) continue;
+        if (version < 4 && !strcmp(key, "npc_3d")) continue;       /* (on by default since v4) */
         if (!strcmp(key, "player_name")) {                       /* the whole rest of the line (may have spaces) */
             const char* v = strchr(line, '=') + 1; while (*v == ' ') v++;
             snprintf(g_player_name, sizeof g_player_name, "%s", v);
@@ -2901,6 +2904,7 @@ static void settings_load(void) {
         else if (!strcmp(key, "mute")) g_mute = atoi(val) != 0;
         else if (!strcmp(key, "widescreen_battle_hud")) g_hud = atoi(val) != 0;
         else if (!strcmp(key, "map_markers")) g_mapmarks = atoi(val) != 0;
+        else if (!strcmp(key, "npc_3d")) g_npc3d = atoi(val) != 0;
         else if (!strcmp(key, "map_markers_opened")) g_mapmarks_opened = atoi(val) != 0;
         else if (!strcmp(key, "smooth_textures")) g_smooth = atoi(val) != 0;
         else if (!strcmp(key, "smooth_2d")) g_smooth2d = atoi(val) != 0;
@@ -3016,6 +3020,8 @@ static void settings_save(void) {
     fprintf(f, "widescreen_battle_hud = %d\n", g_hud);
     fprintf(f, "# the map: the chests, pots and barrels of the place marked (the mouse over one: what is in it): 0 or 1\n");
     fprintf(f, "map_markers = %d\n", g_mapmarks);
+    fprintf(f, "# enhanced: townspeople as 3D models where the npc3d folder has one (tools/npc3d.py): 0 or 1\n");
+    fprintf(f, "npc_3d = %d\n", g_npc3d);
     fprintf(f, "# ...also the ones already emptied (greyed): 0 or 1\n");
     fprintf(f, "map_markers_opened = %d\n", g_mapmarks_opened);
     fprintf(f, "# window size: 1 to 8 times the DS screens (F3)\n");
@@ -5285,6 +5291,7 @@ static void menu_sync(void) {
     menu_check(MI_TEXUP, g_texup); menu_enable(MI_TEXUP, g_gl && !g_classic);
     menu_check(MI_SOFTSHADOW, g_softshadow); menu_enable(MI_SOFTSHADOW, g_gl && !g_classic);
     menu_check(MI_INKLINES, g_ink); menu_enable(MI_INKLINES, g_gl && !g_classic);
+    menu_check(MI_NPC3D, g_npc3d); menu_enable(MI_NPC3D, g_gl && !g_classic);
     menu_check(MI_TEXPACK, g_texpack); menu_enable(MI_TEXPACK, g_gl && !g_classic);
     menu_enable(MI_TEXRELOAD, g_gl && !g_classic && g_texpack);
     menu_check(MI_TEXDUMP, g_texdump); menu_enable(MI_TEXDUMP, g_gl && !g_classic);
@@ -5888,6 +5895,7 @@ static void do_action(int id) {
     case MI_TEXUP: if (g_gl) { g_texup = !g_texup; gl_set_tex_upscale(g_texup); } break;
     case MI_SOFTSHADOW: if (g_gl) { g_softshadow = !g_softshadow; gl_set_soft_shadows(g_softshadow); } break;
     case MI_INKLINES: if (g_gl) { g_ink = !g_ink; gl_set_ink_lines(g_ink); } break;
+    case MI_NPC3D: g_npc3d = !g_npc3d; break;
     case MI_TEXPACK: if (g_gl) { g_texpack = !g_texpack; gl_set_texture_pack(g_texpack); } break;
     case MI_TEXRELOAD: if (g_gl && g_texpack) gl_reload_texture_pack(); break;
     case MI_TEXDUMP: if (g_gl) { g_texdump = !g_texdump; gl_set_texture_dump(g_texdump); } break;

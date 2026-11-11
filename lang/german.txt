@@ -86,6 +86,9 @@ de = Weiche Scha&tten in Ecken und unter Möbeln (Verbessert)
 en = Thin dar&k lines round things (Enhanced)
 de = Feine dunkle Lin&ien um Objekte (Verbessert)
 
+en = Townspeople in &3D (Enhanced)
+de = Stadtbewohner in &3D (Verbessert)
+
 en = Character &outlines (Enhanced)
 de = Figuren-&Umrisse (Verbessert)
 

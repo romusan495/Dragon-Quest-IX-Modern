@@ -1,0 +1,96 @@
+# DQIX townsperson (data/ani/<type>.spr) -> the character from Dragon Quest VII
+# (dq7, 3DS: CHARACTER/<model>.bcmdl.lz) or Dragon Quest VIII (dq8, 3DS:
+# data/Model/npc/<model>.bch) drawn in its place, with that game's own colours.
+# Chosen one by one by Romuald from pictures; types left out stay pictures.
+# Optional 4th column: size next to its picture (animals: their picture is
+# mostly empty above them), 1 = as tall.
+# Stornway
+n002a dq8 p046a
+n003a dq8 p022a
+n006a dq7 p0159
+n007a dq8 p012a
+n008a dq7 p0229
+n014a dq8 p018a
+n015a dq7 p0161
+n016a dq8 p034a
+n028a dq8 p048a
+# lot 1
+n001a dq8 p013a
+n004a dq8 p027a
+n005a dq8 p033a
+n009a dq8 p021a
+n010a dq8 p010a
+n011a dq8 p023a
+# lot 2
+n012a dq8 p043a
+n013a dq8 p052a
+n017a dq8 p039a
+n018a dq8 p049a
+n019a dq7 p0171
+n020a dq8 p024b
+# lot 3
+n021a dq7 p0210
+n022a dq8 p054a
+n023a dq8 p044a
+n024a dq8 p053a
+n025a dq8 p028a
+n026a dq7 p0103
+# lot 4
+n029a dq8 p014a
+n030a dq7 p0198
+n031a dq8 p055a
+n032a dq8 p047a
+n033a dq8 p067a
+# lot 5 (n051a-n065a, n067a-n070a: no lookalike, they stay pictures)
+n027a dq7 p0197
+n034a dq8 p026a
+n035a dq8 p037a
+n036a dq7 p0162
+n037a dq7 p0068
+# lot 6
+n066a dq7 p0208
+n075a dq8 p062a
+# n071a-n074a, n076a stay pictures
+# n077a-n082a stay pictures
+# n083a-n092a stay pictures
+# lot 7: animals (n104a sheep: none, stays a picture)
+n096a dq7 p0402 0.45
+n097a dq9 s066
+n098a dq7 p0408 0.6
+n099a dq7 p0403
+n100a dq7 p0404 0.3
+n103a dq7 p0415
+# lot 8: the DQIX characters these townspeople are (n101a n102a n303-n306 stay pictures)
+n300 dq9 s016
+n301 dq9 s024
+n302 dq9 s025
+# n9xx: the same townspeople seen in other scenes (same model as the one they are)
+n900a dq8 p022a
+n902a dq8 p048a
+n906a dq8 p028a
+n907a dq8 p027a
+n908a dq8 p012a
+n909a dq8 p039a
+n911a dq8 p049a
+n913a dq8 p033a
+n916a dq8 p024b
+n919a dq7 p0402 0.45
+n925a dq9 s025
+# variants b, c (other colours), s (sepia): their base townsperson's model; g (ghosts) stay pictures
+n001b dq8 p013a
+n002b dq8 p046a
+n002c dq8 p046a
+n003b dq8 p022a
+n003c dq8 p022a
+n004b dq8 p027a
+n004s dq8 p027a
+n005b dq8 p033a
+n005s dq8 p033a
+n007s dq8 p012a
+n011s dq8 p023a
+n014b dq8 p018a
+n018b dq8 p049a
+n900b dq8 p022a
+n900c dq8 p022a
+n907b dq8 p027a
+n097b dq9 s096
