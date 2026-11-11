@@ -74,3 +74,21 @@ n913a dq8 p033a
 n916a dq8 p024b
 n919a dq7 p0402
 n925a dq9 s025
+# variants b, c (other colours), s (sepia): their base townsperson's model; g (ghosts) stay pictures
+n001b dq8 p013a
+n002b dq8 p046a
+n002c dq8 p046a
+n003b dq8 p022a
+n003c dq8 p022a
+n004b dq8 p027a
+n004s dq8 p027a
+n005b dq8 p033a
+n005s dq8 p033a
+n007s dq8 p012a
+n011s dq8 p023a
+n014b dq8 p018a
+n018b dq8 p049a
+n900b dq8 p022a
+n900c dq8 p022a
+n907b dq8 p027a
+n097b dq7 p0400
