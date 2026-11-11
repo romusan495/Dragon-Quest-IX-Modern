@@ -26,7 +26,7 @@ def pose_model(model, anim, t):
     parts = []
     for p in model['parts']:
         raw = p['raw']; n = len(raw)
-        P = raw.copy()
+        P = raw.copy(); off = p['off']
         bl = p['blist']
         if bl:
             if p['skin'] != 2:
@@ -47,10 +47,10 @@ def pose_model(model, anim, t):
                         Mw = W.get(bl[b])
                         if Mw is None: continue
                         S = np.vstack([Mw, [0, 0, 0, 1]]) @ inv[bl[b]]
-                        acc[sel] += wk[sel, None] * (raw[sel] @ S[:3, :3].T + S[:3, 3])
+                        acc[sel] += wk[sel, None] * ((raw[sel] + off) @ S[:3, :3].T + S[:3, 3])   # (model space: the shape's offset included)
                         tw[sel] += wk[sel]
                 ok = tw > 0
-                P[ok] = acc[ok] / tw[ok, None]
+                P[ok] = acc[ok] / tw[ok, None] - off
         q = dict(p); q['pos'] = P + p['off']
         parts.append(q)
     m = dict(model); m['parts'] = parts
