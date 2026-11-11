@@ -44,6 +44,7 @@ wireless.bin
 # your own upload helper (names your GitHub account)
 upload-to-github.bat
 /rom/last-rom.txt
+/rom/dq7-path.txt
 # the in-game updater's working folder (downloads, the previous version)
 /update/
 # local-only folders on the play machine (backups made by work sessions, one-off scripts, logs)

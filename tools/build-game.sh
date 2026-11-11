@@ -133,6 +133,18 @@ $PY tools/job_icons.py "$ROM" game/textures/jobs || echo "   job icons: not made
 # fetched from the site once, for this computer only (never kept in the project).
 # Optional: without them (no Internet) the game shows its cups.
 $PY tools/trophy_badges.py game/trophies || echo "   trophy pictures: not fetched (optional)"
+# townspeople in 3D (runtime/npc3d.c, Graphics > Townspeople in 3D): made from
+# the player's own Dragon Quest VII (3DS) files, whose folder (its romfs, or
+# its CHARACTER folder) is named in rom/dq7-path.txt; remade when the list
+# of townspeople changes. Never kept in the project. Optional.
+DQ7="$(tr -d '\r' < rom/dq7-path.txt 2>/dev/null)"
+case "$(uname -s)" in MINGW*|MSYS*) [ -n "$DQ7" ] && DQ7="$(cygpath -u "$DQ7")" ;; esac
+if [ -n "$DQ7" ] && [ -d "$DQ7" ]; then
+    if [ ! -f game/npc3d/map.txt ] || [ -n "$(find tools/npc3d -newer game/npc3d/map.txt -type f)" ]; then
+        echo "== Townspeople in 3D (from Dragon Quest VII)"
+        $PY tools/npc3d/make_all.py "$ROM" "$DQ7" game/npc3d || echo "   townspeople in 3D: not made (optional; needs Python's numpy)"
+    fi
+fi
 # the same plaques for the modern Equip screen (runtime/frontend_sdl.c equip_pieces:
 # the bar, the card) and the jobs' coats of arms for the shop's wall; its backdrop, ui/equip-shop.png, if there
 mkdir -p game/ui/jobs game/ui/crests && cp tools/job_icons_plate/*.png game/ui/jobs/ 2>/dev/null || true

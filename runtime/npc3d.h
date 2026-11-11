@@ -27,8 +27,11 @@ typedef struct {
 typedef struct {
     char type[16];                 /* its file: npc3d/<type>.npc3 */
     int nverts, nframes, ntex, nparts, nanims;
-    float* uv;                     /* nverts * 2 */
-    float* pos;                    /* nframes * nverts * 3 */
+    int nuniq;                     /* its distinct vertices */
+    uint16_t* idx;                 /* nverts: the distinct vertex each one is */
+    float* uv;                     /* nuniq * 2 */
+    int16_t* pos;                  /* nframes * nuniq * 3, times scale */
+    float scale;
     Npc3dTex* tex;
     Npc3dPart* parts;
     Npc3dAnim* anims;

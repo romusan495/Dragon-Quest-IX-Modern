@@ -1589,7 +1589,8 @@ static void npc3d_batches(const Frame3D* f, int* pnv, int* pnb) {
             m->gl = t;
         }
         const float* M = it->clip;
-        const float* P = m->pos + (size_t)it->frame * m->nverts * 3;
+        const int16_t* P = m->pos + (size_t)it->frame * m->nuniq * 3;
+        const float ks = m->scale;
         for (int k = 0; k < m->nparts; k++) {
             const Npc3dPart* pt = &m->parts[k];
             if (*pnv + pt->count > g_vcap) { while (*pnv + pt->count > g_vcap) g_vcap = g_vcap ? g_vcap * 2 : 16384; g_verts = realloc(g_verts, sizeof(float) * VTX_FLOATS * (size_t)g_vcap); }
@@ -1603,12 +1604,14 @@ static void npc3d_batches(const Frame3D* f, int* pnv, int* pnb) {
             b.pid = 62; b.fog = 1;
             b.first = *pnv;
             for (int v = pt->first; v < pt->first + pt->count; v++) {
-                const float* q = P + (size_t)v * 3;
+                int u = m->idx[v];
+                const int16_t* qi = P + (size_t)u * 3;
+                float q[3] = { qi[0] * ks, qi[1] * ks, qi[2] * ks };
                 float* o = g_verts + (size_t)*pnv * VTX_FLOATS;
                 for (int r = 0; r < 4; r++) o[r] = M[r] * q[0] + M[4 + r] * q[1] + M[8 + r] * q[2] + M[12 + r];
                 o[0] *= xk;
                 o[4] = o[5] = o[6] = 31.0f; o[7] = 31.0f;
-                o[8] = m->uv[v * 2] * (float)tx->w; o[9] = m->uv[v * 2 + 1] * (float)tx->h;
+                o[8] = m->uv[u * 2] * (float)tx->w; o[9] = m->uv[u * 2 + 1] * (float)tx->h;
                 o[10] = 0; o[11] = 1; o[12] = 62.0f / 63.0f; o[13] = 1;
                 int corner = (v - pt->first) % 3;
                 o[14] = corner == 0; o[15] = corner == 1; o[16] = corner == 2; o[17] = 0;

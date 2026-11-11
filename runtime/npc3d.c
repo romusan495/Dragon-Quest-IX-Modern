@@ -39,7 +39,7 @@ static uint32_t rd32(uint32_t a) { uint32_t v; memcpy(&v, ram(a), 4); return v; 
 static int is_ram(uint32_t a) { return a >= 0x02000000u && a < 0x02400000u; }
 
 /* ---------------------------------------------------------------- models */
-#define MAXMODELS 64
+#define MAXMODELS 160
 static Npc3dModel* g_models[MAXMODELS];
 static int g_nmodels;
 static char g_missing[256][16]; static int g_nmissing;
@@ -51,7 +51,7 @@ static Npc3dModel* load_model(const char* type) {
     if (!f) return NULL;
     Npc3dModel* m = calloc(1, sizeof *m);
     char magic[4]; uint32_t ver, u[4];
-    int ok = fread(magic, 1, 4, f) == 4 && !memcmp(magic, "NPC3", 4) && fread(&ver, 4, 1, f) == 1 && ver == 1;
+    int ok = fread(magic, 1, 4, f) == 4 && !memcmp(magic, "NPC3", 4) && fread(&ver, 4, 1, f) == 1 && ver == 2;
     if (ok && fread(u, 4, 1, f) == 1) {
         m->nanims = (int)u[0];
         m->anims = calloc((size_t)m->nanims, sizeof *m->anims);
@@ -82,21 +82,24 @@ static Npc3dModel* load_model(const char* type) {
             if (ok && (m->parts[i].tex >= m->ntex || m->parts[i].first + m->parts[i].count > m->nverts)) ok = 0;
         }
     } else ok = 0;
-    if (ok) {
-        size_t nuv = (size_t)m->nverts * 2, np = (size_t)m->nframes * m->nverts * 3;
-        m->uv = malloc(nuv * 4); m->pos = malloc(np * 4);
-        ok = m->uv && m->pos && fread(m->uv, 4, nuv, f) == nuv && fread(m->pos, 4, np, f) == np;
-    }
+    if (ok && fread(u, 4, 2, f) == 2 && u[0] && u[0] <= 65536) {
+        m->nuniq = (int)u[0]; memcpy(&m->scale, &u[1], 4);
+        size_t nuv = (size_t)m->nuniq * 2, np = (size_t)m->nframes * m->nuniq * 3;
+        m->idx = malloc((size_t)m->nverts * 2); m->uv = malloc(nuv * 4); m->pos = malloc(np * 2);
+        ok = m->idx && m->uv && m->pos && fread(m->idx, 2, (size_t)m->nverts, f) == (size_t)m->nverts
+             && fread(m->uv, 4, nuv, f) == nuv && fread(m->pos, 2, np, f) == np;
+        for (int i = 0; ok && i < m->nverts; i++) if (m->idx[i] >= m->nuniq) ok = 0;
+    } else ok = 0;
     fclose(f);
     if (!ok || m->nframes < 1) {
         fprintf(stderr, "npc3d: %s: not a model this version reads\n", path);
-        free(m->uv); free(m->pos); free(m->anims); free(m->parts);
+        free(m->idx); free(m->uv); free(m->pos); free(m->anims); free(m->parts);
         if (m->tex) for (int i = 0; i < m->ntex; i++) free(m->tex[i].rgba);
         free(m->tex); free(m);
         return NULL;
     }
     float y0 = 1e9f, y1 = -1e9f;
-    for (int i = 0; i < m->nverts; i++) { float y = m->pos[i * 3 + 1]; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    for (int i = 0; i < m->nuniq; i++) { float y = m->pos[i * 3 + 1] * m->scale; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     m->height = y1 > y0 ? y1 : 1.0f;                               /* from its feet (y 0) */
     snprintf(m->type, sizeof m->type, "%s", type);
     fprintf(stderr, "npc3d: %s: %d vertices, %d frames, %d textures\n", type, m->nverts, m->nframes, m->ntex);

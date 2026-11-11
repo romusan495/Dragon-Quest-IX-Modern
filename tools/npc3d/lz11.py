@@ -1,5 +1,6 @@
 import sys
 def lz11(d):
+    d = bytes(d)
     assert d[0]==0x11
     n=d[1]|d[2]<<8|d[3]<<16; p=4
     if n==0: n=int.from_bytes(d[4:8],'little'); p=8

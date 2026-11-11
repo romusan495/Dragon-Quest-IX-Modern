@@ -5289,6 +5289,7 @@ static void menu_sync(void) {
     menu_check(MI_TEXUP, g_texup); menu_enable(MI_TEXUP, g_gl && !g_classic);
     menu_check(MI_SOFTSHADOW, g_softshadow); menu_enable(MI_SOFTSHADOW, g_gl && !g_classic);
     menu_check(MI_INKLINES, g_ink); menu_enable(MI_INKLINES, g_gl && !g_classic);
+    menu_check(MI_NPC3D, g_npc3d); menu_enable(MI_NPC3D, g_gl && !g_classic);
     menu_check(MI_TEXPACK, g_texpack); menu_enable(MI_TEXPACK, g_gl && !g_classic);
     menu_enable(MI_TEXRELOAD, g_gl && !g_classic && g_texpack);
     menu_check(MI_TEXDUMP, g_texdump); menu_enable(MI_TEXDUMP, g_gl && !g_classic);
@@ -5892,6 +5893,7 @@ static void do_action(int id) {
     case MI_TEXUP: if (g_gl) { g_texup = !g_texup; gl_set_tex_upscale(g_texup); } break;
     case MI_SOFTSHADOW: if (g_gl) { g_softshadow = !g_softshadow; gl_set_soft_shadows(g_softshadow); } break;
     case MI_INKLINES: if (g_gl) { g_ink = !g_ink; gl_set_ink_lines(g_ink); } break;
+    case MI_NPC3D: g_npc3d = !g_npc3d; break;
     case MI_TEXPACK: if (g_gl) { g_texpack = !g_texpack; gl_set_texture_pack(g_texpack); } break;
     case MI_TEXRELOAD: if (g_gl && g_texpack) gl_reload_texture_pack(); break;
     case MI_TEXDUMP: if (g_gl) { g_texdump = !g_texdump; gl_set_texture_dump(g_texdump); } break;

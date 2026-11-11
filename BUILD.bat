@@ -55,7 +55,7 @@ exit /b 1
 :have_msys
 if defined DQIX_PROGRESS echo progress 0.08 Checking the build tools
 echo Checking the build tools (the first time downloads them)...
-"%MSYSROOT%\usr\bin\bash.exe" -lc "pacman -Sy --noconfirm --needed make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-yaml"
+"%MSYSROOT%\usr\bin\bash.exe" -lc "pacman -Sy --noconfirm --needed make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-yaml mingw-w64-ucrt-x86_64-python-numpy"
 
 rem ---- build
 set MSYSTEM=UCRT64

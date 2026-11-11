@@ -1,13 +1,14 @@
 """Export one DQVII character (bcmdl + pack) to a simple baked file for the runtime.
 usage: npc3d_export.py <model.bcmdl> <anims.pack> <out.bin> [fps_step]
 Format (little endian):
-  'NPC3' u32 version=1
+  'NPC3' u32 version=2
   u32 nanims ; per anim: char name[16], u32 nframes, u32 first_frame (index into frames)
   u32 nframes_total, u32 nverts
   u32 ntex ; per tex: u32 w, h, then w*h*4 RGBA
   u32 nparts ; per part: u32 tex, u32 layer, u32 first_vert, u32 nverts (triangles list, 3 per tri)
-  uv: nverts * 2 f32 (0..1, v down)
-  frames: nframes_total * nverts * 3 f32 (model units, y up)
+  u32 nuniq, f32 scale ; u16 index[nverts] (into the unique vertices)
+  uv: nuniq * 2 f32 (0..1, v down)
+  frames: nframes_total * nuniq * 3 i16 (times scale: model units, y up)
 """
 import sys, struct, os
 import numpy as np
@@ -49,8 +50,10 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         import paint
         a = next((v for k, v in an.items() if k.endswith('_idle')), None)
         pm = pose.pose_model(m, a, 0)
-        base = m['parts'][0]['texs'][0]
-        tex = dict(tex); tex[base] = paint.paint(pm, tex, front, front if back is None else back, base, neck=head_height(m, an), pic_neck=pic_neck, arms=arm_setup(m, pm, an))
+        arms = arm_setup(m, pm, an); nk = head_height(m, an)
+        tex = dict(tex)
+        for base in sorted({p['texs'][0] for p in m['parts'] if p.get('texs') and p['texs'][0] in tex}):   # every surface texture (not the eyes, mouth)
+            tex[base] = paint.paint(pm, tex, front, front if back is None else back, base, neck=nk, pic_neck=pic_neck, arms=arms)
     texnames = []
     def texid(n):
         if n not in texnames: texnames.append(n)
@@ -74,13 +77,21 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         first = len(frames)
         for k in range(nf):
             pm = pose.pose_model(m, a, k * step)
-            frames.append(np.concatenate([pm['parts'][pi]['pos'][idx] for pi, _, _, idx, _ in parts]))
+            frames.append([p['pos'] for p in pm['parts']])
         alist.append((want, nf, first))
     if not frames:
-        frames.append(np.concatenate([m['parts'][pi]['pos'][idx] for pi, _, _, idx, _ in parts])); alist.append(('bind', 1, 0))
-    uvs = np.concatenate([uv[idx] for _, _, _, idx, uv in parts])
+        frames.append([p['pos'] for p in m['parts']]); alist.append(('bind', 1, 0))
+    # each part's own vertices once (u16 indices into them), positions as 16-bit steps of `scale`
+    uniq, index, base = [], [], 0
+    for pi, ti, layer, idx, uv in parts:
+        u, inv = np.unique(idx, return_inverse=True)
+        uniq.append((pi, u, uv)); index.append(inv + base); base += len(u)
+    index = np.concatenate(index)
+    uvs = np.concatenate([uv[u] for pi, u, uv in uniq]).astype(np.float32); uvs[:, 1] = 1 - uvs[:, 1]
+    fpos = [np.concatenate([fr_parts[pi][u] for pi, u, uv in uniq]) for fr_parts in frames]
+    scale = max(float(np.abs(np.array(fpos)).max()), 1e-6) / 32767
     with open(out, 'wb') as f:
-        f.write(b'NPC3' + struct.pack('<I', 1))
+        f.write(b'NPC3' + struct.pack('<I', 2))
         f.write(struct.pack('<I', len(alist)))
         for n, nf, first in alist: f.write(n.encode()[:15].ljust(16, b'\0') + struct.pack('<II', nf, first))
         f.write(struct.pack('<II', len(frames), nverts))
@@ -92,9 +103,10 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         first = 0
         for pi, ti, layer, idx, uv in parts:
             f.write(struct.pack('<IIII', ti, layer, first, len(idx))); first += len(idx)
-        u = uvs.astype(np.float32).copy(); u[:, 1] = 1 - u[:, 1]
-        f.write(u.tobytes())
-        for fr in frames: f.write(fr.astype(np.float32).tobytes())
+        f.write(struct.pack('<If', base, scale))
+        f.write(index.astype('<u2').tobytes())
+        f.write(uvs.tobytes())
+        for fp in fpos: f.write(np.round(fp / scale).astype('<i2').tobytes())
     return dict(verts=nverts, frames=len(frames), tex=len(texnames), anims=alist, size=os.path.getsize(out))
 
 if __name__ == '__main__':

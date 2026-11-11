@@ -46,6 +46,7 @@ enum {
     MI_SKIP0 = 380,                                                     /* Modern > Start: as on a DS, skip the logos, skip the movie too (+0..2, bootskip.c) */                                               /* Cheats > About these cheats */
     MI_SOFTSHADOW = 390,                                                /* Graphics > Soft shadows in corners (gl_render.c FS_POST) */
     MI_INKLINES = 391,                                                  /* Graphics > Thin dark lines round things (FS_POST) */
+    MI_NPC3D = 392,                                                     /* Graphics > Townspeople in 3D (npc3d.c) */
     MI_CHEAT0 = 700,                                                    /* Cheats: one per code (+0..cheats_count()-1, cheats.c) */
 };
 #define N_FONTS 16                                                      /* MI_FONT0 + i */
