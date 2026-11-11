@@ -47,3 +47,5 @@ n036a dq7 p0162
 n037a dq7 p0068
 # lot 6
 n066a dq7 p0208
+n075a dq8 p062a
+# n071a-n074a, n076a stay pictures
