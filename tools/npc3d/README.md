@@ -1,14 +1,21 @@
 # Townspeople in 3D (runtime/npc3d.c): model converter
 
 Makes the `npc3d/<model>.npc3` files the runtime draws in place of a DQIX
-townsperson's flat picture, from the player's own Dragon Quest VII (3DS)
-romfs. Nothing made here is ever committed (game-derived).
+townsperson's flat picture, from the player's own Dragon Quest VII and/or
+VIII (3DS) romfs (folders named in `rom/dq7-path.txt`, `rom/dq8-path.txt`),
+with those games' own colours. `townsfolk.txt` says which character replaces
+which townsperson (`n008a dq7 p0229`). Nothing made here is ever committed
+(game-derived).
 
 - `lz11.py`: LZ11 decompression of the romfs files.
 - `cgfx.py`: CGFX model reader (meshes, skin, bones, textures).
 - `canm.py`: CGFX skeletal animations (curve and baked tracks).
 - `pose.py`: poses a model (skinning) at a time of an animation.
-- `paint.py`: repaints a model's texture with a DQIX townsperson's colours,
+- `bch.py`: DQVIII BCH model reader (meshes, skin, bones, textures, skeletal
+  animations); of the alternate hand meshes (fist, open, pointing), keeps the open one.
+- `bch_export.py`: bakes a DQVIII model's idle and walk animations to `.npc3`.
+- `make_all.py`: every line of `townsfolk.txt` (BUILD.bat).
+- `paint.py` (unused since the games' own colours are kept): repaints a model's texture with a DQIX townsperson's colours,
   from its front picture.
 - `npc3d_export.py`: bakes a model's idle and run animations to `.npc3`
   (`--front <picture.png> --back <picture.png>`: repaint it with the DQIX

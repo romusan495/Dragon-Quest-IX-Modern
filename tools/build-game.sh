@@ -134,18 +134,20 @@ $PY tools/job_icons.py "$ROM" game/textures/jobs || echo "   job icons: not made
 # Optional: without them (no Internet) the game shows its cups.
 $PY tools/trophy_badges.py game/trophies || echo "   trophy pictures: not fetched (optional)"
 # townspeople in 3D (runtime/npc3d.c, Graphics > Townspeople in 3D): made from
-# the player's own Dragon Quest VII (3DS) files, whose folder (its romfs, or
-# its CHARACTER folder) is named in rom/dq7-path.txt; remade when the list
-# of townspeople changes. Never kept in the project. Optional.
-DQ7=""
-if [ -f rom/dq7-path.txt ]; then
-    DQ7="$(tr -d '\r' < rom/dq7-path.txt)"
-    case "$(uname -s)" in MINGW*|MSYS*) DQ7="$(cygpath -u "$DQ7")" ;; esac
-fi
-if [ -n "$DQ7" ] && [ -d "$DQ7" ]; then
-    if [ ! -f game/npc3d/map.txt ] || [ -n "$(find tools/npc3d -newer game/npc3d/map.txt -type f)" ]; then
-        echo "== Townspeople in 3D (from Dragon Quest VII)"
-        $PY tools/npc3d/make_all.py "$ROM" "$DQ7" game/npc3d || echo "   townspeople in 3D: not made (optional; needs Python's numpy)"
+# the player's own Dragon Quest VII and/or VIII (3DS) files, whose folders (the
+# romfs) are named in rom/dq7-path.txt and rom/dq8-path.txt; remade when the
+# list of townspeople changes. Never kept in the project. Optional.
+gamedir() {
+    [ -f "rom/$1-path.txt" ] || return 0
+    local d; d="$(tr -d '\r' < "rom/$1-path.txt")"
+    case "$(uname -s)" in MINGW*|MSYS*) d="$(cygpath -u "$d")" ;; esac
+    if [ -d "$d" ]; then echo "$d"; fi
+}
+DQ7="$(gamedir dq7)"; DQ8="$(gamedir dq8)"
+if [ -n "$DQ7$DQ8" ]; then
+    if [ ! -f game/npc3d/map.txt ] || [ -n "$(find tools/npc3d rom/dq7-path.txt rom/dq8-path.txt -newer game/npc3d/map.txt -type f 2>/dev/null)" ]; then
+        echo "== Townspeople in 3D (from Dragon Quest VII / VIII)"
+        $PY tools/npc3d/make_all.py "${DQ7:--}" "${DQ8:--}" game/npc3d || echo "   townspeople in 3D: not made (optional; needs Python's numpy)"
     fi
 fi
 # the same plaques for the modern Equip screen (runtime/frontend_sdl.c equip_pieces:

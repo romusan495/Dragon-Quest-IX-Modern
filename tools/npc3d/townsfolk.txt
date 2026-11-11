@@ -1,122 +1,14 @@
-# DQIX townsperson (data/ani/<type>.spr) -> DQVII (3DS) character whose shape it takes
-# (repainted with the townsperson's own colours). Types left out stay pictures:
-# ghosts, statues, animals, Celestrians (wings), monsters.
-n001a p0110
-n001b p0209
-n002a p0120
-n002b p0151
-n002c p0104
-n003a p0155
-n003b p0155
-n003c p0155
-n004a p0207
-n004b p0207
-n004s p0207
-n005a p0159
-n005s p0159
-n006a p0207
-n007a p0171
-n007s p0171
-n008a p0229
-n009a p0209
-n010a p0209
-n011a p0155
-n011s p0155
-n012a p0229
-n013a p0151
-n014a p0150
-n014b p0150
-n015a p0107
-n016a p0183
-n017a p0183
-n018a p0233
-n019a p0110
-n020a p0120
-n021a p0187
-n022a p0107
-n023a p0209
-n024a p0170
-n025a p0158
-n026a p0131
-n027a p0107
-n028a p0173
-n029a p0119
-n030a p0156
-n031a p0119
-n032a p0119
-n033a p0124
-n034a p0124
-n035a p0187
-n036a p0161
-n037a p0102
-n051a p0119
-n051s p0119
-n052a p0119
-n053a p0110
-n054a p0155
-n055a p0156
-n056a p0233
-n057a p0209
-n058a p0233
-n059a p0207
-n060a p0150
-n061a p0107
-n062a p0102
-n063a p0110
-n064a p0110
-n065a p0159
-n066a p0161
-n067a p0151
-n068a p0155
-n069a p0187
-n070a p0156
-n071a p0207
-n072a p0187
-n072b p0187
-n073a p0187
-n073b p0187
-n074a p0150
-n075a p0107
-n076a p0159
-n077a p0209
-n078a p0151
-n079a p0110
-n080a p0110
-n080b p0209
-n081a p0150
-n082a p0150
-n083a p0107
-n084a p0209
-n085a p0151
-n088a p0229
-n088b p0229
-n089a p0161
-n092a p0161
-n095a p0101
-n101a p0120
-n300 p0156
-n301 p0151
-n302 p0182
-n900a p0155
-n900b p0155
-n900c p0155
-n901a p0156
-n902a p0119
-n903a p0110
-n903b p0209
-n904a p0120
-n904b p0151
-n904c p0104
-n905a p0158
-n906a p0158
-n907a p0207
-n907b p0207
-n908a p0171
-n909a p0124
-n910a p0150
-n910b p0150
-n911a p0233
-n912a p0155
-n913a p0159
-n916a p0120
-n925a p0182
+# DQIX townsperson (data/ani/<type>.spr) -> the character from Dragon Quest VII
+# (dq7, 3DS: CHARACTER/<model>.bcmdl.lz) or Dragon Quest VIII (dq8, 3DS:
+# data/Model/npc/<model>.bch) drawn in its place, with that game's own colours.
+# Chosen one by one by Romuald from pictures; types left out stay pictures.
+# Stornway
+n002a dq8 p046a
+n003a dq8 p022a
+n006a dq7 p0159
+n007a dq8 p012a
+n008a dq7 p0229
+n014a dq8 p018a
+n015a dq7 p0161
+n016a dq8 p034a
+n028a dq8 p048a

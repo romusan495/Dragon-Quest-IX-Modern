@@ -45,6 +45,7 @@ wireless.bin
 upload-to-github.bat
 /rom/last-rom.txt
 /rom/dq7-path.txt
+/rom/dq8-path.txt
 # the in-game updater's working folder (downloads, the previous version)
 /update/
 # local-only folders on the play machine (backups made by work sessions, one-off scripts, logs)

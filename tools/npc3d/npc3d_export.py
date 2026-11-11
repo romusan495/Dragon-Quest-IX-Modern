@@ -94,13 +94,19 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         alist.append((want, nf, first))
     if not frames:
         frames.append([p['pos'] * (widen, 1, (1 + widen) / 2) for p in m['parts']]); alist.append(('bind', 1, 0))
+    write(out, alist, frames, texnames, tex, parts, nverts)
+    return dict(widen=round(widen, 2), verts=nverts, frames=len(frames), tex=len(texnames), anims=alist, size=os.path.getsize(out))
+
+def write(out, alist, frames, texnames, tex, parts, nverts):
+    """parts: (frame part index, texture index, layer, triangle vertex indices, uv); frames: [per part positions]
+    (CGFX and BCH textures alike: rows from the top as decoded, uv used as they are)"""
     # each part's own vertices once (u16 indices into them), positions as 16-bit steps of `scale`
     uniq, index, base = [], [], 0
     for pi, ti, layer, idx, uv in parts:
         u, inv = np.unique(idx, return_inverse=True)
         uniq.append((pi, u, uv)); index.append(inv + base); base += len(u)
     index = np.concatenate(index)
-    uvs = np.concatenate([uv[u] for pi, u, uv in uniq]).astype(np.float32); uvs[:, 1] = 1 - uvs[:, 1]
+    uvs = np.concatenate([uv[u] for pi, u, uv in uniq]).astype(np.float32)
     fpos = [np.concatenate([fr_parts[pi][u] for pi, u, uv in uniq]) for fr_parts in frames]
     scale = max(float(np.abs(np.array(fpos)).max()), 1e-6) / 32767
     with open(out, 'wb') as f:
@@ -123,7 +129,6 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         f.write(index.astype('<u2').tobytes())
         f.write(uvs.tobytes())
         for fp in fpos: f.write(np.round(fp / scale).astype('<i2').tobytes())
-    return dict(widen=round(widen, 2), verts=nverts, frames=len(frames), tex=len(texnames), anims=alist, size=os.path.getsize(out))
 
 if __name__ == '__main__':
     import argparse
