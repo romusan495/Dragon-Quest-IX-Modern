@@ -33,3 +33,9 @@ n023a dq8 p044a
 n024a dq8 p053a
 n025a dq8 p028a
 n026a dq7 p0103
+# lot 4
+n029a dq8 p014a
+n030a dq7 p0198
+n031a dq8 p055a
+n032a dq8 p047a
+n033a dq8 p067a
