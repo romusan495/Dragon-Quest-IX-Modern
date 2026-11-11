@@ -33,8 +33,9 @@ def textures(d, t):
 
 def decode(d, tx, paloff, base):
     w, h, fmt = tx['w'], tx['h'], tx['fmt']; out = np.zeros((h, w, 4), np.uint8)
-    pd = base['paldata'] + (paloff or 0)
-    pal = lambda i: rgb555(u16(d, pd + 2 * i))
+    pd = base['paldata'] + (paloff or 0); pdat = d
+    if '_pal' in base: pdat, pd = base['_pal']
+    pal = lambda i: rgb555(u16(pdat, pd + 2 * i))
     if fmt == 7:
         o = base['texdata'] + tx['off']
         a = np.frombuffer(d, '<u2', w * h, o).reshape(h, w)
@@ -46,7 +47,7 @@ def decode(d, tx, paloff, base):
             for bx in range(w // 4):
                 k = by * (w // 4) + bx; bits = u32(d, o + 4 * k); ix = u16(d, io + 2 * k)
                 po = pd + ((ix & 0x3fff) << 2); mode = ix >> 14
-                c = [np.array(rgb555(u16(d, po + 2 * j)) + (255,), np.int32) for j in range(4)]
+                c = [np.array(rgb555(u16(pdat, po + 2 * j)) + (255,), np.int32) for j in range(4)]
                 if mode == 0: c[3] = c[3] * 0
                 elif mode == 1: c[2] = (c[0] + c[1]) // 2; c[3] = c[3] * 0
                 elif mode == 3: c[2] = (5 * c[0] + 3 * c[1]) // 8; c[3] = (3 * c[0] + 5 * c[1]) // 8
@@ -156,7 +157,7 @@ class Model:
                 node, par = a[0], a[1]
                 if c in (0x46,): cur = stack[a[3]]
                 if c == 0x66: cur = stack[a[4]]
-                world[node] = (world[par] if par != node else np.eye(4)) @ local[node]
+                world[node] = (world[par] if par != node else np.eye(4)) @ local[node]; self._world = world
                 cur = world[node]
                 if c in (0x26, 0x66): stack[a[3]] = cur
             elif c == 3: cur = stack[a[0]]
@@ -212,12 +213,34 @@ class Model:
                     a = prm[0]; v = v + np.array([((a >> s & 1023) ^ 512) - 512 for s in (0, 10, 20)]) / 4096.0; emit(v)
         return np.array(P).reshape(-1, 3), np.array(UV).reshape(-1, 2), np.array(T, int).reshape(-1, 3)
 
+    def add_textures(self, d):
+        """another file's textures (BTX0/BMD0) used before the model's own, by name (DQIX's equipment, hair colours)"""
+        b = blocks(d)
+        if b'TEX0' in b: self.extra = [(d, textures(d, b[b'TEX0']))] + getattr(self, 'extra', [])
+
+    def _find(self, tn, pn):
+        srcs = getattr(self, 'extra', []) + ([(self.d, self.texs)] if self.texs else [])
+        for d, (texs, pals, base) in srcs:
+            if tn in texs:
+                po = None
+                for d2, (t2, p2, b2) in srcs:
+                    if pn in p2 and d2 is d: po = p2[pn]; break
+                if po is None:
+                    for d2, (t2, p2, b2) in srcs:
+                        if pn in p2: return d, texs[tn], (d2, p2[pn], b2), base
+                return d, texs[tn], (d, po, base), base
+        return None
+
     def texture(self, mi):
         """material index -> RGBA image (mirror flips expanded) and uv scale"""
         tn = self.mtex.get(mi)
-        if tn is None or not self.texs: return None
-        texs, pals, base = self.texs; tx = texs[tn]
-        img = decode(self.d, tx, pals.get(self.mpal.get(mi)), base)
+        if tn is None: return None
+        f = self._find(tn, self.mpal.get(mi))
+        if f is None: return None
+        d, tx, (pd, po, pbase), base = f
+        if pd is d: img = decode(d, tx, po, base)
+        else:                                                      # palette from another file
+            img = decode(d, tx, None, dict(base, paldata=0, _pal=(pd, pbase['paldata'] + (po or 0))))
         tip = self.matinfo(mi)['tip'] | tx['param']      # repeat / mirror: the material's or the texture's own
         fs, ft = bool(tip >> 18 & 1), bool(tip >> 19 & 1)
         if fs: img = np.concatenate([img, img[:, ::-1]], 1)
