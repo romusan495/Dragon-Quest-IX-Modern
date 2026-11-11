@@ -1,5 +1,5 @@
 /* Trophies (trophies.h): the list, how each one is checked in the game's
- * memory, trophies.txt, the notice and the Journal's tab.
+ * memory, trophies.txt, the notice and the list (in-game menu > Trophies).
  *
  * The game's memory (the same in the USA and European versions, found by
  * tracing the Records screens):
@@ -61,7 +61,7 @@ enum {
     K_LEVEL,                                            /* a vocation at level 50 (a: 1..12) */
     K_PLATINUM,                                         /* every other trophy (the last of the list) */
 };
-/* the categories, in the order of the adventure (the Journal's order) */
+/* the categories, in the order of the adventure (the journal's order) */
 enum { C_STORY, C_VOCATIONS, C_QUESTS, C_BATTLES, C_COLLECTIONS, C_SKILLS, C_LEVELS, C_QBOSSES, C_GROTTOS, C_LEGACY, C_PLATINUM, N_CAT };
 /* the grades (PlayStation-like): only how hard; each trophy is won on its own */
 enum { G_BRONZE, G_SILVER, G_GOLD, G_PLATINUM };
@@ -651,7 +651,7 @@ const uint8_t* trophies_picture(int w, int h, int* changed) {
     if (g_show >= 0) texts(&g_list[g_show], title, sizeof title, desc, sizeof desc);
     else {
         static const char* const many[5] = { "%d trophies unlocked", "%d trophées débloqués", "%d Trophäen freigeschaltet", "%d trofei sbloccati", "%d trofeos desbloqueados" };
-        static const char* const see[5] = { "Journal (J): Trophies tab", "Journal (J) : onglet Trophées", "Journal (J): Reiter Trophäen", "Diario (J): scheda Trofei", "Diario (J): pestaña Trofeos" };
+        static const char* const see[5] = { "Esc menu: Trophies", "Menu Échap : Trophées", "Esc-Menü: Trophäen", "Menu Esc: Trofei", "Menú Esc: Trofeos" };
         snprintf(title, sizeof title, many[l], -g_show); snprintf(desc, sizeof desc, "%s", see[l]);
     }
     journal_box(&c, 0, 0, bw, bh, 0x161B24, 0.94f * out);
@@ -663,7 +663,7 @@ const uint8_t* trophies_picture(int w, int h, int* changed) {
     return g_pic;
 }
 
-/* ---------------------------------------------------------------- the Journal's tab */
+/* ---------------------------------------------------------------- the list (in-game menu > Trophies) */
 static int g_sel, g_top, g_cat = -1;   /* the chosen row, the first shown, the category shown (-1 all) */
 static int g_rows[N_TROPHIES], g_nrows;
 
@@ -776,5 +776,17 @@ static int page_key(int k) {
 
 static void page_opened(void) { load(); }
 
-static const JournalPage PAGE = { page_title, page_draw, page_key, page_opened, NULL };
-__attribute__((constructor)) static void add_page(void) { journal_add_page(&PAGE); }
+static const char* page_help(int l) {
+    static const char* const t[5] = {
+        "\xE2\x86\x91 \xE2\x86\x93: choose     \xE2\x86\x90 \xE2\x86\x92: category     A: reveal a hidden one     Esc (B): back",
+        "\xE2\x86\x91 \xE2\x86\x93 : choisir     \xE2\x86\x90 \xE2\x86\x92 : cat\xC3\xA9gorie     A : r\xC3\xA9v\xC3\xA9ler un troph\xC3\xA9" "e cach\xC3\xA9     \xC3\x89" "chap (B) : retour",
+        "\xE2\x86\x91 \xE2\x86\x93: w\xC3\xA4hlen     \xE2\x86\x90 \xE2\x86\x92: Kategorie     A: verborgene aufdecken     Esc (B): zur\xC3\xBC" "ck",
+        "\xE2\x86\x91 \xE2\x86\x93: scegli     \xE2\x86\x90 \xE2\x86\x92: categoria     A: rivela un trofeo nascosto     Esc (B): indietro",
+        "\xE2\x86\x91 \xE2\x86\x93: elegir     \xE2\x86\x90 \xE2\x86\x92: categor\xC3\xAD" "a     A: revelar uno oculto     Esc (B): volver",
+    };
+    return t[l];
+}
+
+/* the list: the in-game menu's Trophies (Esc), in the journal's panel alone */
+static const JournalPage PAGE = { page_title, page_draw, page_key, page_opened, NULL, page_help };
+void trophies_show(void) { journal_show(&PAGE); }

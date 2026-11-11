@@ -526,6 +526,9 @@ es = Restablecer
 en = Resume
 es = Continuar
 
+en = Trophies
+es = Trofeos
+
 en = Esc
 es = Esc
 

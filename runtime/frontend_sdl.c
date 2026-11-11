@@ -5948,7 +5948,9 @@ static void game_menu_toggle(void) {
     gamemenu_open();
 }
 
+static int g_trophies_back;                                  /* the trophies were opened from the menu: back to it when closed */
 static void game_menu_chose(int id) {
+    if (id == GM_TROPHIES) { gamemenu_close(); trophies_show(); g_trophies_back = 1; return; }   /* (the journal's panel, alone) */
     if (id <= 0) return;                                     /* Resume: closed already */
     do_action(id);
     gamemenu_changed();                                      /* new check marks */
@@ -6021,6 +6023,7 @@ static void game_menu_stick(void) {
 }
 
 /* tests: DQIX_MENU_TEST=frame,keys (U D O B; ',' = save the window as menuN.ppm, also done at the end) */
+static void journal_back_to_menu(void);
 static void game_menu_test(void) {
     static long long at = -2; static const char* keys;
     if (at == -2) { const char* e = getenv("DQIX_MENU_TEST"); at = e ? atoll(e) : -1; keys = e ? strchr(e, ',') : NULL; }
@@ -6034,12 +6037,26 @@ static void game_menu_test(void) {
             if (!*c) break;
             continue;
         }
+        if (journal_open()) {                                   /* the trophies, from the menu */
+            journal_input(*c == 'U' ? JK_UP : *c == 'D' ? JK_DOWN : *c == 'L' ? JK_LEFT : *c == 'R' ? JK_RIGHT : *c == 'O' ? JK_OK : JK_CLOSE);
+            journal_back_to_menu();
+            continue;
+        }
         game_menu_chose(gamemenu_key(*c == 'U' ? GM_UP : *c == 'D' ? GM_DOWN : *c == 'O' ? GM_OK : GM_BACK));
     }
+    if (journal_open()) journal_input(JK_CLOSE);
+    g_trophies_back = 0;
     gamemenu_close();
 }
 
 /* ---------------------------------------------------------------- the journal (journal.h) */
+/* the trophies (in-game menu > Trophies) closed: the menu again */
+static void journal_back_to_menu(void) {
+    if (!g_trophies_back || journal_open()) return;
+    g_trophies_back = 0;
+    if (!gamemenu_is_open()) { game_menu_toggle(); gamemenu_key(GM_DOWN); }   /* (on Trophies again, under Resume) */
+}
+
 static void journal_ui_toggle(void) {
     if (!journal_open() && !in_adventure()) return;              /* the title, the character's creation: nothing to show yet */
     if (!journal_open() && !g_gl) { notice("The journal needs the graphics card (OpenGL)"); return; }
@@ -6243,7 +6260,7 @@ static void handle_events(void) {
         int mi = menu_command(&e);
         if (mi) { do_action(mi); gamemenu_changed(); continue; }
         if (gamemenu_is_open() && game_menu_event(&e)) continue;
-        if (journal_open() && journal_event(&e)) continue;
+        if (journal_open() && journal_event(&e)) { journal_back_to_menu(); continue; }
         switch (e.type) {
         case SDL_QUIT: exit(0);                                   /* Ctrl+C, the system shutting down */
         case SDL_KEYDOWN: {
@@ -6399,18 +6416,20 @@ void frontend_frame(void) {
             g_paused = 0;
         }
         if (g_autosave_done) { g_autosave_done = 0; notice("Saved"); }   /* Modern > Save by itself */
-        if (gamemenu_is_open() && !session_requested()) {      /* the in-game menu: the game waits */
-            update_title(0);
-            while (gamemenu_is_open()) { handle_events(); capture_poll(); game_menu_stick(); present(); SDL_Delay(15); }
-            g_next_frame = SDL_GetPerformanceCounter();
-            g_fps_t0 = 0;
-            g_pad_resync = 1;
-        }
-        if (journal_open() && !session_requested()) {          /* the journal: the game waits */
-            while (journal_open()) { handle_events(); capture_poll(); journal_stick(); present(); SDL_Delay(15); }
-            g_next_frame = SDL_GetPerformanceCounter();
-            g_fps_t0 = 0;
-            g_pad_resync = 1;
+        while (!session_requested() && (gamemenu_is_open() || journal_open())) {   /* (the trophies go back to the menu) */
+            if (gamemenu_is_open()) {                             /* the in-game menu: the game waits */
+                update_title(0);
+                while (gamemenu_is_open()) { handle_events(); capture_poll(); game_menu_stick(); present(); SDL_Delay(15); }
+                g_next_frame = SDL_GetPerformanceCounter();
+                g_fps_t0 = 0;
+                g_pad_resync = 1;
+            }
+            if (journal_open()) {                                 /* the journal: the game waits */
+                while (journal_open()) { handle_events(); capture_poll(); journal_stick(); present(); SDL_Delay(15); }
+                g_next_frame = SDL_GetPerformanceCounter();
+                g_fps_t0 = 0;
+                g_pad_resync = 1;
+            }
         }
         if (g_paused) {                                       /* Game > Pause: keep the window alive, the game waits */
             update_title(0);
