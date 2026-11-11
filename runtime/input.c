@@ -68,15 +68,44 @@ static int free_to_walk(void) {
  * the address is past the code, where both versions are the same. */
 #define WALK_TAKEN 0x114E78
 #define WALK_WAIT_MAX 30                /* frames in the middle at most, if the game never takes it */
+/* After a battle the walk flag is 1 about 48 frames before the game listens
+ * to the stylus again. A stylus already down then is taken, but the hero
+ * never walks with it, however long it is held: only a new touch walks (bug
+ * 2026-11-10, "the hero stays frozen after a battle"; the same with the
+ * stylus on a DS). So if the hero hasn't moved after dragging for a while,
+ * the stylus is lifted for a moment and put down again, once per push of the
+ * stick (against a wall the hero doesn't move either: one retry is enough).
+ * The hero's position: x and z at +0x44 and +0x4C of the field's table. */
+#define WALK_STUCK 40                   /* frames of drag without the hero moving */
+#define WALK_LIFT 2                     /* frames the stylus is lifted */
 static int g_walk_frames;               /* frames the stick has been walking (0: not) */
+static int g_walk_drag;                 /* frames it has been dragging */
+static int g_walk_lift;                 /* frames left with the stylus lifted (no D-pad either) */
+static int g_walk_retried;              /* lifted once already during this push */
+static uint32_t g_walk_pos[2];          /* the hero's x, z when the drag began */
+static int hero_pos(uint32_t pos[2]) {
+    uint32_t p; memcpy(&p, &g_main_ram[FIELD_PTR], 4);
+    if (p < 0x02000000 || p >= 0x02000000 + MAIN_RAM_SIZE - 0x50) return 0;
+    memcpy(&pos[0], &g_main_ram[(p - 0x02000000) + 0x44], 4);
+    memcpy(&pos[1], &g_main_ram[(p - 0x02000000) + 0x4C], 4);
+    return 1;
+}
+/* 1: the stylus is at *tx, *ty; 0: the stick isn't walking; -1: the stylus is lifted for now */
 static int stick_walk(int* tx, int* ty) {
     long long x = g_fe_stick_x, y = g_fe_stick_y;
     double m = sqrt((double)(x * x + y * y));
-    if (!g_analog_walk || m < WALK_DEAD || !free_to_walk()) { g_walk_frames = 0; return 0; }
+    if (!g_analog_walk || m < WALK_DEAD || !free_to_walk()) { g_walk_frames = g_walk_drag = g_walk_lift = g_walk_retried = 0; return 0; }
+    if (g_walk_lift > 0) { g_walk_lift--; return -1; }
     uint32_t taken; memcpy(&taken, &g_main_ram[WALK_TAKEN], 4);
     g_walk_frames++;
     if (g_walk_frames <= 2 || (taken != 1 && g_walk_frames <= WALK_WAIT_MAX)) {   /* touch down first, then drag */
-        *tx = WALK_X; *ty = WALK_Y; return 1;
+        *tx = WALK_X; *ty = WALK_Y; g_walk_drag = 0; return 1;
+    }
+    uint32_t pos[2] = { 0, 0 };
+    int known = hero_pos(pos);
+    if (g_walk_drag++ == 0) { g_walk_pos[0] = pos[0]; g_walk_pos[1] = pos[1]; }
+    else if (known && !g_walk_retried && g_walk_drag > WALK_STUCK && pos[0] == g_walk_pos[0] && pos[1] == g_walk_pos[1]) {
+        g_walk_retried = 1; g_walk_frames = g_walk_drag = 0; g_walk_lift = WALK_LIFT - 1; return -1;   /* stuck: touch again */
     }
     int dx = (int)lround((double)x / m * WALK_REACH), dy = (int)lround((double)y / m * WALK_REACH);
     *tx = WALK_X + dx; *ty = WALK_Y + dy;
@@ -247,8 +276,9 @@ void input_update(void) {
     g_keys_down |= (uint16_t)stick_camera(g_keys_down);
     if (g_fe_touch) { g_touch_down = 1; g_touch_x = g_fe_tx; g_touch_y = g_fe_ty; g_walk_frames = 0; }
     else { int tx, ty;
-        if (!g_touch_down && stick_walk(&tx, &ty)) { g_touch_down = 1; g_touch_x = tx; g_touch_y = ty; }
-        else { if (g_touch_down) g_walk_frames = 0; g_keys_down |= g_fe_stick_keys; } }
+        int w = g_touch_down ? 0 : stick_walk(&tx, &ty);
+        if (w > 0) { g_touch_down = 1; g_touch_x = tx; g_touch_y = ty; }
+        else if (w == 0) { if (g_touch_down) g_walk_frames = 0; g_keys_down |= g_fe_stick_keys; } }
     {   /* the stylus arrow (tags.txt, tag 1): hidden while the stick is walking (and a few frames
          * after), shown for the mouse and the touch screen. Only the picture: the game draws it either way. */
         extern int g_gx_hide;
