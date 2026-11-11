@@ -62,3 +62,15 @@ n103a dq7 p0415
 n300 dq9 s016
 n301 dq9 s024
 n302 dq9 s025
+# n9xx: the same townspeople seen in other scenes (same model as the one they are)
+n900a dq8 p022a
+n902a dq8 p048a
+n906a dq8 p028a
+n907a dq8 p027a
+n908a dq8 p012a
+n909a dq8 p039a
+n911a dq8 p049a
+n913a dq8 p033a
+n916a dq8 p024b
+n919a dq7 p0402
+n925a dq9 s025
