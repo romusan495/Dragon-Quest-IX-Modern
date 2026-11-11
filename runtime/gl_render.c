@@ -1598,7 +1598,7 @@ static void npc3d_batches(const Frame3D* f, int* pnv, int* pnb) {
             Batch b;
             memset(&b, 0, sizeof b);
             b.tex = ((GLuint*)m->gl)[pt->tex]; b.tw = (float)tx->w; b.th = (float)tx->h;
-            b.sampler = 9 + 4;                                   /* repeat, filtered */
+            b.sampler = pt->layer ? 9 : 9 + 4;                   /* filtered; repeat (eyes, mouth: clamped, drawn once) */
             b.alpha1 = 1;                                        /* see-through or not: cut at half */
             b.depth_write = pt->layer == 0; b.depth_eq = pt->layer != 0;
             b.pid = 62; b.fog = 1;

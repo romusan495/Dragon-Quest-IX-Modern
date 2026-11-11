@@ -52,7 +52,10 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         pm = pose.pose_model(m, a, 0)
         arms = arm_setup(m, pm, an); nk = head_height(m, an)
         tex = dict(tex)
-        for base in sorted({p['texs'][0] for p in m['parts'] if p.get('texs') and p['texs'][0] in tex}):   # every surface texture (not the eyes, mouth)
+        surf = sorted({p['texs'][0] for p in m['parts'] if p.get('texs') and p['texs'][0] in tex and 'kao' not in p['texs'][0]})   # (a face of its own: kept)
+        for base in surf:
+            if max(tex[base].shape[:2]) <= 256: tex[base] = np.repeat(np.repeat(tex[base], 2, 0), 2, 1)   # finer: twice as many texels to paint
+        for base in surf:                      # every surface texture (not the face, eyes, mouth)
             tex[base] = paint.paint(pm, tex, front, front if back is None else back, base, neck=nk, pic_neck=pic_neck, arms=arms)
     texnames = []
     def texid(n):
@@ -67,6 +70,16 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
             uv = p['uvs'][layer] if p['uvs'][layer] is not None else p['uv']
             parts.append((pi, texid(tn), layer, p['tris'].reshape(-1), uv))
     nverts = sum(len(x[3]) for x in parts)
+    # as stout as the picture: the DQIX townsfolk are rounder than DQVII's
+    widen = 1.0
+    if front is not None:
+        a0 = next((v for k, v in an.items() if k.endswith('_idle')), None)
+        P = np.concatenate([p['pos'] for p in pose.pose_model(m, a0, 0)['parts']])
+        al = front[..., 3] > 0; ys, xs = np.nonzero(al)
+        pic = (xs.max() - xs.min() + 1) / (ys.max() - ys.min() + 1)
+        mdl = (P[:, 0].max() - P[:, 0].min()) / (P[:, 1].max() - P[:, 1].min())
+        widen = float(np.clip(pic / mdl, 1.0, 1.8))
+
     frames = []; alist = []
     names = sorted(an)
     for want in anims:
@@ -77,10 +90,10 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         first = len(frames)
         for k in range(nf):
             pm = pose.pose_model(m, a, k * step)
-            frames.append([p['pos'] for p in pm['parts']])
+            frames.append([p['pos'] * (widen, 1, (1 + widen) / 2) for p in pm['parts']])
         alist.append((want, nf, first))
     if not frames:
-        frames.append([p['pos'] for p in m['parts']]); alist.append(('bind', 1, 0))
+        frames.append([p['pos'] * (widen, 1, (1 + widen) / 2) for p in m['parts']]); alist.append(('bind', 1, 0))
     # each part's own vertices once (u16 indices into them), positions as 16-bit steps of `scale`
     uniq, index, base = [], [], 0
     for pi, ti, layer, idx, uv in parts:
@@ -96,8 +109,11 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         for n, nf, first in alist: f.write(n.encode()[:15].ljust(16, b'\0') + struct.pack('<II', nf, first))
         f.write(struct.pack('<II', len(frames), nverts))
         f.write(struct.pack('<I', len(texnames)))
-        for n in texnames:
+        base_t = {ti for pi, ti, layer, idx, uv in parts if layer == 0}
+        for i, n in enumerate(texnames):
             t = tex[n]; h, w = t.shape[:2]
+            if i not in base_t:                # eyes, mouth: drawn once (clamped), nothing past their edge
+                t = t.copy(); t[0, :, 3] = t[-1, :, 3] = t[:, 0, 3] = t[:, -1, 3] = 0
             f.write(struct.pack('<II', w, h)); f.write(np.ascontiguousarray(t, np.uint8).tobytes())
         f.write(struct.pack('<I', len(parts)))
         first = 0
@@ -107,7 +123,7 @@ def export(mdl, pack, out, step=2, anims=('idle', 'run'), front=None, back=None,
         f.write(index.astype('<u2').tobytes())
         f.write(uvs.tobytes())
         for fp in fpos: f.write(np.round(fp / scale).astype('<i2').tobytes())
-    return dict(verts=nverts, frames=len(frames), tex=len(texnames), anims=alist, size=os.path.getsize(out))
+    return dict(widen=round(widen, 2), verts=nverts, frames=len(frames), tex=len(texnames), anims=alist, size=os.path.getsize(out))
 
 if __name__ == '__main__':
     import argparse

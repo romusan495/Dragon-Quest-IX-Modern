@@ -19,6 +19,17 @@ def fill_out(img, mask, steps=64):
         img[new] = acc[new] / n[new, None]; m = m | new
     return img
 
+def kmeans(px, k, iters=15):
+    px = px.astype(np.float32)
+    k = min(k, len(px))
+    rng = np.random.default_rng(1)
+    c = px[rng.choice(len(px), k, replace=False)]
+    for _ in range(iters):
+        lab = ((px[:, None] - c[None]) ** 2).sum(-1).argmin(1)
+        for j in range(k):
+            if (lab == j).any(): c[j] = px[lab == j].mean(0)
+    return c
+
 def palette(pictures, k=14, iters=20):
     """the pictures' main colours (k-means)"""
     px = np.concatenate([p[..., :3][p[..., 3] > 128].astype(np.float32) for p in pictures])
@@ -29,6 +40,21 @@ def palette(pictures, k=14, iters=20):
         for j in range(k):
             if (lab == j).any(): c[j] = px[lab == j].mean(0)
     return c
+
+def hsv(c):
+    c = np.asarray(c, np.float32) / 255
+    mx, mn = c.max(-1), c.min(-1); d = np.maximum(mx - mn, 1e-6)
+    r, g, b = c[..., 0], c[..., 1], c[..., 2]
+    h = np.where(mx == r, ((g - b) / d) % 6, np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) / 6
+    return h, (mx - mn) / np.maximum(mx, 1e-6), mx
+
+def skin_mask(c):
+    """skin-coloured: warm, not too grey, bright (brown hair is darker)"""
+    c = np.asarray(c, np.float32)
+    mx, mn = c.max(-1), c.min(-1)
+    sat = (mx - mn) / np.maximum(mx, 1)
+    r, g, b = c[..., 0], c[..., 1], c[..., 2]
+    return (r >= g) & (g >= b) & (sat > 0.12) & (sat < 0.7) & (mx > 140) & ((g - b) > 0.25 * (r - b))
 
 class View:
     def __init__(self, pic):
@@ -87,7 +113,12 @@ def paint(model, tex, front, back, texname, neck, pic_neck=0.34, detail=0.25, ar
     pal = palette((front, back))
     allp = np.concatenate([p['pos'] for p in model['parts']])
     mx0, mx1 = allp[:, 0].min(), allp[:, 0].max(); my0, my1 = allp[:, 1].min(), allp[:, 1].max()
-    out = np.zeros((H, W, 3), np.float32); cnt = np.zeros((H, W), np.float32)
+    out = np.zeros((H, W, 3), np.float32); cnt = np.zeros((H, W), np.float32); hcnt = np.zeros((H, W), np.float32); zcnt = np.zeros((4, H, W), np.float32)
+    hip = my0 + 0.45 * (neck - my0)
+    face = [-1e9, None]                                                  # the texel of the front of the face (its skin)
+    fcnt = np.zeros((H, W), np.float32)                                  # texels of the front of the face (by shape)
+    hv = allp[allp[:, 1] >= neck]
+    hx0, hx1 = (hv[:, 0].min(), hv[:, 0].max()) if len(hv) else (mx0, mx1)
     if arms: atop, aend, al, ar = arm_profile(front, pic_neck)
     for p in model['parts']:
         if not p.get('texs') or p['texs'][0] != texname: continue
@@ -124,14 +155,67 @@ def paint(model, tex, front, back, texname, neck, pic_neck=0.34, detail=0.25, ar
                 cc = view.sample(fx, fy)
             tx = X.astype(int) % W; ty = Y.astype(int) % H
             np.add.at(out, (ty[ins], tx[ins]), cc[ins]); np.add.at(cnt, (ty[ins], tx[ins]), 1)
+            np.add.at(hcnt, (ty[ins], tx[ins]), (myp >= neck)[ins].astype(np.float32))
+            zone = np.where(myp >= neck, 0, 1 if side else np.where(myp >= hip, 2, 3))
+            zone = np.broadcast_to(zone, ins.shape)
+            np.add.at(zcnt, (zone[ins], ty[ins], tx[ins]), 1)
+            mzp = a * Q[0, 2] + b * Q[1, 2] + c * Q[2, 2]
+            nn = np.cross(Q[1] - Q[0], Q[2] - Q[0]); nn = nn[2] / max(np.linalg.norm(nn), 1e-9)
+            lay = [u for u in p['uvs'][1:len(p['texs'])] if u is not None]
+            onface = any(((u[tri] > -0.1) & (u[tri] < 1.1)).all() for u in lay)   # under the eyes' or mouth's layer
+            if nn > 0.0 and onface or nn > 0.5 and not lay:
+                ff = ins & (myp > neck - 0.06 * (my1 - neck)) & (myp < neck + 0.7 * (my1 - neck)) & (np.abs(mxp - (hx0 + hx1) / 2) < 0.4 * (hx1 - hx0))
+                np.add.at(fcnt, (ty[ff], tx[ff]), 1)
+            fm = ins & (myp > neck + 0.2 * (my1 - neck)) & (myp < neck + 0.5 * (my1 - neck)) & (np.abs(mxp - (mx0 + mx1) / 2) < 0.08 * (mx1 - mx0))
+            if fm.any() and mzp[fm].max() > face[0]:
+                j = np.argmax(np.where(fm, mzp, -1e9)); face[0] = mzp.flat[j]; face[1] = (ty.flat[j], tx.flat[j])
     hit = cnt > 0
     newc = out[hit] / cnt[hit, None]
-    newc = pal[((newc[:, None] - pal[None]) ** 2).sum(-1).argmin(1)]      # the pictures' own colours
+    lab = np.full((H, W), -1, int)
+    lab[hit] = ((newc[:, None] - pal[None]) ** 2).sum(-1).argmin(1)       # the pictures' own colours
+    for _ in range(2):                                                   # no lone specks: each texel as most of its neighbours
+        votes = np.zeros((len(pal), H, W), np.int16)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                sl = np.roll(lab, (dy, dx), (0, 1))
+                for j in range(len(pal)): votes[j] += sl == j
+        best = votes.argmax(0)
+        keep = votes.max(0) >= 5
+        lab = np.where(hit & keep, best, lab)
+    newc = pal[lab[hit]]
     lum = t[..., :3].mean(-1)
     ref = np.median(lum[hit]) if hit.any() else 128
     k = np.clip(1 + detail * (lum[hit] - ref) / max(ref, 1), 0.75, 1.2)
     res = t.copy()
     res[..., :3][hit] = np.clip(newc * k[:, None], 0, 255)
+    # the head's hair, hat or hood: one colour, the one on top of the picture's head,
+    # with DQVII's shading (a picture's head is a few pixels: projected, it smudges)
+    hd = hit & (zcnt.argmax(0) == 0)
+    fa = front[..., 3] > 128; fys = np.nonzero(fa.any(1))[0]
+    top = front[fys[0]:fys[0] + max(2, int((fys[-1] - fys[0] + 1) * pic_neck * 0.45))]
+    tp = top[..., :3][top[..., 3] > 128].astype(np.float32)
+    tp = tp[~skin_mask(tp) & (tp.max(-1) > 40)]
+    if hd.any() and len(tp) >= 3:
+        hair = pal[np.bincount(((tp[:, None] - pal[None]) ** 2).sum(-1).argmin(1), minlength=len(pal)).argmax()]
+        ol = t[..., :3].mean(-1)
+        rr = np.clip(ol[hd] / max(float(np.median(ol[hd])), 1), 0.6, 1.35)
+        res[..., :3][hd] = np.clip(hair[None] * rr[:, None], 0, 255)
+    # the face keeps DQVII's own skin, eyes, nose and mouth (made for 3D; a picture's
+    # face is a few pixels), with a touch of the picture's skin tone: the head's
+    # texels of the face's own colour (lighter or darker), and its dark lines
+    # the front of the face (by shape): the picture's skin, with DQVII's shading and
+    # its drawn lines (nose, ears); its eyes and mouth are layers of their own, kept
+    fm = hit & (fcnt > 0)
+    if fm.sum() >= 4:
+        o = t[..., :3]; ol = o.mean(-1)
+        hp = front[:max(2, int(front.shape[0] * pic_neck))]
+        hp = hp[..., :3][hp[..., 3] > 128].astype(np.float32)
+        h, sa, v = hsv(hp)
+        sk = hp[(h > 0.02) & (h < 0.105) & (sa > 0.15) & (sa < 0.6) & (v > 0.55)]   # (orange-pink, not blond)
+        skin = np.median(sk, 0) if len(sk) >= 2 else np.array([236., 188., 150.])
+        med = float(np.median(ol[fm]))
+        rr = np.clip(ol[fm] / max(med, 1), 0.8, 1.1)
+        res[..., :3][fm] = np.clip(skin[None] * rr[:, None], 0, 255)
     res = res.astype(np.uint8)
     # texels no triangle covers: the nearest painted colour (no old colours bleeding in at seams)
     rgb = fill_out(res[..., :3].astype(np.float32), hit, steps=8)

@@ -48,6 +48,7 @@ def render(path, size=128, yaw=0.0, pitch=-0.3):
             col = T[(np.floor(v * th).astype(int)) % th, (np.floor(u * tw).astype(int)) % tw]
             sub = zb[y0:y1 + 1, x0:x1 + 1]
             ok = ins & (zz > sub - (1e-3 if layer else 0)) & (col[..., 3] > 100)
+            if layer: ok &= (u >= 0) & (u <= 1) & (v >= 0) & (v <= 1)      # (layers: clamped, not repeated)
             if not layer: ok &= zz > sub
             sub[ok] = zz[ok]; img[y0:y1 + 1, x0:x1 + 1][ok] = col[ok]
     return Image.fromarray(img)

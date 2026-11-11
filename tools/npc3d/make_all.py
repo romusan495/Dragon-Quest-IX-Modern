@@ -74,7 +74,7 @@ def main(rom_path, chara, out):
         except Exception as e:
             print('%s: failed (%s)' % (typ, e)); continue
         lines.append('%s %s\n' % (typ, name))
-        print('%s: %s, %d vertices, %d frames' % (typ, name, r['verts'], r['frames']))
+        print('%s: %s, %d vertices, %d frames, x%.2f wide' % (typ, name, r['verts'], r['frames'], r['widen']))
     open(os.path.join(out, 'map.txt'), 'w').writelines(lines)
     for f in os.listdir(tmp): os.remove(os.path.join(tmp, f))
     os.rmdir(tmp)
