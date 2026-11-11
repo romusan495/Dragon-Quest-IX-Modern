@@ -32,6 +32,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Remappage manette (correctif) | Dev | [Dev] Corriger le remappage manette | `claude/project-thread-8ospr7` | fusionné | PR #126 (093342a) | Touche `runtime/frontend_sdl.c`, `runtime/menu_win32.c` et 2 textes de `lang/*.txt` ; `J:\DQIX-Enhanced` pas recompilé ; à inclure dans la prochaine release (v47) |
 | Personnage figé après un combat | Dev | — | `claude/project-thread-4de875` | fusionné | PR #129 | — |
 | Trophées dans le menu Échap | Dev | [Dev] Mettre les trophées dans le menu Échap | `claude/project-thread-23jrga` | fusionné | PR #130 (ae07bf5) | Touche `runtime/frontend_sdl.c` : les fils Écran titre et Étoiles de collecte rebasent dessus |
+| Support RecompLauncher | Dev | [Dev] Ajouter le support RecompLauncher | `claude/project-thread-uvlao8` | en cours | — (rien de poussé) | Touche `tools/build-game.sh` (`step()` affiche « progress x y » si `DQIX_PROGRESS`, ROM `.zip` acceptée), `BUILD.bat` (mode `--prepare "<rom>"`), `README.md` (badge) ; nouveaux `recomplauncher.json` et `.github/workflows/release-zip.yml` (zip des sources joint à chaque release publiée : à relire avec la procédure de release, sources seulement) |
 | Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | — | en cours | — | Risque de toucher `runtime/frontend_sdl.c` |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | — | en cours | — | Risque de toucher `runtime/frontend_sdl.c` (et sans doute `mapmarks.c`) |
 
@@ -47,7 +48,7 @@ une par une. Conflits probables signalés.
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
-| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) |
+| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) |
 | `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
