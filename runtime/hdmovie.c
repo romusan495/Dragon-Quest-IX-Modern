@@ -158,6 +158,12 @@ int hdmovie_two_screens(void) {
     }
     return 0;
 }
+int hdmovie_playing(const char* name) {
+    if (!g_inited) hdmovie_init();
+    for (int i = 0; i < g_nany; i++)
+        if (!strcmp(g_any[i].name, name)) return g_any[i].read && g_frame - g_any[i].last_read <= PAIR_FRAMES;
+    return 0;
+}
 int hdmovie_count(void) { return g_nmov; }
 
 static int sig_contrast(const int* s);
