@@ -39,9 +39,11 @@ n030a dq7 p0198
 n031a dq8 p055a
 n032a dq8 p047a
 n033a dq8 p067a
-# lot 5 (n051a, n052a: no lookalike, they stay pictures)
+# lot 5 (n051a-n065a, n067a-n070a: no lookalike, they stay pictures)
 n027a dq7 p0197
 n034a dq8 p026a
 n035a dq8 p037a
 n036a dq7 p0162
 n037a dq7 p0068
+# lot 6
+n066a dq7 p0208
