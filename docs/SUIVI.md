@@ -30,6 +30,11 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Étoiles des points de collecte sur la carte | Dev | [Dev] Étoiles des points de collecte sur la carte | `claude/project-thread-rila1e` | fusionné | PR #121 | — |
 | Trophées style Steam | Dev | [Dev] Ajouter des trophées style Steam | `claude/project-thread-j97l6o` | fusionné | PR #123 (59b08f4) | Téléchargement des images (`tools/trophy_badges.py`, badges RetroAchievements, jamais dans le dépôt) au premier BUILD.bat pas encore testé sur Windows ; sans réseau il s'arrête après 5 échecs ou 4 min et le build continue |
 | Remappage manette (correctif) | Dev | [Dev] Corriger le remappage manette | `claude/project-thread-8ospr7` | fusionné | PR #126 (093342a) | Touche `runtime/frontend_sdl.c`, `runtime/menu_win32.c` et 2 textes de `lang/*.txt` ; `J:\DQIX-Enhanced` pas recompilé ; à inclure dans la prochaine release (v47) |
+| Personnage figé après un combat | Dev | — | `claude/project-thread-4de875` | fusionné | PR #129 | — |
+| Trophées dans le menu Échap | Dev | [Dev] Mettre les trophées dans le menu Échap | `claude/project-thread-23jrga` | fusionné | PR #130 (ae07bf5) | Touche `runtime/frontend_sdl.c` : les fils Écran titre et Étoiles de collecte rebasent dessus |
+| Support RecompLauncher | Dev | [Dev] Ajouter le support RecompLauncher | `claude/project-thread-uvlao8` | fusionné | PR #131 (1681bca) | `.github/workflows/release-zip.yml` joint `Dragon-Quest-IX-Modern-vN-Windows-x64.zip` (`tools/make-release.py`) à chaque release publiée : vérifier dans Actions après chaque Publish |
+| Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | en cours | — (rien de poussé) | Touche `runtime/frontend_sdl.c` (`title_update`/`title_pieces`, appels dans `present_gl` et `canvas_layout_for`), `runtime/gl_render.c` (modes 36 et 37 de `FS_COPY`), `runtime/hdmovie.c/.h` ; rebaser sur `main` (après #130) avant la PR |
+| Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
 #33 est fusionnée : chaque fil rebase sur `main` avant sa PR, et les PR passent
@@ -37,13 +42,13 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) |
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne (`title_*`, `present_gl`, `canvas_layout_for`), Étoiles de collecte (correctif) |
 | `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) |
-| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) |
+| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) ; Écran titre moderne (`FS_COPY` modes 36-37) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
-| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) |
+| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) |
 | `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
