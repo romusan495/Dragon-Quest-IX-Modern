@@ -218,7 +218,7 @@ class Model:
         if tn is None or not self.texs: return None
         texs, pals, base = self.texs; tx = texs[tn]
         img = decode(self.d, tx, pals.get(self.mpal.get(mi)), base)
-        tip = self.matinfo(mi)['tip']
+        tip = self.matinfo(mi)['tip'] | tx['param']      # repeat / mirror: the material's or the texture's own
         fs, ft = bool(tip >> 18 & 1), bool(tip >> 19 & 1)
         if fs: img = np.concatenate([img, img[:, ::-1]], 1)
         if ft: img = np.concatenate([img, img[::-1]], 0)

@@ -58,3 +58,7 @@ n098a dq7 p0408
 n099a dq7 p0403
 n100a dq7 p0404
 n103a dq7 p0415
+# lot 8: the DQIX characters these townspeople are (n101a n102a n303-n306 stay pictures)
+n300 dq9 s016
+n301 dq9 s024
+n302 dq9 s025
