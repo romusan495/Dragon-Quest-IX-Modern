@@ -106,35 +106,38 @@ static Npc3dModel* load_model(const char* type) {
     return m;
 }
 
-/* npc3d/map.txt: "<type> <model>" lines (# comments): the model file
- * (npc3d/<model>.npc3) for each townsperson type; without a line, the file
- * npc3d/<type>.npc3 if there is one. */
-static char g_map[256][2][16]; static int g_nmap = -1;
+/* npc3d/map.txt: "<type> <model> [size]" lines (# comments): the model file
+ * (npc3d/<model>.npc3) for each townsperson type, and how tall it is next to
+ * its picture (1: as tall; an animal's picture is mostly empty above it);
+ * without a line, the file npc3d/<type>.npc3 if there is one. */
+static char g_map[256][2][16]; static float g_size[256]; static int g_nmap = -1;
 static void load_map(void) {
     g_nmap = 0;
     FILE* f = fopen(DIR "/map.txt", "r");
     if (!f) return;
     char line[256];
     while (fgets(line, sizeof line, f) && g_nmap < 256) {
-        char a[16], b[16];
-        if (line[0] == '#' || sscanf(line, "%15s %15s", a, b) != 2) continue;
-        memcpy(g_map[g_nmap][0], a, 16); memcpy(g_map[g_nmap][1], b, 16); g_nmap++;
+        char a[16], b[16]; float size = 1.0f;
+        if (line[0] == '#' || sscanf(line, "%15s %15s %f", a, b, &size) < 2) continue;
+        memcpy(g_map[g_nmap][0], a, 16); memcpy(g_map[g_nmap][1], b, 16);
+        g_size[g_nmap] = size > 0.05f && size < 4.0f ? size : 1.0f; g_nmap++;
     }
     fclose(f);
 }
-static const char* mapped(const char* type) {
+static const char* mapped(const char* type, float* size) {
     if (g_nmap < 0) load_map();
-    for (int i = 0; i < g_nmap; i++) if (!strcmp(g_map[i][0], type)) return g_map[i][1];
+    *size = 1.0f;
+    for (int i = 0; i < g_nmap; i++) if (!strcmp(g_map[i][0], type)) { *size = g_size[i]; return g_map[i][1]; }
     return type;
 }
 
 static Npc3dModel* model_for(const char* type) {
     if (!type[0]) return NULL;
-    type = mapped(type);
+    float size; type = mapped(type, &size);
     for (int i = 0; i < g_nmodels; i++) if (!strcmp(g_models[i]->type, type)) return g_models[i];
     for (int i = 0; i < g_nmissing; i++) if (!strcmp(g_missing[i], type)) return NULL;
     Npc3dModel* m = g_nmodels < MAXMODELS ? load_model(type) : NULL;
-    if (m) g_models[g_nmodels++] = m;
+    if (m) { m->height /= size; g_models[g_nmodels++] = m; }    /* (each type has its own model file) */
     else if (g_nmissing < 256) snprintf(g_missing[g_nmissing++], 16, "%s", type);
     return m;
 }

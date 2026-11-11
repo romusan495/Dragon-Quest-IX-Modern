@@ -26,7 +26,7 @@ def main(dq7, dq8, out, dq9=None):
     table = [l.split() for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'townsfolk.txt')) if l.strip() and not l.startswith('#')]
     tmp = os.path.join(out, '.tmp'); os.makedirs(tmp, exist_ok=True)
     lines = []
-    for typ, game, mdl in table:
+    for typ, game, mdl, *size in table:
         d = src.get(game)
         if d is None: print('%s: skipped (no %s folder)' % (typ, game.upper())); continue
         name = '%s-%s' % (mdl, typ)
@@ -45,7 +45,7 @@ def main(dq7, dq8, out, dq9=None):
                 r = bch_export.export(mp, os.path.join(out, name + '.npc3'))
         except Exception as e:
             print('%s: failed (%s)' % (typ, e)); continue
-        lines.append('%s %s\n' % (typ, name))
+        lines.append('%s %s%s\n' % (typ, name, ' ' + size[0] if size else ''))
         print('%s: %s (%s), %d vertices, %d frames' % (typ, name, game.upper(), r['verts'], r['frames']))
     open(os.path.join(out, 'map.txt'), 'w').writelines(lines)
     for f in os.listdir(tmp): os.remove(os.path.join(tmp, f))
