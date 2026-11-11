@@ -30,6 +30,7 @@ typedef struct {
     int (*key)(int k);                             /* a JK_ key: 1 if it changed something (redraw); may be NULL */
     void (*opened)(void);                          /* the journal was just opened (read the game again); may be NULL */
     int (*text)(const char* utf8);                 /* letters typed (a search), "\b" to erase one; 1 if redraw; may be NULL */
+    const char* (*help)(int lang);                 /* shown alone (journal_show): the keys, at the bottom; may be NULL */
 } JournalPage;
 
 void journal_add_page(const JournalPage* p);       /* at start, before the journal is first opened */
@@ -50,6 +51,9 @@ const char* journal_game_string(const char* pack, const char* stem, int id);
 /* The frontend's side. */
 int journal_open(void);                            /* 1 while shown */
 void journal_toggle(void);
+/* The same panel with one page alone, not one of the journal's tabs (the
+ * trophies, from the in-game menu): closed like the journal. */
+void journal_show(const JournalPage* p);
 int journal_input(int k);                          /* JK_ keys, and these: */
 int journal_typed(const char* utf8);               /* letters typed (SDL_TEXTINPUT), "\b" for backspace */
 int journal_searching(void);                       /* 1 when the page shown takes letters: they are not shortcuts then */

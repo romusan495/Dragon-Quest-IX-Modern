@@ -526,6 +526,9 @@ de = Standard wiederherstellen
 en = Resume
 de = Weiterspielen
 
+en = Trophies
+de = Trophäen
+
 en = Esc
 de = Esc
 

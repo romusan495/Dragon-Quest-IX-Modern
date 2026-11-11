@@ -17,6 +17,7 @@
 static const JournalPage* g_page[MAX_PAGES]; static int g_npage;    /* the journal's own first, then the added ones */
 static const JournalPage* g_added[MAX_PAGES]; static int g_nadded;
 static int g_open, g_tab, g_dirty = 1, g_ready;
+static const JournalPage* g_alone;                                  /* journal_show: the page shown alone, else NULL (the tabs) */
 static uint8_t* g_pic; static int g_pw, g_ph;
 static uint32_t* g_scratch; static int g_scratch_h;               /* one line of text, drawn alone (coverage) */
 
@@ -42,29 +43,41 @@ void journal_toggle(void) {
     static int test_tab = -2;                                   /* tests: DQIX_JOURNAL_TAB=n, the tab it opens on */
     if (test_tab == -2) { const char* e = getenv("DQIX_JOURNAL_TAB"); test_tab = e ? atoi(e) : -1; if (test_tab >= 0 && test_tab < g_npage) g_tab = test_tab; }
     g_open = !g_open;
-    g_dirty = 1;
+    g_dirty = 1; g_alone = NULL;
     if (g_open && g_tab < g_npage && g_page[g_tab]->opened) g_page[g_tab]->opened();
 }
 
+void journal_show(const JournalPage* p) {
+    ready();
+    if (!p) return;
+    g_open = 1; g_dirty = 1; g_alone = p;
+    if (p->opened) p->opened();
+}
+
+/* the page shown: alone, or the tab's */
+static const JournalPage* shown(void) { return g_alone ? g_alone : g_tab < g_npage ? g_page[g_tab] : NULL; }
+
 int journal_input(int k) {
     if (!g_open) return 0;
-    if (k == JK_CLOSE) { g_open = 0; g_dirty = 1; return 1; }
+    if (k == JK_CLOSE) { g_open = 0; g_dirty = 1; g_alone = NULL; return 1; }
     if (k == JK_TAB_PREV || k == JK_TAB_NEXT) {
-        if (g_npage < 2) return 0;
+        if (g_alone || g_npage < 2) return 0;
         g_tab = (g_tab + (k == JK_TAB_NEXT ? 1 : g_npage - 1)) % g_npage;
         if (g_page[g_tab]->opened) g_page[g_tab]->opened();
         g_dirty = 1;
         return 1;
     }
-    if (g_tab < g_npage && g_page[g_tab]->key && g_page[g_tab]->key(k)) { g_dirty = 1; return 1; }
+    const JournalPage* p = shown();
+    if (p && p->key && p->key(k)) { g_dirty = 1; return 1; }
     return 0;
 }
 
-int journal_searching(void) { return g_open && g_tab < g_npage && g_page[g_tab]->text; }
+int journal_searching(void) { const JournalPage* p = shown(); return g_open && p && p->text; }
 
 int journal_typed(const char* utf8) {
-    if (!g_open || g_tab >= g_npage || !g_page[g_tab]->text) return 0;
-    if (g_page[g_tab]->text(utf8)) { g_dirty = 1; return 1; }
+    const JournalPage* p = shown();
+    if (!g_open || !p || !p->text) return 0;
+    if (p->text(utf8)) { g_dirty = 1; return 1; }
     return 0;
 }
 
@@ -214,20 +227,22 @@ const uint8_t* journal_picture(int w, int h, int* changed) {
     c.ox = (w - JOURNAL_W * c.u) / 2; c.oy = (h - JOURNAL_H * c.u) / 2;
     journal_box(&c, 24, 18, JOURNAL_W - 48, JOURNAL_H - 36, C_PANEL, 0.96f);
     frame(&c, 24, 18, JOURNAL_W - 48, JOURNAL_H - 36, C_LINE);
-    /* the tabs */
-    int x = 48;
-    for (int i = 0; i < g_npage; i++) {
-        const char* t = g_page[i]->title(c.lang);
-        int tw = journal_text_width(22, t) + 36;
-        if (i == g_tab) { journal_box(&c, x, 34, tw, 40, C_TAB, 1); journal_box(&c, x + 10, 70, tw - 20, 3, 0xF2C94C, 1); }
-        journal_text(&c, x + 18, 40, 22, i == g_tab ? C_TEXT : C_DIM, t);
+    /* the tabs (alone: its name, as the one tab) */
+    int x = 48, n = g_alone ? 1 : g_npage;
+    for (int i = 0; i < n; i++) {
+        const JournalPage* p = g_alone ? g_alone : g_page[i];
+        const char* t = p->title(c.lang);
+        int tw = journal_text_width(22, t) + 36, on = g_alone || i == g_tab;
+        if (on) { journal_box(&c, x, 34, tw, 40, C_TAB, 1); journal_box(&c, x + 10, 70, tw - 20, 3, 0xF2C94C, 1); }
+        journal_text(&c, x + 18, 40, 22, on ? C_TEXT : C_DIM, t);
         x += tw + 8;
     }
     journal_box(&c, 40, 82, JOURNAL_W - 80, 1, C_LINE, 0.6f);
     c.x = 48; c.y = 96; c.w = JOURNAL_W - 96; c.h = JOURNAL_H - 96 - 64;
-    if (g_tab < g_npage) g_page[g_tab]->draw(&c);
+    const JournalPage* p = shown();
+    if (p) p->draw(&c);
     journal_box(&c, 40, JOURNAL_H - 62, JOURNAL_W - 80, 1, C_LINE, 0.6f);
-    journal_text(&c, 48, JOURNAL_H - 52, 15, C_DIM, help(c.lang));
+    journal_text(&c, 48, JOURNAL_H - 52, 15, C_DIM, g_alone && g_alone->help ? g_alone->help(c.lang) : help(c.lang));
     return g_pic;
 }
 

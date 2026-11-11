@@ -46,7 +46,10 @@ static void make_rows(void) {
     const MenuNode* n; int nn = menu_nodes(&n);
     int cur = g_stack[g_depth];
     g_nrows = 0;
-    if (g_depth == 0) g_rows[g_nrows++] = (Row){ MENU_ITEM, GM_RESUME, T("Resume"), T("Esc"), 1 };
+    if (g_depth == 0) {
+        g_rows[g_nrows++] = (Row){ MENU_ITEM, GM_RESUME, T("Resume"), T("Esc"), 1 };
+        g_rows[g_nrows++] = (Row){ MENU_ITEM, GM_TROPHIES, T("Trophies"), "", 1 };
+    }
     for (int i = 1; i < nn && g_nrows < MAX_ROWS; i++) {
         if (n[i].parent != cur) continue;
         if (n[i].kind == MENU_SEP && (g_nrows == 0 || g_rows[g_nrows - 1].kind == MENU_SEP)) continue;

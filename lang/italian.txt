@@ -526,6 +526,9 @@ it = Ripristina predefiniti
 en = Resume
 it = Riprendi
 
+en = Trophies
+it = Trofei
+
 en = Esc
 it = Esc
 

@@ -526,6 +526,9 @@ fr = Rétablir par défaut
 en = Resume
 fr = Reprendre
 
+en = Trophies
+fr = Trophées
+
 en = Esc
 fr = Échap
 
