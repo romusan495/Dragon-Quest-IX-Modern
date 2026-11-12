@@ -4127,6 +4127,13 @@ static void creation_update(int a_on_top) {
      * own brightness at its left edge (never under a window), so
      * the pop-ups are there from the first frames (not both screens side by side) */
 #define CC_SUM(x, y) ((int)((px[(y) * 256 + (x)] >> 16) & 255) + (int)((px[(y) * 256 + (x)] >> 8) & 255) + (int)(px[(y) * 256 + (x)] & 255))
+    {   /* the character's screen still has its title window (its light top edge over its dark inside):
+         * once the character is taken it fades out, the keyboard staying on the touch screen under the next scene */
+        const uint32_t* tp = g_engine_out[a_on_top ? 0 : 1];
+#define TP_SUM(x, y) ((int)((tp[(y) * 256 + (x)] >> 16) & 255) + (int)((tp[(y) * 256 + (x)] >> 8) & 255) + (int)(tp[(y) * 256 + (x)] & 255))
+        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 12)) return;
+#undef TP_SUM
+    }
     int lp = CC_SUM(6, 100);                                      /* the parchment: about 520 when bright (260 greyed under Patty's last question) */
     {   uint32_t c = px[100 * 256 + 6];
         int r = (c >> 16) & 255, b = c & 255;
