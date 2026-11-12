@@ -2698,8 +2698,10 @@ static void creation_pieces(GlPresent* v, int ww, int wh) {
         q[4] = 1; q[5] = (float)tb[0]; q[6] = (float)tb[1]; q[7] = (float)tb[2]; q[8] = (float)tb[3]; q[9] = 3;
         q[0] = x0; q[1] = 200 * C; q[2] = (float)tb[2] * kt; q[3] = (float)tb[3] * kt;
         q = v->piece[v->npiece++];
-        q[4] = 1; q[5] = (float)yn[0]; q[6] = (float)yn[1]; q[7] = (float)yn[2]; q[8] = (float)yn[3]; q[9] = 3;
-        q[0] = x0 + 20 * C; q[1] = 200 * C + (float)tb[3] * kt + 20 * C; q[2] = (float)yn[2] * ky; q[3] = (float)yn[3] * ky;
+        q[4] = 1; q[5] = (float)yn[0] + 6; q[6] = (float)yn[1]; q[7] = (float)yn[2] - 6; q[8] = (float)yn[3]; q[9] = 3;   /* (past the hand and the window's edge: its words alone) */
+        q[0] = x0 + 20 * C + 6 * ky; q[1] = 200 * C + (float)tb[3] * kt + 20 * C; q[2] = (float)(yn[2] - 6) * ky; q[3] = (float)yn[3] * ky;
+        float hx = q[0] - 6 * ky, hy = q[1];                               /* the hand: over the window's edge on the DS (left of its inside), drawn alone, its own colours */
+        bestiary_piece(v, 1, (float)yn[0] - 12, (float)yn[1] - 2, 18, (float)yn[3] + 4, 27, hx - 12 * ky, hy - 2 * ky, ky);
     } else if (g_cc_n) {                                          /* the windows on the touch screen (the choices; the name and the keyboard), in the panel */
         int ux0 = 256, uy0 = 192, ux1 = 0, uy1 = 0, named = step == 8 && g_cc_n == 2;   /* (the name: bigger, over the keyboard) */
         for (int i = named; i < g_cc_n; i++) {
@@ -4404,7 +4406,7 @@ static int card_page(const uint32_t* px) {
  * name above it), popped up over the big screen (canvas_layout_for()). None
  * once the name is done (OK) or outside the creation. */
 static void creation_update(int a_on_top) {
-    static uint64_t asked; static uint32_t lit;                   /* (the last question seen: its frame, how bright the backdrop was) */
+    static uint64_t asked; static uint32_t lit; uint32_t now = 0;  /* (the last question seen: its frame, how bright the backdrop was) */
     g_cc_n = 0; g_cc_step = 0; g_cc_fade = 0;
     int side = 0;
     if (!g_gl || !(WIDE_GL && g_wide && !g_side_by_side && !(g_two && !g_single)) || !g_minimap || g_small_blank) return;
@@ -4418,14 +4420,13 @@ static void creation_update(int a_on_top) {
          * once the character is taken it fades out, the keyboard staying on the touch screen under the next scene */
         const uint32_t* tp = g_engine_out[a_on_top ? 0 : 1];
 #define TP_SUM(x, y) ((int)((tp[(y) * 256 + (x)] >> 16) & 255) + (int)((tp[(y) * 256 + (x)] >> 8) & 255) + (int)(tp[(y) * 256 + (x)] & 255))
-        uint32_t now = 0;
+        now = 0;
         for (int y = 24; y < 192; y += 8) for (int x = 2; x < 110; x += 8) now += TP_SUM(x, y);
         if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 12)) {
             if (asked && g_frame - asked < 180 && lit && now * 100 > lit * 3) g_cc_fade = 100 - (int)(now * 100 / lit) > 1 ? 100 - (int)(now * 100 / lit) : 1;
             else asked = 0;
             return;
         }
-        lit = now;
 #undef TP_SUM
         g_cc_topeng = a_on_top ? 0 : 1;
         cc_take_back(tp);
@@ -4445,12 +4446,10 @@ static void creation_update(int a_on_top) {
             else { if (run >= 10 && run <= 14 && ((x - run - 122) % 16 + 16) % 16 <= 1) tabs++; run = 0; }
         }
         if (tabs < 6) return;
-        static int last_step;                                     /* (no tab lit: the step last seen, not the old pop-ups for a moment) */
         for (int i = 0; i < 8; i++) {                             /* the step's own tab: gold */
             uint32_t c = px[8 * 256 + 122 + 16 * i + 5];
             if (((c >> 16) & 255) > 180 && (c & 255) < 110 && ((c >> 8) & 255) > 120) g_cc_step = i + 1;
         }
-        if (g_cc_step) last_step = g_cc_step; else g_cc_step = last_step ? last_step : 8;
     }
     int parchment = 1;
     static const int probe[3][2] = { { 6, 100 }, { 249, 100 }, { 128, 164 } };   /* the parchment around its windows */
@@ -4485,8 +4484,17 @@ static void creation_update(int a_on_top) {
         memcpy(g_cc_box[0], yn, sizeof yn); memcpy(g_cc_box[1], tb, sizeof tb);
         g_cc_at[0][0] = w - yn[2]; g_cc_at[0][1] = 0;
         g_cc_at[1][0] = 0; g_cc_at[1][1] = yn[3] + 8;              /* (8: the two windows' margins, and a gap) */
-        g_cc_n = 2; g_cc_step = 9; asked = g_frame;
+        g_cc_n = 2; g_cc_step = 9; asked = g_frame; lit = now;
         return;
+    }
+    {   static int last_step;                                     /* (no tab lit: the step last seen, not the old pop-ups for a moment) */
+        if (!g_cc_step && asked && g_frame - asked < 120 && lit) {   /* (Yes to Patty's last question: the keyboard again, no tab lit, while it all fades out) */
+            int d = 100 - (int)(now * 100 / lit);
+            g_cc_fade = d < 1 ? 1 : d > 99 ? 99 : d;
+            g_cc_step = 0;
+            return;
+        }
+        if (g_cc_step) last_step = g_cc_step; else g_cc_step = last_step ? last_step : 8;
     }
 #define CC_WIN(c) (!((int)(((c) >> 16) & 255) * 100 > (int)((c) & 255) * 130 && (int)(((c) >> 16) & 255) * 520 > 100 * lp))   /* not the parchment's warm colours: a window (dark, or grey when chosen: Male / Female) */
     int y = 24;
