@@ -485,7 +485,7 @@ static int codepoint(const char* s) {
         { "l_a", 0x2190 }, { "u_a", 0x2191 }, { "r_a", 0x2192 }, { "d_a", 0x2193 }, { "heart", 0x2665 }, { "music", 0x266A },
         { "star", 0x2606 }, { "blackstar", 0x2605 }, { "circle", 0x25CB }, { "blkcircle", 0x25CF }, { "square", 0x25A1 },
         { "blksquare", 0x25A0 }, { "triangle", 0x25B3 }, { "blktriangle", 0x25B2 }, { "invtriangle", 0x25BD },
-        { "invblktriangle", 0x25BC },
+        { "invblktriangle", 0x25BC }, { "E`", 0xC8 },               /* (E`: the equipped item's mark before its value, Equip's card) */
     };
     for (size_t i = 0; i < sizeof map / sizeof map[0]; i++) if (!strcmp(q, map[i].k)) return map[i].cp;
     if (strlen(q) == 2) {                                       /* accents: <`e> <'e> <^e> <:e> <~n> <,c> */
