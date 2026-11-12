@@ -4445,10 +4445,12 @@ static void creation_update(int a_on_top) {
             else { if (run >= 10 && run <= 14 && ((x - run - 122) % 16 + 16) % 16 <= 1) tabs++; run = 0; }
         }
         if (tabs < 6) return;
+        static int last_step;                                     /* (no tab lit: the step last seen, not the old pop-ups for a moment) */
         for (int i = 0; i < 8; i++) {                             /* the step's own tab: gold */
             uint32_t c = px[8 * 256 + 122 + 16 * i + 5];
             if (((c >> 16) & 255) > 180 && (c & 255) < 110 && ((c >> 8) & 255) > 120) g_cc_step = i + 1;
         }
+        if (g_cc_step) last_step = g_cc_step; else g_cc_step = last_step ? last_step : 8;
     }
     int parchment = 1;
     static const int probe[3][2] = { { 6, 100 }, { 249, 100 }, { 128, 164 } };   /* the parchment around its windows */
