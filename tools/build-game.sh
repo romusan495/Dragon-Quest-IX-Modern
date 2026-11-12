@@ -134,10 +134,11 @@ $PY tools/job_icons.py "$ROM" game/textures/jobs || echo "   job icons: not made
 # Optional: without them (no Internet) the game shows its cups.
 $PY tools/trophy_badges.py game/trophies || echo "   trophy pictures: not fetched (optional)"
 # townspeople in 3D (runtime/npc3d.c, Graphics > Townspeople in 3D): made from
-# the player's own Dragon Quest VII and/or VIII (3DS) files, whose folders (the
-# romfs) are named in rom/dq7-path.txt and rom/dq8-path.txt, and from this ROM's
-# own characters; remade when the list of townspeople changes. Never kept in the
-# project. Optional.
+# the player's own Dragon Quest VII and/or VIII (3DS), put in rom/3DS (a
+# decrypted ROM: .3ds, .cci, .cxi, .cia, or a folder already extracted), or
+# folders named in rom/dq7-path.txt and rom/dq8-path.txt; and from this ROM's
+# own characters. Remade when those change. Never kept in the project. Optional.
+mkdir -p rom/3DS
 gamedir() {
     [ -f "rom/$1-path.txt" ] || return 0
     local d; d="$(tr -d '\r' < "rom/$1-path.txt")"
@@ -145,8 +146,15 @@ gamedir() {
     if [ -d "$d" ]; then echo "$d"; fi
 }
 DQ7="$(gamedir dq7)"; DQ8="$(gamedir dq8)"
-if [ ! -f game/npc3d/map.txt ] || [ -n "$(find tools/npc3d rom/dq7-path.txt rom/dq8-path.txt -newer game/npc3d/map.txt -type f 2>/dev/null)" ]; then
+if [ ! -f game/npc3d/map.txt ] || [ -n "$(find tools/npc3d rom/dq7-path.txt rom/dq8-path.txt rom/3DS -newer game/npc3d/map.txt 2>/dev/null)" ]; then
     echo "== Townspeople in 3D (from Dragon Quest VII / VIII / IX)"
+    if [ -z "$DQ7" ] || [ -z "$DQ8" ]; then                  # rom/3DS: what the paths don't give
+        while read -r g d; do
+            case "$g" in dq7) [ -n "$DQ7" ] || DQ7="$d" ;; dq8) [ -n "$DQ8" ] || DQ8="$d" ;; esac
+        done <<EOF3DS
+$($PY tools/npc3d/rom3ds.py rom/3DS build/npc3d-src)
+EOF3DS
+    fi
     $PY tools/npc3d/make_all.py "${DQ7:--}" "${DQ8:--}" game/npc3d "$ROM" || echo "   townspeople in 3D: not made (optional; needs Python's numpy)"
 fi
 # the same plaques for the modern Equip screen (runtime/frontend_sdl.c equip_pieces:

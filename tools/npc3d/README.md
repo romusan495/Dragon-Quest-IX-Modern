@@ -2,11 +2,14 @@
 
 Makes the `npc3d/<model>.npc3` files the runtime draws in place of a DQIX
 townsperson's flat picture, from the player's own Dragon Quest VII and/or
-VIII (3DS) romfs (folders named in `rom/dq7-path.txt`, `rom/dq8-path.txt`),
+VIII (3DS), put in `rom/3DS` (decrypted .3ds/.cci/.cxi/.cia, or an extracted
+romfs folder; BUILD.bat creates the folder) or named in `rom/dq7-path.txt`,
+`rom/dq8-path.txt`,
 with those games' own colours. `townsfolk.txt` says which character replaces
 which townsperson (`n008a dq7 p0229`). Nothing made here is ever committed
 (game-derived).
 
+- `rom3ds.py`: finds DQVII / DQVIII in `rom/3DS` and copies the folders needed out of a decrypted ROM (NCSD, NCCH, CIA; romfs) into `build/npc3d-src`.
 - `lz11.py`: LZ11 decompression of the romfs files.
 - `cgfx.py`: CGFX model reader (meshes, skin, bones, textures).
 - `canm.py`: CGFX skeletal animations (curve and baked tracks).
