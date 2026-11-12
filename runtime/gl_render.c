@@ -630,6 +630,7 @@ static const char* FS_COPY =
     "    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) b += textureLod(u_src, v_uv + vec2(i, j) * u_ds * 8.0, lod).rgb;\n"
     "    o_color = vec4(b / 25.0 * 0.45, 1.0); return; }\n"
     "  if (u_mode == 36) { vec3 r = c.rgb / max(c.a, 0.001); float a = smoothstep(0.04, 0.14, max(r.r, max(r.g, r.b))) * c.a; o_color = vec4(r * a, a); return; }\n"   /* (the picture without its black: see-through there (the title's button over the movie)) */
+    "  if (u_mode == 38) { vec3 r = c.rgb / max(c.a, 0.001); float d = max(abs(r.r - 0.094), max(abs(r.g - 0.094), abs(r.b - 0.094))); float a = smoothstep(0.012, 0.04, d) * c.a; o_color = vec4(r * a, a); return; }\n"   /* (the picture without the game's dark panel (24, 24, 24): see-through there (the creation's choices)) */
     "  if (u_mode == 17) { vec3 r = c.rgb / max(c.a, 0.001); float d = max(abs(r.r - 0.157), max(abs(r.g - 0.157), abs(r.b - 0.157)));\n"   /* (the picture without its window's dark panel (40, 40, 40): see-through there) */
     "    float a = smoothstep(0.03, 0.07, d) * c.a; o_color = vec4(r * a, a); return; }\n"
     "  if (u_mode == 10) {\n"

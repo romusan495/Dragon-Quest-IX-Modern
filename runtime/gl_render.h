@@ -18,6 +18,7 @@ enum { GL_LAYER_HINT,                                 /* a button's sign over th
        GL_LAYER_JOBS,                                 /* ...the jobs' signs on an item's card (who can equip it) */
        GL_LAYER_RING,                                 /* the round minimap's gold ring and compass, over it */
        GL_LAYER_SPECIES,                              /* ...the monsters near: their kinds' colours and names, under it */
+       GL_LAYER_KEY3,                                 /* a fourth key (the character's creation: L, R, A, B) */
        GL_LAYERS };
 
 int gl_render_init(int scale);                        /* 0 on failure (use the software path) */
