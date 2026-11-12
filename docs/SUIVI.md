@@ -35,6 +35,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Support RecompLauncher | Dev | [Dev] Ajouter le support RecompLauncher | `claude/project-thread-uvlao8` | fusionné | PR #131 (1681bca) | `.github/workflows/release-zip.yml` joint `Dragon-Quest-IX-Modern-vN-Windows-x64.zip` (`tools/make-release.py`) à chaque release publiée : vérifier dans Actions après chaque Publish |
 | Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | fusionné | PR #134 | Film d'intro derrière « Commencer l'aventure », image de fond lue localement dans `game/ui/title-back.png` (jamais commitée), menus en bas à droite ; touche `runtime/gl_render.c` (`FS_COPY` 36-37) et `runtime/frontend_sdl.c` ; pour la v48 |
 | PNJ en 3D | Graph | [Graph] Remplacer les PNJ en image par la 3D | `claude/project-thread-o775tm` | fusionné | PR #135 | Touche `runtime/gl_render.c`, `runtime/gpu3d.c`, `runtime/menu_win32.c` (Graphismes > Habitants en 3D), `runtime/frontend_sdl.c` (`npc_3d`, `settings_version` = 4), `tools/build-game.sh` (bloc « townspeople in 3D » : `$ROM`, `rom/dq7-path.txt` / `rom/dq8-path.txt` hors du dépôt), `BUILD.bat` (`python-numpy`), libellé « Townspeople in &3D (Enhanced) » dans `lang/*.txt` ; pas testé sous Windows ; pour la v48 |
+| PNJ en 3D : ROM 3DS de DQVII/DQVIII | Graph | [Graph] Remplacer les PNJ en image par la 3D | — | fusionné | PR #138 | Dossier `rom/3DS` (README) pour les ROM 3DS de DQVII/DQVIII ; touche `tools/build-game.sh` (bloc townspeople) et `.gitignore` ; pas testé sous Windows ni avec une vraie ROM 3DS ; pour la v48 |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
@@ -50,7 +51,7 @@ une par une. Conflits probables signalés.
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
 | `runtime/gpu3d.c` | PNJ en 3D (`submit_vertex`, `gpu3d_vblank`) |
-| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) ; PNJ en 3D (modèles si `rom/dq7-path.txt` / `rom/dq8-path.txt`) |
+| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) ; PNJ en 3D (modèles si `rom/dq7-path.txt` / `rom/dq8-path.txt`) ; PNJ en 3D (`rom/3DS`, #138) |
 | `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
