@@ -38,6 +38,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | PNJ en 3D : ROM 3DS de DQVII/DQVIII | Graph | [Graph] Remplacer les PNJ en image par la 3D | — | fusionné | PR #138 | Dossier `rom/3DS` (README) pour les ROM 3DS de DQVII/DQVIII ; touche `tools/build-game.sh` (bloc townspeople) et `.gitignore` ; pas testé sous Windows ni avec une vraie ROM 3DS ; pour la v2.0 |
 | Corrections texte HD, insignes Prêtre/Artiste martial (Tsu) | Graph | — | `dev/hdtext-fixes-v66` | fusionné | PR #136 | Touche `runtime/frontend_sdl.c`, `runtime/hdtext.c`, images `tools/job_*` |
 | Création du personnage en écran large (Tsu) | Graph | — | `dev/creation-modern` | fusionné | PR #139 | Touche `runtime/frontend_sdl.c`, `runtime/gl_render.c` (mode 38), `runtime/gl_render.h` (`GL_LAYER_KEY3`) |
+| Création du personnage en anglais/italien/allemand (correctif) | — | — | — | fusionné | PR #142 (a62de35) | Touche `runtime/frontend_sdl.c` ; dans la v2.1 |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
@@ -46,7 +47,7 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne (`title_*`, `present_gl`, `canvas_layout_for`), Étoiles de collecte (correctif) ; PNJ en 3D (clé `npc_3d`) |
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne (`title_*`, `present_gl`, `canvas_layout_for`), Étoiles de collecte (correctif) ; PNJ en 3D (clé `npc_3d`) ; Création du personnage EN/IT/DE (#142, fusionné) |
 | `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) ; PNJ en 3D (Habitants en 3D) |
 | `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) ; Écran titre moderne (`FS_COPY` modes 36-37) ; PNJ en 3D (`npc3d_batches`) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
