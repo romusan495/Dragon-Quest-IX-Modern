@@ -2654,7 +2654,51 @@ static int cc_extent(int screen_top, int x0, int y0, int x1, int y1, int* ex0, i
     *ex0 = a; *ex1 = b + 1;
     return 1;
 }
-enum { CC_ROW0 = 46, CC_RH = 16, CC_LAB_X = 133, CC_LAB_X1 = 202, CC_VAL_X = 203 };   /* the character screen's list: its rows, the steps' names, what was chosen */
+enum { CC_ROW0 = 46, CC_RH = 16 };                                /* the character screen's list: its rows */
+/* ...its columns: where each step's name starts (after its number), the colons' column, what was chosen
+ * after it. They move with the language (Italian's longer names: further left, the colons further
+ * right), so they are read from the screen: the colons are the one column with the same two dots
+ * on every row (cc_columns(), each frame; English's places if not found) */
+static int g_cc_lab_x = 133, g_cc_lab_x1 = 202, g_cc_val_x = 203;
+static void cc_columns(void) {
+    const uint32_t* px = g_engine_out[g_cc_topeng];
+#define CC_LIT(x, y) ((int)((px[(y) * 256 + (x)] >> 16) & 255) + (int)((px[(y) * 256 + (x)] >> 8) & 255) + (int)(px[(y) * 256 + (x)] & 255) > 450)
+    g_cc_lab_x1 = 202; g_cc_val_x = 203;
+    for (int x = 150, found = 0; x < 246 && !found; x++) {
+        uint32_t m[7];
+        for (int i = 0; i < 7; i++) {                             /* (the column's lit pixels on each row, as bits) */
+            m[i] = 0;
+            for (int y = 0; y < 14; y++) if (CC_LIT(x, CC_ROW0 + i * CC_RH + y)) m[i] |= 1u << y;
+        }
+        int runs = 0, same = 0;
+        for (int y = 0; y < 14; y++) runs += ((m[0] >> y) & 1) && !(y && ((m[0] >> (y - 1)) & 1));
+        for (int i = 0; i < 7; i++) same += m[i] == m[0];
+        if (runs != 2 || same < 6) continue;
+        int e = x;                                                /* (its last column: as wide as its dots) */
+        while (e + 1 < 254) {
+            int lit = 0;
+            for (int y = 0; y < 14; y++) lit += CC_LIT(e + 1, CC_ROW0 + y);
+            if (!lit) break;
+            e++;
+        }
+        g_cc_lab_x1 = x; g_cc_val_x = e + 2; found = 1;
+    }
+    {   /* the names: after the numbers' column (lit on most rows), its gap, where most rows are lit again
+         * (the hand left of the chosen row's number: on one row only) */
+        int n[150] = { 0 }, x = 108;
+        for (int c = 108; c < 150; c++)
+            for (int i = 0; i < 8; i++) { int lit = 0; for (int y = 0; y < 14; y++) lit |= CC_LIT(c, CC_ROW0 + i * CC_RH + y); n[c] += lit; }
+        for (int x0 = x; x < 150; x0 = x) {                         /* (the window's edge before them: one column wide) */
+            while (x < 150 && n[x] < 5) x++;
+            x0 = x;
+            while (x < 150 && n[x] > 1) x++;
+            if (x - x0 >= 3) break;
+        }
+        while (x < 150 && n[x] < 3) x++;
+        g_cc_lab_x = x < 150 ? x - 1 : 133;
+    }
+#undef CC_LIT
+}
 static void creation_pieces(GlPresent* v, int ww, int wh) {
     CcLay l = cc_lay(v);
     const float C = l.C;
@@ -2672,25 +2716,28 @@ static void creation_pieces(GlPresent* v, int ww, int wh) {
             set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 0, 0, v->cw, v->ch);
         return;
     }
+    cc_columns();
     /* the game's title, big, at the top left */
     {   int a, b; if (!cc_extent(1, 40, 4, 216, 19, &a, &b)) { a = 74; b = 182; }
         bestiary_piece(v, 0, (float)a - 1, 4, (float)(b - a) + 2, 15, 3, l.lx, 20 * C, 0.85f); }
     int step = g_cc_step;
     for (int i = 0; i < 8; i++) {
         float ry = l.ry0 + i * l.rh, kl = 0.62f, y = ry + (l.rh - 14 * kl) / 2;
-        int a, b, ry_ds = CC_ROW0 + i * CC_RH;
-        if (cc_extent(1, CC_LAB_X, ry_ds, CC_LAB_X1, ry_ds + 14, &a, &b)) {
-            bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.lx + 15 * C, y, kl);   /* its name (not its number) */
-            float x = l.gx0 + (l.gx1 - l.gx0) * (float)i / 7, kp = 0.4f;                                       /* ...under its diamond */
+        int a, b, va, vb, ry_ds = CC_ROW0 + i * CC_RH;
+        int val = cc_extent(1, g_cc_val_x, ry_ds, 254, ry_ds + 14, &va, &vb);
+        if (cc_extent(1, g_cc_lab_x, ry_ds, g_cc_lab_x1, ry_ds + 14, &a, &b)) {
+            float room = l.lw - 27 * C - (val ? (float)(vb - va + 2) * kl + 8 * C : 0), kn = fminf(kl, room / (float)(b - a + 2));   /* (a long name and what was chosen: the name smaller, not over it (Italian)) */
+            bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.lx + 15 * C, ry + (l.rh - 14 * kn) / 2, kn);   /* its name (not its number) */
+            float x = l.gx0 + (l.gx1 - l.gx0) * (float)i / 7, kp = fminf(0.4f, ((l.gx1 - l.gx0) / 7 - 6 * C) / (float)(b - a + 2));   /* ...under its diamond (smaller when longer than the room between two: Italian, English) */
             bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, i + 1 == step ? 3 : 12, x - (float)(b - a + 2) * kp / 2, l.gy + 9 * C, kp);
         }
-        if (cc_extent(1, CC_VAL_X, ry_ds, 254, ry_ds + 14, &a, &b))   /* what was chosen, at the right */
-            bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.lx + l.lw - 12 * C - (float)(b - a + 2) * kl, y, kl);
+        if (val)                                                  /* what was chosen, at the right */
+            bestiary_piece(v, 0, (float)va - 1, (float)ry_ds, (float)(vb - va) + 2, 14, 3, l.lx + l.lw - 12 * C - (float)(vb - va + 2) * kl, y, kl);
     }
     /* right: the step's name, its choices */
     if (step >= 1 && step <= 8) {                                 /* (its name in the list) */
         int a, b, ry_ds = CC_ROW0 + (step - 1) * CC_RH;
-        if (cc_extent(1, CC_LAB_X, ry_ds, CC_LAB_X1, ry_ds + 14, &a, &b)) bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.px, l.head_y - 4 * C - 14 * 1.05f, 1.05f);
+        if (cc_extent(1, g_cc_lab_x, ry_ds, g_cc_lab_x1, ry_ds + 14, &a, &b)) bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.px, l.head_y - 4 * C - 14 * 1.05f, 1.05f);
     }
     if (g_cc_n && step == 9) {                                    /* the last question: its words big across the right, Yes / No under them */
         const int* yn = g_cc_box[0], *tb = g_cc_box[1];
@@ -2731,7 +2778,7 @@ static void creation_pieces(GlPresent* v, int ww, int wh) {
         }
         if (step >= 2 && step <= 7) {                             /* what is chosen, under them */
             int a, b, ry_ds = CC_ROW0 + (step - 1) * CC_RH;
-            if (cc_extent(1, CC_VAL_X, ry_ds, 254, ry_ds + 14, &a, &b)) {
+            if (cc_extent(1, g_cc_val_x, ry_ds, 254, ry_ds + 14, &a, &b)) {
                 float kv = 0.8f;
                 bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.px + l.pw / 2 - (float)(b - a + 2) * kv / 2, y + (float)(uy1 - uy0) * k + 14 * C, kv);
             }
@@ -4475,7 +4522,7 @@ static void creation_update(int a_on_top) {
 #define TP_SUM(x, y) ((int)((tp[(y) * 256 + (x)] >> 16) & 255) + (int)((tp[(y) * 256 + (x)] >> 8) & 255) + (int)(tp[(y) * 256 + (x)] & 255))
         now = 0;
         for (int y = 24; y < 192; y += 8) for (int x = 2; x < 110; x += 8) now += TP_SUM(x, y);
-        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 12)) {
+        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 3)) {   /* (row 3: the window's dark inside over its words; row 12 crossed a letter in English, "Create your character.") */
             if (asked && g_frame - asked < 180 && lit && now * 100 > lit * 3) g_cc_fade = 100 - (int)(now * 100 / lit) > 1 ? 100 - (int)(now * 100 / lit) : 1;
             else asked = 0;
             return;
@@ -4532,7 +4579,9 @@ static void creation_update(int a_on_top) {
         int w = tx + 10 - 7, h = ty + 9 - 121;
         if (w > 242) w = 242;
         if (h > 65) h = 65;
-        static const int yn[4] = { 216, 76, 34, 36 };             /* Yes / No's inside (its light edge left out) */
+        int yn[4] = { 216, 76, 34, 36 };                          /* Yes / No's inside (its light edge left out): its right side fixed, */
+        for (int x = 240; x > 190; x--)                           /* its left edge further left for longer words (German's "Nein"), */
+            if (CC_SUM(x, 93) > 450) { if (x < 230) { yn[0] = x + 2; yn[2] = 250 - yn[0]; } break; }   /* (row 93: between its two lines, under the hand) */
         int tb[4] = { 7, 121, w, h };                             /* the text box's inside, cut after the text */
         memcpy(g_cc_box[0], yn, sizeof yn); memcpy(g_cc_box[1], tb, sizeof tb);
         g_cc_at[0][0] = w - yn[2]; g_cc_at[0][1] = 0;
