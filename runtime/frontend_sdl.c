@@ -4475,7 +4475,7 @@ static void creation_update(int a_on_top) {
 #define TP_SUM(x, y) ((int)((tp[(y) * 256 + (x)] >> 16) & 255) + (int)((tp[(y) * 256 + (x)] >> 8) & 255) + (int)(tp[(y) * 256 + (x)] & 255))
         now = 0;
         for (int y = 24; y < 192; y += 8) for (int x = 2; x < 110; x += 8) now += TP_SUM(x, y);
-        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 12)) {
+        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 3)) {   /* (row 3: the window's dark inside over its words; row 12 crossed a letter in English, "Create your character.") */
             if (asked && g_frame - asked < 180 && lit && now * 100 > lit * 3) g_cc_fade = 100 - (int)(now * 100 / lit) > 1 ? 100 - (int)(now * 100 / lit) : 1;
             else asked = 0;
             return;
