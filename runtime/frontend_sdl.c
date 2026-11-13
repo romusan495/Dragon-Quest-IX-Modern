@@ -108,6 +108,8 @@ static int g_peek;                                                /* widescreen:
 static int g_single;                                              /* one screen only (the bottom one, or the top one swapped) */
 static int g_hud = 1;                                             /* widescreen battles: the party's panels and the commands over the 3D (hud_update) */
 static int g_hud_n, g_hud_band[8][2];                             /* ...the panels found on the commands screen: first row, end row */
+static int g_cc_step, g_cc_topeng, g_cc_fade, g_cc_fade_kb;      /* the creation's step (1-8 its tab, 9 its last question; creation_update), the character screen's engine; the character taken: how dark his screen is (1-100), and whether over the keyboard again (Patty's: the 3D no longer him) */
+static void cc_take_back(const uint32_t* tp);
 static int g_cc_n, g_cc_box[2][4];                               /* widescreen, the character's creation: its windows on the touch screen (creation_update): x, y, w, h */
 static int g_cc_at[2][2];                                         /* ...where each goes in the pop-up (DS pixels; as on the touch screen, but for Patty's last question) */
 static int g_name_typing = 0;                                     /* Modern > Type the name with the keyboard (the character's creation: name_typing_step()) */
@@ -1429,6 +1431,7 @@ enum { AC_X = 9, AC_Y = 24, AC_W = 238, AC_H = 160,                /* the plate 
 static int g_accolade_page, g_accolade_small;
 static int g_pop_modern;                                          /* the popped up page is one modern window (pop_update()) */
 static int g_pop_panel;                                           /* the page is one big plain panel over a backdrop of its own (pop_update()) */
+static int g_invite, g_pop_eng;                                              /* ...and the field's screen a list on parchment at its top (Patty's: invite, leave, recruit, part with a companion): the two side by side (invite_pieces()) */
 static int accolade_page(const uint32_t* px) {
     return px_share(px, 2, 4, 0, 8, 12, 100, 255, 0, 30, 0, 30) >= 8          /* the curtain at the left edge (203, 0, 0 to 121, 0, 0) */
         && px_share(px, 128, 4, 0, 0, 1, 100, 255, 0, 30, 0, 30) >= 10        /* ...and above the plate */
@@ -2475,6 +2478,286 @@ static void title_pieces(GlPresent* v) {
     }
 }
 
+/* ---- The character's creation, modern (the mockup "Création – style PC"):
+ * the backdrop's swirls across the whole window, darker at its sides, a light
+ * behind the character; left, the steps and what was chosen (the game's own
+ * words, the step's row lit gold); the character big in the middle on a gold
+ * ring; at the top right the steps as a row of diamonds; right, the step's
+ * name and its choices (the touch screen's window), what is chosen under
+ * them; the player's keys and the game's words for them at the bottom. */
+static uint8_t g_ccb[192][112][3];                                  /* the character screen's backdrop: its left part, no window there */
+static uint32_t g_ccb_key;                                          /* (its brightness: changes while it fades in) */
+static void cc_take_back(const uint32_t* tp) {
+    uint32_t sum = 0;
+    for (int y = 24; y < 192; y += 8) for (int x = 2; x < 110; x += 8) { uint32_t c = tp[y * 256 + x]; sum += ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255); }
+    uint32_t key = sum / 64 + 1;
+    if (key == g_ccb_key) return;
+    g_ccb_key = key;
+    for (int y = 0; y < 192; y++)
+        for (int x = 0; x < 112; x++) {
+            int yy = y < 24 ? 47 - y : y;                             /* (over its title's window: the rows under it, mirrored) */
+            uint32_t c = tp[yy * 256 + x];
+            g_ccb[y][x][0] = (uint8_t)(c >> 16); g_ccb[y][x][1] = (uint8_t)(c >> 8); g_ccb[y][x][2] = (uint8_t)c;
+        }
+}
+/* an opaque picture: a colour blended in (alpha a), over [x0, x1) x [y0, y1) with soft edges */
+static void cc_blend(uint8_t* o, int R, int G, int B, float a) {
+    if (a <= 0) return;
+    if (a > 1) a = 1;
+    o[0] = (uint8_t)(o[0] + (R - o[0]) * a); o[1] = (uint8_t)(o[1] + (G - o[1]) * a); o[2] = (uint8_t)(o[2] + (B - o[2]) * a);
+}
+static void cc_rect(uint8_t* img, int W, int H, float x, float y, float w, float h, int R, int G, int B, float a0, float a1) {   /* (a0 at its left, a1 at its right) */
+    int X0 = (int)floorf(x), Y0 = (int)floorf(y), X1 = (int)ceilf(x + w), Y1 = (int)ceilf(y + h);
+    for (int Y = Y0 < 0 ? 0 : Y0; Y < Y1 && Y < H; Y++) {
+        float cy = fminf((float)Y + 1, y + h) - fmaxf((float)Y, y);
+        for (int X = X0 < 0 ? 0 : X0; X < X1 && X < W; X++) {
+            float cx = fminf((float)X + 1, x + w) - fmaxf((float)X, x), t = w > 0 ? ((float)X + 0.5f - x) / w : 0;
+            cc_blend(&img[((size_t)Y * W + X) * 4], R, G, B, (a0 + (a1 - a0) * fminf(fmaxf(t, 0), 1)) * cx * cy);
+        }
+    }
+}
+static void cc_diamond(uint8_t* img, int W, int H, float cx, float cy, float r, float line, int R, int G, int B, float a, int filled) {
+    for (int Y = (int)(cy - r - 2); Y <= (int)(cy + r + 2); Y++)
+        for (int X = (int)(cx - r - 2); X <= (int)(cx + r + 2); X++) {
+            if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+            float d = (fabsf((float)X + 0.5f - cx) + fabsf((float)Y + 0.5f - cy)) / 1.41421f - r / 1.41421f;   /* (inside < 0) */
+            float in = fminf(fmaxf(0.5f - d, 0), 1);
+            float k = filled ? in : in * fminf(fmaxf(d + line + 0.5f, 0), 1);
+            cc_blend(&img[((size_t)Y * W + X) * 4], R, G, B, a * k);
+        }
+}
+static void cc_ring(uint8_t* img, int W, int H, float cx, float cy, float rx, float ry, float line, float glow) {
+    for (int Y = (int)(cy - ry - glow - 2); Y <= (int)(cy + ry + glow + 2); Y++)
+        for (int X = (int)(cx - rx - glow - 2); X <= (int)(cx + rx + glow + 2); X++) {
+            if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+            float ux = ((float)X + 0.5f - cx) / rx, uy = ((float)Y + 0.5f - cy) / ry, e = sqrtf(ux * ux + uy * uy);
+            float d = (e - 1) * fminf(rx, ry * 2);                     /* (about pixels from the ring) */
+            uint8_t* o = &img[((size_t)Y * W + X) * 4];
+            if (e < 1) cc_blend(o, 0, 0, 0, 0.5f * (1 - e * e));      /* its shadow inside */
+            cc_blend(o, 226, 181, 82, 0.35f * expf(-d * d / (glow * glow)));   /* its glow */
+            cc_blend(o, 226, 181, 82, 0.6f * fminf(fmaxf(line / 2 + 0.5f - fabsf(d), 0), 1));   /* the ring */
+        }
+}
+/* Layout (canvas units) shared by the backdrop and the pieces */
+typedef struct { float C, lx, lw, ry0, rh, px, pw, cx, ring_y, gx0, gx1, gy, head_y; } CcLay;
+static CcLay cc_lay(const GlPresent* v) {
+    CcLay l; float C = v->ch / 576.0f;
+    l.C = C; l.lx = 34 * C; l.lw = 230 * C; l.ry0 = 112 * C; l.rh = 40 * C;
+    l.pw = 312 * C; l.px = v->cw - 32 * C - l.pw;
+    l.cx = (l.lx + l.lw + l.px) / 2;
+    l.ring_y = 517 * C;
+    l.gx1 = v->cw - 36 * C; l.gx0 = l.gx1 - 460 * C; l.gy = 39 * C;
+    l.head_y = 160 * C;
+    return l;
+}
+static void creation_back(const GlPresent* v, int W, int H, float s) {
+    static uint8_t* img, *base; static int iw, ih, istep; static uint32_t ikey; static float icw;
+    int cstep = g_cc_fade ? 9 : g_cc_step;
+    if (img && iw == W && ih == H && istep == cstep && ikey == g_ccb_key && icw == v->cw) return;
+    uint8_t* n1 = (uint8_t*)realloc(img, (size_t)W * H * 4), *n2 = n1 ? (uint8_t*)realloc(base, (size_t)W * H * 4) : NULL;
+    if (n1) img = n1;
+    if (!n1 || !n2) return;
+    base = n2;
+    if (iw != W || ih != H || ikey != g_ccb_key || icw != v->cw) {
+        /* the swirls: the left part mirrored again and again (as the game's own pattern), from where the
+         * DS has it; blurred a little and darker */
+        int cw = (int)ceilf(v->cw), off = (int)floorf((v->cw - 256) / 2);
+        float* ds = (float*)malloc((size_t)cw * 192 * 3 * sizeof(float)), *tmp = ds ? (float*)malloc((size_t)cw * 192 * 3 * sizeof(float)) : NULL;
+        if (!ds || !tmp) { free(ds); free(tmp); return; }
+        for (int y = 0; y < 192; y++)
+            for (int x = 0; x < cw; x++) {
+                int k = ((x - off) % 224 + 224) % 224, c = k < 112 ? k : 223 - k;
+                for (int i = 0; i < 3; i++) ds[((size_t)y * cw + x) * 3 + i] = g_ccb[y][c][i];
+            }
+        for (int pass = 0; pass < 2; pass++) {                    /* (a box blur, two passes, across then down: 2 DS pixels round) */
+            for (int y = 0; y < 192; y++) for (int x = 0; x < cw; x++) for (int i = 0; i < 3; i++) {
+                float t = 0; for (int d = -2; d <= 2; d++) { int xx = x + d; xx = xx < 0 ? 0 : xx >= cw ? cw - 1 : xx; t += ds[((size_t)y * cw + xx) * 3 + i]; }
+                tmp[((size_t)y * cw + x) * 3 + i] = t / 5;
+            }
+            for (int y = 0; y < 192; y++) for (int x = 0; x < cw; x++) for (int i = 0; i < 3; i++) {
+                float t = 0; for (int d = -2; d <= 2; d++) { int yy = y + d; yy = yy < 0 ? 0 : yy > 191 ? 191 : yy; t += tmp[((size_t)yy * cw + x) * 3 + i]; }
+                ds[((size_t)y * cw + x) * 3 + i] = t / 5;
+            }
+        }
+        for (int Y = 0; Y < H; Y++)
+            for (int X = 0; X < W; X++) {                         /* (bilinear, to the window's pixels) */
+                float fx = ((float)X + 0.5f) / s - 0.5f, fy = ((float)Y + 0.5f) / s - 0.5f;
+                int x0 = (int)floorf(fx), y0 = (int)floorf(fy); float ax = fx - x0, ay = fy - y0;
+                int xa = x0 < 0 ? 0 : x0 >= cw ? cw - 1 : x0, xb = x0 + 1 < 0 ? 0 : x0 + 1 >= cw ? cw - 1 : x0 + 1;
+                int ya = y0 < 0 ? 0 : y0 > 191 ? 191 : y0, yb = y0 + 1 < 0 ? 0 : y0 + 1 > 191 ? 191 : y0 + 1;
+                uint8_t* o = &base[((size_t)Y * W + X) * 4];
+                for (int i = 0; i < 3; i++) {
+                    float a = ds[((size_t)ya * cw + xa) * 3 + i] * (1 - ax) + ds[((size_t)ya * cw + xb) * 3 + i] * ax;
+                    float b = ds[((size_t)yb * cw + xa) * 3 + i] * (1 - ax) + ds[((size_t)yb * cw + xb) * 3 + i] * ax;
+                    o[i] = (uint8_t)fminf((a * (1 - ay) + b * ay) * 0.8f, 255);
+                }
+                o[3] = 255;
+            }
+        free(ds); free(tmp);
+    }
+    memcpy(img, base, (size_t)W * H * 4);
+    iw = W; ih = H; istep = cstep; ikey = g_ccb_key; icw = v->cw;
+    CcLay l = cc_lay(v);
+    float C = l.C;
+    {   /* darker at the sides (under the windows), a light behind the character */
+        float ax[6] = { 0, l.lx + l.lw + 26 * C, l.cx, l.px - 62 * C, l.px + 73 * C, v->cw }, aa[6] = { 0.78f, 0.15f, 0, 0.2f, 0.85f, 0.9f };
+        for (int X = 0; X < W; X++) {
+            float x = ((float)X + 0.5f) / s, a = aa[5];
+            for (int i = 0; i < 5; i++) if (x >= ax[i] && x < ax[i + 1]) { a = aa[i] + (aa[i + 1] - aa[i]) * (x - ax[i]) / fmaxf(ax[i + 1] - ax[i], 0.01f); break; }
+            for (int Y = 0; Y < H; Y++) {
+                float y = ((float)Y + 0.5f) / s, gx = (x - l.cx) / (230 * C), gy = (y - 300 * C) / (290 * C), g = sqrtf(gx * gx + gy * gy);
+                uint8_t* o = &img[((size_t)Y * W + X) * 4];
+                cc_blend(o, 4, 6, 14, a);
+                if (g < 0.72f) cc_blend(o, 170, 195, 255, 0.28f * (1 - g / 0.72f));
+                float vx = (x / v->cw - 0.5f) / 0.6f, vy = (y / v->ch - 0.45f) / 0.5f, vg = sqrtf(vx * vx + vy * vy);   /* (the corners darker) */
+                if (vg > 0.55f) cc_blend(o, 0, 0, 0, 0.6f * fminf((vg - 0.55f) / 0.45f, 1));
+            }
+        }
+    }
+    cc_ring(img, W, H, l.cx * s, l.ring_y * s, 105 * C * s, 23 * C * s, 2 * C * s, 14 * C * s);
+    int step = cstep, done = step >= 9 ? 8 : step - 1;
+    {   /* the steps, a row of diamonds: done gold, this one bigger and lit, the others hollow */
+        float y = l.gy * s, lw = 2 * C * s;
+        cc_rect(img, W, H, l.gx0 * s, y - lw / 2, (l.gx1 - l.gx0) * s, lw, 242, 239, 230, 0.18f, 0.18f);
+        if (done > 0) cc_rect(img, W, H, l.gx0 * s, y - lw / 2, (l.gx1 - l.gx0) * s * (float)(done > 7 ? 7 : done) / 7, lw, 226, 181, 82, 1, 1);
+        for (int i = 0; i < 8; i++) {
+            float x = (l.gx0 + (l.gx1 - l.gx0) * (float)i / 7) * s;
+            if (i + 1 == step) { cc_ring(img, W, H, x, y, 0.01f, 0.01f, 0, 10 * C * s); cc_diamond(img, W, H, x, y, 10 * C * s, 0, 226, 181, 82, 1, 1); }
+            else if (i < done) cc_diamond(img, W, H, x, y, 7 * C * s, 0, 226, 181, 82, 1, 1);
+            else { cc_diamond(img, W, H, x, y, 8 * C * s, 0, 11, 15, 28, 1, 1); cc_diamond(img, W, H, x, y, 8 * C * s, 2 * C * s, 242, 239, 230, 0.35f, 0); }
+        }
+    }
+    for (int i = 0; i < 8; i++) {                                 /* the list: a faint line at each row's left, the step's row lit */
+        float y = (l.ry0 + i * l.rh) * s, h = l.rh * s, x = l.lx * s, w = l.lw * s, b = 3 * C * s;
+        if (i + 1 == step) { cc_rect(img, W, H, x, y, w, h, 226, 181, 82, 0.22f, 0); cc_rect(img, W, H, x, y, b, h, 226, 181, 82, 1, 1); }
+        else { cc_rect(img, W, H, x, y, b, h, 242, 239, 230, 0.12f, 0.12f); cc_rect(img, W, H, x + b, y + h - C * s, w - b, C * s, 242, 239, 230, 0.06f, 0.06f); }
+    }
+    if (step <= 8) cc_rect(img, W, H, l.px * s, l.head_y * s, l.pw * s, C * s, 226, 181, 82, 1, 0);   /* the gold line under the step's name */
+    gl_set_layer(GL_LAYER_BACK, img, W, H);
+}
+/* where a line's letters are in a box of a screen: its own pixels' (light ones), or its HD letters' */
+static int cc_extent(int screen_top, int x0, int y0, int x1, int y1, int* ex0, int* ex1) {
+    int eng = screen_top ? g_cc_topeng : !g_cc_topeng, a = 256, b = -1;
+    uint8_t col[256] = { 0 };
+    const uint32_t* px = g_engine_out[eng];
+    for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) { uint32_t c = px[y * 256 + x]; if (((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255) > 450) col[x] = 1; }
+    for (int x = x0; x < x1; x++) if (col[x]) { if (x < a) a = x; b = x; }
+    if (b >= a) {                                                 /* (a colon after the word, apart: not the word's) */
+        int c0 = b; while (c0 > a && col[c0 - 1]) c0--;
+        int g = c0 - 1; while (g > a && !col[g]) g--;
+        if (b - c0 <= 2 && c0 - g >= 3 && g > a) b = g;
+    }
+    const HdGlyph* gl = NULL; int ng = g_hdtext_on ? hdtext_glyphs(eng, &gl) : 0;
+    for (int i = 0; i < ng; i++) if (gl[i].y >= y0 - 2 && gl[i].y < y1 && gl[i].x >= x0 && gl[i].x < x1) { if (gl[i].x < a) a = gl[i].x; if (gl[i].x + gl[i].w + 2 > b) b = gl[i].x + gl[i].w + 2; }   /* (+2: an HD letter a little wider than its box) */
+    if (b < a) return 0;
+    if (b > 255) b = 255;
+    *ex0 = a; *ex1 = b + 1;
+    return 1;
+}
+enum { CC_ROW0 = 46, CC_RH = 16, CC_LAB_X = 133, CC_LAB_X1 = 202, CC_VAL_X = 203 };   /* the character screen's list: its rows, the steps' names, what was chosen */
+static void creation_pieces(GlPresent* v, int ww, int wh) {
+    CcLay l = cc_lay(v);
+    const float C = l.C;
+    {   float s = wh > 0 ? (float)wh / v->ch : 5.625f;
+        if (s > 11.25f) s = 11.25f;
+        int W = (int)(v->cw * s + 0.5f), H = (int)(v->ch * s + 0.5f);
+        creation_back(v, W, H, s);
+        float* q = v->layer[GL_LAYER_BACK]; q[0] = 0; q[1] = 0; q[2] = v->cw; q[3] = v->ch;
+    }
+    /* the character, big, on the ring (the 3D alone) */
+    const float KC = 1.08f;
+    if (!(g_cc_fade && g_cc_fade_kb)) bestiary_piece(v, 4, 0, 0, 256, 192, 11, l.cx - 56 * KC, l.ring_y - 186 * KC, KC);   /* (all its width: he walks to the middle when taken) */
+    if (g_cc_fade) {                                              /* the character taken: his screen alone, going dark (as the game's) */
+        for (int i = 0, n = (int)lroundf(logf(fmaxf(1 - g_cc_fade / 100.0f, 0.01f)) / logf(0.45f)); i < n && i < 8; i++)
+            set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 0, 0, v->cw, v->ch);
+        return;
+    }
+    /* the game's title, big, at the top left */
+    {   int a, b; if (!cc_extent(1, 40, 4, 216, 19, &a, &b)) { a = 74; b = 182; }
+        bestiary_piece(v, 0, (float)a - 1, 4, (float)(b - a) + 2, 15, 3, l.lx, 20 * C, 0.85f); }
+    int step = g_cc_step;
+    for (int i = 0; i < 8; i++) {
+        float ry = l.ry0 + i * l.rh, kl = 0.62f, y = ry + (l.rh - 14 * kl) / 2;
+        int a, b, ry_ds = CC_ROW0 + i * CC_RH;
+        if (cc_extent(1, CC_LAB_X, ry_ds, CC_LAB_X1, ry_ds + 14, &a, &b)) {
+            bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.lx + 15 * C, y, kl);   /* its name (not its number) */
+            float x = l.gx0 + (l.gx1 - l.gx0) * (float)i / 7, kp = 0.4f;                                       /* ...under its diamond */
+            bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, i + 1 == step ? 3 : 12, x - (float)(b - a + 2) * kp / 2, l.gy + 9 * C, kp);
+        }
+        if (cc_extent(1, CC_VAL_X, ry_ds, 254, ry_ds + 14, &a, &b))   /* what was chosen, at the right */
+            bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.lx + l.lw - 12 * C - (float)(b - a + 2) * kl, y, kl);
+    }
+    /* right: the step's name, its choices */
+    if (step >= 1 && step <= 8) {                                 /* (its name in the list) */
+        int a, b, ry_ds = CC_ROW0 + (step - 1) * CC_RH;
+        if (cc_extent(1, CC_LAB_X, ry_ds, CC_LAB_X1, ry_ds + 14, &a, &b)) bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.px, l.head_y - 4 * C - 14 * 1.05f, 1.05f);
+    }
+    if (g_cc_n && step == 9) {                                    /* the last question: its words big across the right, Yes / No under them */
+        const int* yn = g_cc_box[0], *tb = g_cc_box[1];
+        float x0 = l.cx + 95 * C, w = v->cw - 32 * C - x0, kt = fminf(0.75f, w / (float)tb[2]), ky = 0.85f;
+        float* q = v->piece[v->npiece++];
+        q[4] = 1; q[5] = (float)tb[0]; q[6] = (float)tb[1]; q[7] = (float)tb[2]; q[8] = (float)tb[3]; q[9] = 3;
+        q[0] = x0; q[1] = 200 * C; q[2] = (float)tb[2] * kt; q[3] = (float)tb[3] * kt;
+        q = v->piece[v->npiece++];
+        q[4] = 1; q[5] = (float)yn[0] + 6; q[6] = (float)yn[1]; q[7] = (float)yn[2] - 6; q[8] = (float)yn[3]; q[9] = 3;   /* (past the hand and the window's edge: its words alone) */
+        q[0] = x0 + 20 * C + 6 * ky; q[1] = 200 * C + (float)tb[3] * kt + 20 * C; q[2] = (float)(yn[2] - 6) * ky; q[3] = (float)yn[3] * ky;
+        float hx = q[0] - 6 * ky, hy = q[1];                               /* the hand: over the window's edge on the DS (left of its inside), drawn alone, its own colours */
+        bestiary_piece(v, 1, (float)yn[0] - 12, (float)yn[1] - 2, 18, (float)yn[3] + 4, 27, hx - 12 * ky, hy - 2 * ky, ky);
+    } else if (g_cc_n) {                                          /* the windows on the touch screen (the choices; the name and the keyboard), in the panel */
+        int ux0 = 256, uy0 = 192, ux1 = 0, uy1 = 0, named = step == 8 && g_cc_n == 2;   /* (the name: bigger, over the keyboard) */
+        for (int i = named; i < g_cc_n; i++) {
+            const int* b = g_cc_box[i], *at = g_cc_at[i];
+            if (at[0] < ux0) ux0 = at[0];
+            if (at[1] < uy0) uy0 = at[1];
+            if (at[0] + b[2] > ux1) ux1 = at[0] + b[2];
+            if (at[1] + b[3] > uy1) uy1 = at[1] + b[3];
+        }
+        float top = l.head_y + (named ? 70 : 20) * C, room = 450 * C - top;
+        float k = fminf(l.pw / (float)(ux1 - ux0), room / (float)(uy1 - uy0));
+        if (k > 1.3f) k = 1.3f;
+        float x = l.px + (l.pw - (float)(ux1 - ux0) * k) / 2, y = top;
+        for (int i = named; i < g_cc_n && v->npiece < GL_MAX_PIECES; i++) {
+            const int* b = g_cc_box[i];
+            float* q = v->piece[v->npiece++];
+            q[4] = 1; q[5] = (float)b[0]; q[6] = (float)b[1]; q[7] = (float)b[2]; q[8] = (float)b[3]; q[9] = 38;
+            q[0] = x + (float)(g_cc_at[i][0] - ux0) * k; q[1] = y + (float)(g_cc_at[i][1] - uy0) * k; q[2] = (float)b[2] * k; q[3] = (float)b[3] * k;
+        }
+        if (named) {                                              /* the name, its letters big, under the step's name */
+            const int* b = g_cc_box[0]; int a, e;
+            if (!cc_extent(0, b[0], b[1], b[0] + b[2], b[1] + b[3], &a, &e)) { a = b[0]; e = b[0] + b[2]; }
+            float kn = 1.6f, w = (float)(e - a + 2) * kn;
+            if (w > l.pw) { kn *= l.pw / w; w = l.pw; }
+            bestiary_piece(v, 1, (float)a - 1, (float)b[1], (float)(e - a) + 2, (float)b[3], 3, l.px, l.head_y + 14 * C, kn);
+        }
+        if (step >= 2 && step <= 7) {                             /* what is chosen, under them */
+            int a, b, ry_ds = CC_ROW0 + (step - 1) * CC_RH;
+            if (cc_extent(1, CC_VAL_X, ry_ds, 254, ry_ds + 14, &a, &b)) {
+                float kv = 0.8f;
+                bestiary_piece(v, 0, (float)a - 1, (float)ry_ds, (float)(b - a) + 2, 14, 3, l.px + l.pw / 2 - (float)(b - a + 2) * kv / 2, y + (float)(uy1 - uy0) * k + 14 * C, kv);
+            }
+        }
+    }
+    /* the keys, the game's words for them: L R Pivot under the character, A and B at the bottom right */
+    {   const float kh = 24 * C, kw = 0.62f, by = v->ch - 18 * C - kh;
+        int a, b;
+        float x = v->cw - 30 * C;
+        if (cc_extent(0, 209, 166, 246, 181, &a, &b)) {           /* B: back */
+            x -= (float)(b - a + 2) * kw; bestiary_piece(v, 1, (float)a - 1, 166, (float)(b - a) + 2, 15, 12, x, by + (kh - 15 * kw) / 2, kw);
+            bestiary_key(v, GL_LAYER_KEY3, CA_B, 0, by, kh); { float* q = v->layer[GL_LAYER_KEY3]; x -= 7 * C + q[2]; q[0] = x; } x -= 20 * C;
+        }
+        if (cc_extent(0, 150, 166, 200, 181, &a, &b)) {           /* A: confirm */
+            x -= (float)(b - a + 2) * kw; bestiary_piece(v, 1, (float)a - 1, 166, (float)(b - a) + 2, 15, 12, x, by + (kh - 15 * kw) / 2, kw);
+            bestiary_key(v, GL_LAYER_KEY2, CA_A, 0, by, kh); { float* q = v->layer[GL_LAYER_KEY2]; x -= 7 * C + q[2]; q[0] = x; }
+        }
+        if (step >= 1 && step <= 8 && cc_extent(0, 26, 166, 60, 181, &a, &b)) {   /* L R: turn the character */
+            float kk = 18 * C, yy = l.ring_y + 30 * C, w = (float)(b - a + 2) * 0.5f;
+            bestiary_key(v, GL_LAYER_KEY0, CA_L, 0, yy, kk); bestiary_key(v, GL_LAYER_KEY1, CA_R, 0, yy, kk);
+            float* q0 = v->layer[GL_LAYER_KEY0], *q1 = v->layer[GL_LAYER_KEY1], tot = q0[2] + q1[2] + w + 16 * C;
+            q0[0] = l.cx - tot / 2; q1[0] = l.cx + tot / 2 - q1[2];
+            bestiary_piece(v, 1, (float)a - 1, 166, (float)(b - a) + 2, 15, 12, l.cx - w / 2, yy + (kk - 15 * 0.5f) / 2, 0.5f);
+        }
+    }
+}
 static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
     memset(v, 0, sizeof *v);
     if (wh > 0) g_lay_s = (float)wh / 192.0f;
@@ -2542,7 +2825,15 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             small[0] = small[1] = small[2] = small[3] = 0;
             accolade_plate(v);
         }
-        if (g_cc_n && !second && v->npiece + 2 * g_cc_n <= GL_MAX_PIECES) {
+        int cc_drawn = 0;
+        if (((g_cc_n && g_cc_step) || g_cc_fade) && !second && !g_peek && v->npiece + 60 <= GL_MAX_PIECES) {
+            cc_drawn = 1;
+            /* the character's creation, modern: drawn again whole (creation_pieces()), no screen whole */
+            v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
+            v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
+            v->alpha = 1.0f; v->front = 0;
+            creation_pieces(v, ww, wh);
+        } else if (g_cc_n && !second && v->npiece + 2 * g_cc_n <= GL_MAX_PIECES) {
             /* the character's creation: its windows on the touch screen (the
              * choices, the name's keyboard and the name above it) pop up over
              * the right of the big screen, each in a solid window of the
@@ -2570,12 +2861,13 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         if (g_title && !second && !g_peek && v->npiece + 4 + 6 * g_title_n <= GL_MAX_PIECES) title_pieces(v);   /* the title, modern */
-        int page = in_adventure() ? top_page_mode() : 0;          /* (the title, its opening movie: no menu's page) */
+        int page = in_adventure() && !cc_drawn ? top_page_mode() : 0;   /* (the title, its opening movie, the creation drawn whole: no menu's page) */
         if (page != 2 && g_rec2d_at && g_rec2d_at == g_frame) page = 2;         /* (the records' menus with no 3D: bestiary_update()) */
         if (page == 2) g_page2_at = g_frame;
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
         if (g_bmode == BM_TITLES || g_bmode == BM_COLL) page = 2;   /* (these lists: no 3D, their window all the same) */                       /* (the titles' list: no 3D, its window all the same) */
+        if (cc_drawn) page = 0;                                   /* (the creation drawn whole, its fade: nothing over it) */
         int hub = 0;
         static int bare; static uint64_t bare_f;                   /* (a menu of neither the records nor Al Embic, a few frames on (Attributes, its model on the top screen): the two screens, not an empty window) */
         if (bare_f != g_frame) { bare_f = g_frame; bare = page == 2 && caract_screen() ? bare + 1 : 0; }   /* (Attributes: its equipment's panel on the top screen, two frames on) */
@@ -2675,6 +2967,55 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             if (g_pop_win[2] && g_quest_page && v->npiece + 6 <= GL_MAX_PIECES) quest_pieces(v);
             else if (g_pop_win[2] && g_card_page && v->npiece + 13 <= GL_MAX_PIECES) card_pieces(v);
             else if (g_pop_win[2] && g_accolade_page && v->npiece + 3 <= GL_MAX_PIECES) accolade_plate(v);
+            else if (g_pop_win[2] && g_invite && v->npiece + 24 <= GL_MAX_PIECES) {
+                /* Patty's lists (the mockup "Inviter un ami"): the field dimmed under the
+                 * list and the companion's stats, side by side over it, the dialogue below */
+                float C = v->ch / 576.0f, band = 0.53f * v->ch, m = 24 * C, gap = 12 * C;
+                for (int i = 0; i < 3; i++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 0, 0, v->cw, band);
+                for (int i = 0; i < 4; i++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), big[0], big[1], big[2], big[3] * 100 / 192.0f);   /* (the parchment where it was: gone) */
+                for (int i = 0; i < 2; i++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 0, band, v->cw, 10 * C);
+                float colw = (v->cw - 2 * m - gap) / 2, top = 14 * C, hmax = band - top - 8 * C;
+                float w = (float)g_pop_win[2], h = (float)g_pop_win[3], k = fminf(colw / w, hmax / h);   /* the stats: a modern window */
+                float x = m + colw + gap + (colw - w * k) / 2, y = top, ww = w * k, hh = h * k, t = 0.75f;
+                {   /* the list: a modern window as the stats', as tall (the parchment's rows: header 0-15, then 16 a row) */
+                    const float LX = 2, LW = 252, LH = 80;
+                    float kl = fminf(colw / (LW + 8), (hh - 8) / LH), lw = colw, lx = m, ly = top, lh = hh, ox = lx + (lw - LW * kl) / 2, oy = ly + 6 * kl;
+                    const uint32_t* f = g_engine_out[g_pop_eng ^ 1];
+                    int sel = -1;
+                    for (int i = 3; i > 0; i--) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), lx, ly, lw, lh);
+                    for (int r = 0; r < 4; r++) {
+                        uint32_t c = f[(16 + 16 * r + 8) * 256 + 128];
+                        if (((c >> 16) & 255) < 175 && ((c >> 16) & 255) > 130 && (c & 255) < 80) {   /* (the chosen row: brown, its words light) */
+                            sel = r;                                                        /* (drawn as it is, after the words: its brown bar, the hand, its light words) */
+                            continue;
+                        }
+                        int sign = 0;                                                       /* (its sex's sign: pink or blue) */
+                        for (int xx = 84; xx <= 97 && !sign; xx++) {
+                            uint32_t g = f[(16 + 16 * r + 3) * 256 + xx];
+                            int R = (g >> 16) & 255, G = (g >> 8) & 255, B = g & 255;
+                            sign = (R - G > 60 && B - G > 30) || (B - R > 60 && B - G > 30);
+                        }
+                        if (sign) bestiary_piece(v, 1, 84, (float)(17 + 16 * r), 14, 14, 0, ox + (84 - LX) * kl, oy + (17 + 16 * r) * kl, kl);
+                    }
+                    bestiary_piece(v, 1, 8, 2, 236, LH - 2, 6, ox + (8 - LX) * kl, oy + 2 * kl, kl);   /* its words (dark ink on the parchment: light; not its torn edge) */
+                    bestiary_piece(v, 1, 91, 2, 162, 11, 0, ox + (91 - LX) * kl, oy + 2 * kl, kl);   /* its header's box, as it is */
+                    if (sel >= 0) {                                                     /* its brown bar as it is, the hand alone (not the parchment round it) */
+                        bestiary_piece(v, 1, 16, (float)(16 + 16 * sel), 226, 16, 0, ox + (16 - LX) * kl, oy + (16 + 16 * sel) * kl, kl);
+                        bestiary_piece(v, 1, 5, (float)(16 + 16 * sel), 11, 16, 39, ox + (5 - LX) * kl, oy + (16 + 16 * sel) * kl, kl);
+                    }
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + 6 * C, oy + 16 * kl, lw - 12 * C, t);   /* under its header */
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, lw, t);
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly + lh - t, lw, t);
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, t, lh);
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + lw - t, ly, t, lh);
+                }
+                for (int i = 3; i > 0; i--) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, ww, hh);
+                bestiary_piece(v, 0, g_pop_win[0] + 2, g_pop_win[1] + 2, g_pop_win[2] - 4, g_pop_win[3] - 4, 17, x + 2 * k, y + 2 * k, k);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, ww, t);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y + hh - t, ww, t);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, t, hh);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x + ww - t, y, t, hh);
+            }
             else if (g_pop_win[2] && g_pop_modern && v->npiece + 8 <= GL_MAX_PIECES) {
                 /* one modern window: see-through, a thin grey line, its insides
                  * without their panel (like the windows over the field). A panel
@@ -4118,7 +4459,8 @@ static int card_page(const uint32_t* px) {
  * name above it), popped up over the big screen (canvas_layout_for()). None
  * once the name is done (OK) or outside the creation. */
 static void creation_update(int a_on_top) {
-    g_cc_n = 0;
+    static uint64_t asked; static uint32_t lit; uint32_t now = 0;  /* (the last question seen: its frame, how bright the backdrop was) */
+    g_cc_n = 0; g_cc_step = 0; g_cc_fade = 0; g_cc_fade_kb = 0;
     int side = 0;
     if (!g_gl || !(WIDE_GL && g_wide && !g_side_by_side && !(g_two && !g_single)) || !g_minimap || g_small_blank) return;
     if (gl_wide_shown(&side) != 0) return;
@@ -4131,8 +4473,16 @@ static void creation_update(int a_on_top) {
          * once the character is taken it fades out, the keyboard staying on the touch screen under the next scene */
         const uint32_t* tp = g_engine_out[a_on_top ? 0 : 1];
 #define TP_SUM(x, y) ((int)((tp[(y) * 256 + (x)] >> 16) & 255) + (int)((tp[(y) * 256 + (x)] >> 8) & 255) + (int)(tp[(y) * 256 + (x)] & 255))
-        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 12)) return;
+        now = 0;
+        for (int y = 24; y < 192; y += 8) for (int x = 2; x < 110; x += 8) now += TP_SUM(x, y);
+        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 12)) {
+            if (asked && g_frame - asked < 180 && lit && now * 100 > lit * 3) g_cc_fade = 100 - (int)(now * 100 / lit) > 1 ? 100 - (int)(now * 100 / lit) : 1;
+            else asked = 0;
+            return;
+        }
 #undef TP_SUM
+        g_cc_topeng = a_on_top ? 0 : 1;
+        cc_take_back(tp);
     }
     int lp = CC_SUM(6, 100);                                      /* the parchment: about 520 when bright (260 greyed under Patty's last question) */
     {   uint32_t c = px[100 * 256 + 6];
@@ -4149,6 +4499,10 @@ static void creation_update(int a_on_top) {
             else { if (run >= 10 && run <= 14 && ((x - run - 122) % 16 + 16) % 16 <= 1) tabs++; run = 0; }
         }
         if (tabs < 6) return;
+        for (int i = 0; i < 8; i++) {                             /* the step's own tab: gold */
+            uint32_t c = px[8 * 256 + 122 + 16 * i + 5];
+            if (((c >> 16) & 255) > 180 && (c & 255) < 110 && ((c >> 8) & 255) > 120) g_cc_step = i + 1;
+        }
     }
     int parchment = 1;
     static const int probe[3][2] = { { 6, 100 }, { 249, 100 }, { 128, 164 } };   /* the parchment around its windows */
@@ -4183,8 +4537,17 @@ static void creation_update(int a_on_top) {
         memcpy(g_cc_box[0], yn, sizeof yn); memcpy(g_cc_box[1], tb, sizeof tb);
         g_cc_at[0][0] = w - yn[2]; g_cc_at[0][1] = 0;
         g_cc_at[1][0] = 0; g_cc_at[1][1] = yn[3] + 8;              /* (8: the two windows' margins, and a gap) */
-        g_cc_n = 2;
+        g_cc_n = 2; g_cc_step = 9; asked = g_frame; lit = now;
         return;
+    }
+    {   static int last_step;                                     /* (no tab lit: the step last seen, not the old pop-ups for a moment) */
+        if (!g_cc_step && asked && g_frame - asked < 120 && lit) {   /* (Yes to Patty's last question: the keyboard again, no tab lit, while it all fades out) */
+            int d = 100 - (int)(now * 100 / lit);
+            g_cc_fade = d < 1 ? 1 : d > 99 ? 99 : d; g_cc_fade_kb = 1;
+            g_cc_step = 0;
+            return;
+        }
+        if (g_cc_step) last_step = g_cc_step; else g_cc_step = last_step ? last_step : 8;
     }
 #define CC_WIN(c) (!((int)(((c) >> 16) & 255) * 100 > (int)((c) & 255) * 130 && (int)(((c) >> 16) & 255) * 520 > 100 * lp))   /* not the parchment's warm colours: a window (dark, or grey when chosen: Male / Female) */
     int y = 24;
@@ -4290,7 +4653,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
  * around them, and what touches the edge (the sky, the torn border), go. */
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
-    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = g_pop_panel = 0;
+    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = g_pop_panel = g_invite = 0;
     bestiary_update(a_on_top);
     equip_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
@@ -4424,6 +4787,13 @@ static void pop_update(int a_on_top) {
             || (GREYISH(px[my * 256 + x0], 180, 255) && GREYISH(px[y0 * 256 + mx], 180, 255)        /* (its line, then a darker grey, then the panel (40, 40, 40)) */
             && GREYISH(px[my * 256 + x0 + 3], 25, 60) && GREYISH(px[(y1 - 3) * 256 + mx], 25, 60)));
 #undef GREYISH
+    }
+    g_pop_eng = eng;
+    if (g_pop_modern && g_pop_panel) {                            /* Patty's lists: the other screen's top a parchment (its rows' cream), its header's brown box */
+        const uint32_t* f = g_engine_out[eng ^ 1];
+#define TAN(c) ((int)(((c) >> 16) & 255) > 215 && (int)(((c) >> 8) & 255) > 190 && (int)((c) & 255) > 120 && (int)((c) & 255) < 175)
+        g_invite = TAN(f[60 * 256 + 60]) && TAN(f[60 * 256 + 200]) && TAN(f[70 * 256 + 128]) && !TAN(f[5 * 256 + 128]);
+#undef TAN
     }
     if (!g_shop) pop_place();
     {   /* allocating skill points: the parchment bare at the right of the
