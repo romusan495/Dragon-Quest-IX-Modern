@@ -16,7 +16,7 @@ import io, os, re, subprocess, sys, zipfile
 
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
-ver = re.search(r'DQIX_VERSION "([^"]+)"', open('runtime/version.h').read()).group(1)
+ver = re.search(r'^#define DQIX_VERSION "([^"]+)"', open('runtime/version.h').read(), re.M).group(1)
 out = os.path.join(out, 'nightly' if 'nightly' in ver else 'stable')        # release/stable, release/nightly
 os.makedirs(out, exist_ok=True)
 

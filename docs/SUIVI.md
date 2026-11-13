@@ -33,7 +33,11 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Personnage figé après un combat | Dev | — | `claude/project-thread-4de875` | fusionné | PR #129 | — |
 | Trophées dans le menu Échap | Dev | [Dev] Mettre les trophées dans le menu Échap | `claude/project-thread-23jrga` | fusionné | PR #130 (ae07bf5) | Touche `runtime/frontend_sdl.c` : les fils Écran titre et Étoiles de collecte rebasent dessus |
 | Support RecompLauncher | Dev | [Dev] Ajouter le support RecompLauncher | `claude/project-thread-uvlao8` | fusionné | PR #131 (1681bca) | `.github/workflows/release-zip.yml` joint `Dragon-Quest-IX-Modern-vN-Windows-x64.zip` (`tools/make-release.py`) à chaque release publiée : vérifier dans Actions après chaque Publish |
-| Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | en cours | — (rien de poussé) | Touche `runtime/frontend_sdl.c` (`title_update`/`title_pieces`, appels dans `present_gl` et `canvas_layout_for`), `runtime/gl_render.c` (modes 36 et 37 de `FS_COPY`), `runtime/hdmovie.c/.h` ; rebaser sur `main` (après #130) avant la PR |
+| Écran titre moderne | Graph | [Graph] Moderniser l'écran titre | `claude/project-thread-qdf16l` | fusionné | PR #134 | Film d'intro derrière « Commencer l'aventure », image de fond lue localement dans `game/ui/title-back.png` (jamais commitée), menus en bas à droite ; touche `runtime/gl_render.c` (`FS_COPY` 36-37) et `runtime/frontend_sdl.c` ; pour la v2.0 |
+| PNJ en 3D | Graph | [Graph] Remplacer les PNJ en image par la 3D | `claude/project-thread-o775tm` | fusionné | PR #135 | Touche `runtime/gl_render.c`, `runtime/gpu3d.c`, `runtime/menu_win32.c` (Graphismes > Habitants en 3D), `runtime/frontend_sdl.c` (`npc_3d`, `settings_version` = 4), `tools/build-game.sh` (bloc « townspeople in 3D » : `$ROM`, `rom/dq7-path.txt` / `rom/dq8-path.txt` hors du dépôt), `BUILD.bat` (`python-numpy`), libellé « Townspeople in &3D (Enhanced) » dans `lang/*.txt` ; pas testé sous Windows ; pour la v2.0 |
+| PNJ en 3D : ROM 3DS de DQVII/DQVIII | Graph | [Graph] Remplacer les PNJ en image par la 3D | — | fusionné | PR #138 | Dossier `rom/3DS` (README) pour les ROM 3DS de DQVII/DQVIII ; touche `tools/build-game.sh` (bloc townspeople) et `.gitignore` ; pas testé sous Windows ni avec une vraie ROM 3DS ; pour la v2.0 |
+| Corrections texte HD, insignes Prêtre/Artiste martial (Tsu) | Graph | — | `dev/hdtext-fixes-v66` | fusionné | PR #136 | Touche `runtime/frontend_sdl.c`, `runtime/hdtext.c`, images `tools/job_*` |
+| Création du personnage en écran large (Tsu) | Graph | — | `dev/creation-modern` | fusionné | PR #139 | Touche `runtime/frontend_sdl.c`, `runtime/gl_render.c` (mode 38), `runtime/gl_render.h` (`GL_LAYER_KEY3`) |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
@@ -42,13 +46,14 @@ une par une. Conflits probables signalés.
 
 | Fichier | Fils |
 |---|---|
-| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne (`title_*`, `present_gl`, `canvas_layout_for`), Étoiles de collecte (correctif) |
-| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) |
-| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) ; Écran titre moderne (`FS_COPY` modes 36-37) |
+| `runtime/frontend_sdl.c` | Boutons manette, Cadre moderne, Menus en français, Journal (Quêtes + Alchimie), Combats, menu moderne ; Écran Équiper (`equip_*`, `bestiary_key`, 2026-11-06), Archives (changement de page), Tulipe (Inviter un ami) ; Étoiles des points de collecte (`map_gathering`, `MI_MAPGATHER`) ; Trophées (`trophies_tick`, `present_gl`) ; Remappage manette (#126, fusionné) ; Trophées dans le menu Échap (`game_menu_*`, `handle_events`, `frontend_frame`), Écran titre moderne (`title_*`, `present_gl`, `canvas_layout_for`), Étoiles de collecte (correctif) ; PNJ en 3D (clé `npc_3d`) |
+| `runtime/menu_win32.c`, `runtime/menu.h` | Boutons manette, Cadre moderne, Menus en français, Journal, Combats ; Étoiles des points de collecte ; Remappage manette (#126, fusionné) ; PNJ en 3D (Habitants en 3D) |
+| `runtime/gl_render.c` (`.h`) | menu moderne (`gl_set_menu_box`, `draw_menu`), Boutons manette (3e overlay), Journal (calque) : mêmes lignes de `gl_present`, à accorder ; Cadre moderne ; Combats si besoin ; Textures des monstres sur la carte (`texture_for`, 2026-11-06) ; Écran titre moderne (`FS_COPY` modes 36-37) ; PNJ en 3D (`npc3d_batches`) |
 | `runtime/controls.c` / `.h` | Boutons manette, Menus en français, Journal |
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
-| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) |
+| `runtime/gpu3d.c` | PNJ en 3D (`submit_vertex`, `gpu3d_vblank`) |
+| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) ; PNJ en 3D (modèles si `rom/dq7-path.txt` / `rom/dq8-path.txt`) ; PNJ en 3D (`rom/3DS`, #138) |
 | `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
