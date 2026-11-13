@@ -108,7 +108,7 @@ static int g_peek;                                                /* widescreen:
 static int g_single;                                              /* one screen only (the bottom one, or the top one swapped) */
 static int g_hud = 1;                                             /* widescreen battles: the party's panels and the commands over the 3D (hud_update) */
 static int g_hud_n, g_hud_band[8][2];                             /* ...the panels found on the commands screen: first row, end row */
-static int g_cc_step, g_cc_topeng, g_cc_fade;                    /* (g_cc_fade: the character taken, his screen fading out: how dark, 1-100) */                               /* the creation's step (1-8 its tab, 9 its last question; creation_update), the character screen's engine */
+static int g_cc_step, g_cc_topeng, g_cc_fade, g_cc_fade_kb;      /* the creation's step (1-8 its tab, 9 its last question; creation_update), the character screen's engine; the character taken: how dark his screen is (1-100), and whether over the keyboard again (Patty's: the 3D no longer him) */
 static void cc_take_back(const uint32_t* tp);
 static int g_cc_n, g_cc_box[2][4];                               /* widescreen, the character's creation: its windows on the touch screen (creation_update): x, y, w, h */
 static int g_cc_at[2][2];                                         /* ...where each goes in the pop-up (DS pixels; as on the touch screen, but for Patty's last question) */
@@ -2665,7 +2665,7 @@ static void creation_pieces(GlPresent* v, int ww, int wh) {
     }
     /* the character, big, on the ring (the 3D alone) */
     const float KC = 1.08f;
-    bestiary_piece(v, 4, 0, 0, 256, 192, 11, l.cx - 56 * KC, l.ring_y - 186 * KC, KC);   /* (all its width: he walks to the middle when taken) */
+    if (!(g_cc_fade && g_cc_fade_kb)) bestiary_piece(v, 4, 0, 0, 256, 192, 11, l.cx - 56 * KC, l.ring_y - 186 * KC, KC);   /* (all its width: he walks to the middle when taken) */
     if (g_cc_fade) {                                              /* the character taken: his screen alone, going dark (as the game's) */
         for (int i = 0, n = (int)lroundf(logf(fmaxf(1 - g_cc_fade / 100.0f, 0.01f)) / logf(0.45f)); i < n && i < 8; i++)
             set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 0, 0, v->cw, v->ch);
@@ -2824,7 +2824,9 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             small[0] = small[1] = small[2] = small[3] = 0;
             accolade_plate(v);
         }
+        int cc_drawn = 0;
         if (((g_cc_n && g_cc_step) || g_cc_fade) && !second && !g_peek && v->npiece + 60 <= GL_MAX_PIECES) {
+            cc_drawn = 1;
             /* the character's creation, modern: drawn again whole (creation_pieces()), no screen whole */
             v->top[0] = v->top[1] = v->top[2] = v->top[3] = 0;
             v->bot[0] = v->bot[1] = v->bot[2] = v->bot[3] = 0;
@@ -2858,12 +2860,13 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         if (g_title && !second && !g_peek && v->npiece + 4 + 6 * g_title_n <= GL_MAX_PIECES) title_pieces(v);   /* the title, modern */
-        int page = in_adventure() ? top_page_mode() : 0;          /* (the title, its opening movie: no menu's page) */
+        int page = in_adventure() && !cc_drawn ? top_page_mode() : 0;   /* (the title, its opening movie, the creation drawn whole: no menu's page) */
         if (page != 2 && g_rec2d_at && g_rec2d_at == g_frame) page = 2;         /* (the records' menus with no 3D: bestiary_update()) */
         if (page == 2) g_page2_at = g_frame;
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
         int bmode = g_bmode ? g_bmode : g_winstyle == 2 ? BM_MENU : BM_NONE;   /* (the first frame, before bestiary_update() saw it: one window too) */
         if (g_bmode == BM_TITLES || g_bmode == BM_COLL) page = 2;   /* (these lists: no 3D, their window all the same) */                       /* (the titles' list: no 3D, its window all the same) */
+        if (cc_drawn) page = 0;                                   /* (the creation drawn whole, its fade: nothing over it) */
         int hub = 0;
         static int bare; static uint64_t bare_f;                   /* (a menu of neither the records nor Al Embic, a few frames on (Attributes, its model on the top screen): the two screens, not an empty window) */
         if (bare_f != g_frame) { bare_f = g_frame; bare = page == 2 && caract_screen() ? bare + 1 : 0; }   /* (Attributes: its equipment's panel on the top screen, two frames on) */
@@ -4407,7 +4410,7 @@ static int card_page(const uint32_t* px) {
  * once the name is done (OK) or outside the creation. */
 static void creation_update(int a_on_top) {
     static uint64_t asked; static uint32_t lit; uint32_t now = 0;  /* (the last question seen: its frame, how bright the backdrop was) */
-    g_cc_n = 0; g_cc_step = 0; g_cc_fade = 0;
+    g_cc_n = 0; g_cc_step = 0; g_cc_fade = 0; g_cc_fade_kb = 0;
     int side = 0;
     if (!g_gl || !(WIDE_GL && g_wide && !g_side_by_side && !(g_two && !g_single)) || !g_minimap || g_small_blank) return;
     if (gl_wide_shown(&side) != 0) return;
@@ -4490,7 +4493,7 @@ static void creation_update(int a_on_top) {
     {   static int last_step;                                     /* (no tab lit: the step last seen, not the old pop-ups for a moment) */
         if (!g_cc_step && asked && g_frame - asked < 120 && lit) {   /* (Yes to Patty's last question: the keyboard again, no tab lit, while it all fades out) */
             int d = 100 - (int)(now * 100 / lit);
-            g_cc_fade = d < 1 ? 1 : d > 99 ? 99 : d;
+            g_cc_fade = d < 1 ? 1 : d > 99 ? 99 : d; g_cc_fade_kb = 1;
             g_cc_step = 0;
             return;
         }
