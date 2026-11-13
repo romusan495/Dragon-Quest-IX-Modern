@@ -1431,6 +1431,7 @@ enum { AC_X = 9, AC_Y = 24, AC_W = 238, AC_H = 160,                /* the plate 
 static int g_accolade_page, g_accolade_small;
 static int g_pop_modern;                                          /* the popped up page is one modern window (pop_update()) */
 static int g_pop_panel;                                           /* the page is one big plain panel over a backdrop of its own (pop_update()) */
+static int g_invite, g_pop_eng;                                              /* ...and the field's screen a list on parchment at its top (Patty's: invite, leave, recruit, part with a companion): the two side by side (invite_pieces()) */
 static int accolade_page(const uint32_t* px) {
     return px_share(px, 2, 4, 0, 8, 12, 100, 255, 0, 30, 0, 30) >= 8          /* the curtain at the left edge (203, 0, 0 to 121, 0, 0) */
         && px_share(px, 128, 4, 0, 0, 1, 100, 255, 0, 30, 0, 30) >= 10        /* ...and above the plate */
@@ -2966,6 +2967,55 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             if (g_pop_win[2] && g_quest_page && v->npiece + 6 <= GL_MAX_PIECES) quest_pieces(v);
             else if (g_pop_win[2] && g_card_page && v->npiece + 13 <= GL_MAX_PIECES) card_pieces(v);
             else if (g_pop_win[2] && g_accolade_page && v->npiece + 3 <= GL_MAX_PIECES) accolade_plate(v);
+            else if (g_pop_win[2] && g_invite && v->npiece + 24 <= GL_MAX_PIECES) {
+                /* Patty's lists (the mockup "Inviter un ami"): the field dimmed under the
+                 * list and the companion's stats, side by side over it, the dialogue below */
+                float C = v->ch / 576.0f, band = 0.53f * v->ch, m = 24 * C, gap = 12 * C;
+                for (int i = 0; i < 3; i++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 0, 0, v->cw, band);
+                for (int i = 0; i < 4; i++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), big[0], big[1], big[2], big[3] * 100 / 192.0f);   /* (the parchment where it was: gone) */
+                for (int i = 0; i < 2; i++) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), 0, band, v->cw, 10 * C);
+                float colw = (v->cw - 2 * m - gap) / 2, top = 14 * C, hmax = band - top - 8 * C;
+                float w = (float)g_pop_win[2], h = (float)g_pop_win[3], k = fminf(colw / w, hmax / h);   /* the stats: a modern window */
+                float x = m + colw + gap + (colw - w * k) / 2, y = top, ww = w * k, hh = h * k, t = 0.75f;
+                {   /* the list: a modern window as the stats', as tall (the parchment's rows: header 0-15, then 16 a row) */
+                    const float LX = 2, LW = 252, LH = 80;
+                    float kl = fminf(colw / (LW + 8), (hh - 8) / LH), lw = colw, lx = m, ly = top, lh = hh, ox = lx + (lw - LW * kl) / 2, oy = ly + 6 * kl;
+                    const uint32_t* f = g_engine_out[g_pop_eng ^ 1];
+                    int sel = -1;
+                    for (int i = 3; i > 0; i--) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), lx, ly, lw, lh);
+                    for (int r = 0; r < 4; r++) {
+                        uint32_t c = f[(16 + 16 * r + 8) * 256 + 128];
+                        if (((c >> 16) & 255) < 175 && ((c >> 16) & 255) > 130 && (c & 255) < 80) {   /* (the chosen row: brown, its words light) */
+                            sel = r;                                                        /* (drawn as it is, after the words: its brown bar, the hand, its light words) */
+                            continue;
+                        }
+                        int sign = 0;                                                       /* (its sex's sign: pink or blue) */
+                        for (int xx = 84; xx <= 97 && !sign; xx++) {
+                            uint32_t g = f[(16 + 16 * r + 3) * 256 + xx];
+                            int R = (g >> 16) & 255, G = (g >> 8) & 255, B = g & 255;
+                            sign = (R - G > 60 && B - G > 30) || (B - R > 60 && B - G > 30);
+                        }
+                        if (sign) bestiary_piece(v, 1, 84, (float)(17 + 16 * r), 14, 14, 0, ox + (84 - LX) * kl, oy + (17 + 16 * r) * kl, kl);
+                    }
+                    bestiary_piece(v, 1, 8, 2, 236, LH - 2, 6, ox + (8 - LX) * kl, oy + 2 * kl, kl);   /* its words (dark ink on the parchment: light; not its torn edge) */
+                    bestiary_piece(v, 1, 91, 2, 162, 11, 0, ox + (91 - LX) * kl, oy + 2 * kl, kl);   /* its header's box, as it is */
+                    if (sel >= 0) {                                                     /* its brown bar as it is, the hand alone (not the parchment round it) */
+                        bestiary_piece(v, 1, 16, (float)(16 + 16 * sel), 226, 16, 0, ox + (16 - LX) * kl, oy + (16 + 16 * sel) * kl, kl);
+                        bestiary_piece(v, 1, 5, (float)(16 + 16 * sel), 11, 16, 39, ox + (5 - LX) * kl, oy + (16 + 16 * sel) * kl, kl);
+                    }
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + 6 * C, oy + 16 * kl, lw - 12 * C, t);   /* under its header */
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, lw, t);
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly + lh - t, lw, t);
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx, ly, t, lh);
+                    set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), lx + lw - t, ly, t, lh);
+                }
+                for (int i = 3; i > 0; i--) set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 16, 0, 0, 1), x, y, ww, hh);
+                bestiary_piece(v, 0, g_pop_win[0] + 2, g_pop_win[1] + 2, g_pop_win[2] - 4, g_pop_win[3] - 4, 17, x + 2 * k, y + 2 * k, k);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, ww, t);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y + hh - t, ww, t);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x, y, t, hh);
+                set_rect(bestiary_piece(v, 0, 0, 0, 1, 1, 4, 0, 0, 1), x + ww - t, y, t, hh);
+            }
             else if (g_pop_win[2] && g_pop_modern && v->npiece + 8 <= GL_MAX_PIECES) {
                 /* one modern window: see-through, a thin grey line, its insides
                  * without their panel (like the windows over the field). A panel
@@ -4603,7 +4653,7 @@ static int text_key(SDL_Scancode k) {                             /* a key that 
  * around them, and what touches the edge (the sky, the torn border), go. */
 static void pop_update(int a_on_top) {
     if (!g_pop_win[2]) g_pop_held = 0;                            /* (not up last frame: placed afresh) */
-    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = g_pop_panel = 0;
+    g_pop_win[2] = 0; g_quest_page = g_card_page = g_pop_nook = g_accolade_page = g_pop_modern = g_pop_panel = g_invite = 0;
     bestiary_update(a_on_top);
     equip_update(a_on_top);
     static float sheet_far;                                       /* a quest's sheet: how far the 3D was since it is up (at most) */
@@ -4737,6 +4787,13 @@ static void pop_update(int a_on_top) {
             || (GREYISH(px[my * 256 + x0], 180, 255) && GREYISH(px[y0 * 256 + mx], 180, 255)        /* (its line, then a darker grey, then the panel (40, 40, 40)) */
             && GREYISH(px[my * 256 + x0 + 3], 25, 60) && GREYISH(px[(y1 - 3) * 256 + mx], 25, 60)));
 #undef GREYISH
+    }
+    g_pop_eng = eng;
+    if (g_pop_modern && g_pop_panel) {                            /* Patty's lists: the other screen's top a parchment (its rows' cream), its header's brown box */
+        const uint32_t* f = g_engine_out[eng ^ 1];
+#define TAN(c) ((int)(((c) >> 16) & 255) > 215 && (int)(((c) >> 8) & 255) > 190 && (int)((c) & 255) > 120 && (int)((c) & 255) < 175)
+        g_invite = TAN(f[60 * 256 + 60]) && TAN(f[60 * 256 + 200]) && TAN(f[70 * 256 + 128]) && !TAN(f[5 * 256 + 128]);
+#undef TAN
     }
     if (!g_shop) pop_place();
     {   /* allocating skill points: the parchment bare at the right of the
