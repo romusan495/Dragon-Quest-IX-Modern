@@ -4,12 +4,15 @@
 #include <string.h>
 #include "update.h"
 
-/* "v27" -> 27, 0, 9999; "v31.2" -> 31, 2, 9999; "v27-nightly9" -> 27, 0, 9 */
+/* "v27" -> 27, 0, 9999; "v31.2" -> 31, 2, 9999; "v27-nightly9" -> 27, 0, 9.
+ * Since v2.0 the numbers start again ("v2.0", "v2.1", "v3"...): a major
+ * under 26 (older than any release before it) is one of those, after v47. */
 static long long version_key(const char* v) {
     int major = 0, minor = 0, nightly = 9999;
     if (!v || (v[0] != 'v' && v[0] != 'V')) return -1;
     char* e;
     major = (int)strtol(v + 1, &e, 10);
+    if (major < 26) major += 1000;
     if (*e == '.') minor = atoi(e + 1);
     const char* n = strstr(v, "nightly");
     if (n) nightly = atoi(n + 7);
@@ -18,11 +21,12 @@ static long long version_key(const char* v) {
 int update_newer(const char* a, const char* b) { return version_key(a) > version_key(b); }
 
 #ifdef _WIN32
-/* the DQIX_VERSION line of a version.h */
+/* the DQIX_VERSION line of a version.h: the one at a line's start (the one
+ * in its comment is for the updaters of v47 and older, see version.h) */
 static int parse_version(const char* text, char* out, size_t n) {
-    const char* p = text ? strstr(text, "#define DQIX_VERSION \"") : NULL;
+    const char* p = text ? strstr(text, "\n#define DQIX_VERSION \"") : NULL;
     if (!p) return 0;
-    p += strlen("#define DQIX_VERSION \"");
+    p += strlen("\n#define DQIX_VERSION \"");
     size_t i = 0;
     while (p[i] && p[i] != '"' && i + 1 < n) { out[i] = p[i]; i++; }
     out[i] = 0;

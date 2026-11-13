@@ -38,6 +38,11 @@ Une tâche Claude planifiée par semaine ; rien n'est publié sans le feu vert d
 Romuald dans le thread `[Intégration] Releases hebdomadaires`.
 Numérotation (Romuald, 2026-10-30) : versions entières à partir de v32
 (v32, v33...). Les v31.1 à v31.11 l'ont précédée.
+Depuis le 2026-11-13 (Romuald) : après v47 vient **v2.0** ; corrections =
+v2.1, v2.2... ; gros ajouts = v3, v4... `update.c` range un majeur < 26 après
+v47. Les jeux en v47 ou avant lisent la première ligne `DQIX_VERSION` de
+`version.h`, même en commentaire : à chaque release, mettre à jour la ligne
+du commentaire, `#define DQIX_VERSION "v48 (vX.Y)"` (garder « v48 » devant).
 1. Lister les PR fusionnées dans `main` depuis le dernier tag `vN`. Aucune :
    pas de release cette semaine.
 2. Branche `integ/release-vN` : `runtime/version.h` (`DQIX_VERSION` et la
@@ -47,7 +52,9 @@ Numérotation (Romuald, 2026-10-30) : versions entières à partir de v32
 3. `dqix-build-check` sur la branche (PC allumé). Demander le feu vert.
 4. Après accord : fusion, tag `vN` sur `main`, branche `stable` déplacée sur
    ce tag (le bouton « Check for updates » la lit), release GitHub `vN` avec
-   la note comme texte. Seulement le *Source code (zip)* automatique de GitHub.
+   la note comme texte. Le *Source code (zip)* de GitHub, plus le zip
+   `...-Windows-x64.zip` joint par `.github/workflows/release-zip.yml`
+   (RecompLauncher) : vérifier qu'il est là après la publication.
 - **Jamais dans une release** : ROM, `dqix.exe`, C généré, `build/`, `game/`,
   textures ou films upscalés, `wfc/` et les extras (données du jeu).
 - Nos numéros ne suivent plus ceux de l'upstream (sa v32 n'est pas la nôtre) :
