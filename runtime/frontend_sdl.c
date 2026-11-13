@@ -4579,7 +4579,9 @@ static void creation_update(int a_on_top) {
         int w = tx + 10 - 7, h = ty + 9 - 121;
         if (w > 242) w = 242;
         if (h > 65) h = 65;
-        static const int yn[4] = { 216, 76, 34, 36 };             /* Yes / No's inside (its light edge left out) */
+        int yn[4] = { 216, 76, 34, 36 };                          /* Yes / No's inside (its light edge left out): its right side fixed, */
+        for (int x = 240; x > 190; x--)                           /* its left edge further left for longer words (German's "Nein"), */
+            if (CC_SUM(x, 93) > 450) { if (x < 230) { yn[0] = x + 2; yn[2] = 250 - yn[0]; } break; }   /* (row 93: between its two lines, under the hand) */
         int tb[4] = { 7, 121, w, h };                             /* the text box's inside, cut after the text */
         memcpy(g_cc_box[0], yn, sizeof yn); memcpy(g_cc_box[1], tb, sizeof tb);
         g_cc_at[0][0] = w - yn[2]; g_cc_at[0][1] = 0;
