@@ -919,6 +919,7 @@ static int card_plates(void);
 static void card_jobs(GlPresent* v, float X, float Y, float k, int n);
 static void bestiary_update(int a_on_top) {
     g_list_keys = list_keys;
+    if (!in_adventure()) { g_bmode = BM_NONE; g_bhold = 0; g_rec_at = g_rec2d_at = 0; return; }   /* (the title, its opening movie: none of the records' screens, whatever its pictures look like) */
     if (g_bmode) g_rec_at = g_frame;                              /* (the records still open) */
     logo_load();
     const uint32_t* top = g_engine_out[a_on_top ? 0 : 1], *list = g_engine_out[a_on_top ? 1 : 0];
@@ -1659,7 +1660,7 @@ static void equip_update(int a_on_top) {
         }
     }
     if (x1 < 0) { x0 = 60; x1 = 60; y0 = 36; y1 = 36; }
-    else if (hm && x1 < 175) x1 = x1 + 8 < 175 ? x1 + 8 : 175;   /* (the PC font's words can be wider than the game's) */
+    else if (hm && x1 < 171) x1 = x1 + 8 < 171 ? x1 + 8 : 171;   /* (the PC font's words can be wider than the game's; not the card's dotted edge at 172 and on) */
     g_eq_desc[0] = x0; g_eq_desc[1] = y0; g_eq_desc[2] = x1 + 1; g_eq_desc[3] = y1 + 1;
     y0 = 192; y1 = -1;                                            /* the stats' light letters */
     for (int y = 105; y < 175; y++) {
@@ -1880,7 +1881,7 @@ static void equip_pieces(GlPresent* v, int ww, int wh) {
             const float* q = v->layer[GL_LAYER_KEY1];
             float tx = q[0] + q[2] + 12 * C;
             modern_window(v, MX(26), ky - 10 * C, tx + 68 * kl + 16 * C - MX(26), kh + 20 * C);   /* (in a window of its own: seen on the wall) */
-            bestiary_piece(v, 1, 60, 180, 68, 9, 30, tx, ky + (kh - 9 * kl) / 2, kl);
+            bestiary_piece(v, 1, 60, 180, 68, 9, 34, tx, ky + (kh - 9 * kl) / 2, kl);
         }
     }
     /* the list (or the bag's grid) at the right */
@@ -2156,6 +2157,7 @@ static int results_hub(void) {                                    /* (the touch 
     #define RH_RGB(c_) int r = ((c_) >> 16) & 255, g = ((c_) >> 8) & 255, b = (c_) & 255
     static int last; static uint64_t seen;
     g_rs_cer = 0;
+    if (!in_adventure()) return last = 0;                         /* (the title, its opening movie: not Sandy's page) */
     for (int e = 0; e < 2; e++) {
         const uint32_t* px = g_engine_out[e]; int n = 0;
         static const int at[5][2] = { { 128, 170 }, { 10, 150 }, { 200, 180 }, { 240, 186 }, { 60, 188 } };
@@ -2568,7 +2570,7 @@ static void canvas_layout_for(GlPresent* v, int ww, int wh, int second) {
             }
         }
         if (g_title && !second && !g_peek && v->npiece + 4 + 6 * g_title_n <= GL_MAX_PIECES) title_pieces(v);   /* the title, modern */
-        int page = top_page_mode();
+        int page = in_adventure() ? top_page_mode() : 0;          /* (the title, its opening movie: no menu's page) */
         if (page != 2 && g_rec2d_at && g_rec2d_at == g_frame) page = 2;         /* (the records' menus with no 3D: bestiary_update()) */
         if (page == 2) g_page2_at = g_frame;
         else if (g_bhold || (g_bmode && g_bmode != BM_TITLES && g_winstyle == 2 && g_frame - g_page2_at <= 2)) page = 2;   /* (the 3D renewed (its scale changed): the frame after, on the next layout of this frame) */
@@ -4125,6 +4127,13 @@ static void creation_update(int a_on_top) {
      * own brightness at its left edge (never under a window), so
      * the pop-ups are there from the first frames (not both screens side by side) */
 #define CC_SUM(x, y) ((int)((px[(y) * 256 + (x)] >> 16) & 255) + (int)((px[(y) * 256 + (x)] >> 8) & 255) + (int)(px[(y) * 256 + (x)] & 255))
+    {   /* the character's screen still has its title window (its light top edge over its dark inside):
+         * once the character is taken it fades out, the keyboard staying on the touch screen under the next scene */
+        const uint32_t* tp = g_engine_out[a_on_top ? 0 : 1];
+#define TP_SUM(x, y) ((int)((tp[(y) * 256 + (x)] >> 16) & 255) + (int)((tp[(y) * 256 + (x)] >> 8) & 255) + (int)(tp[(y) * 256 + (x)] & 255))
+        if (TP_SUM(128, 1) < 90 || TP_SUM(128, 1) < 3 * TP_SUM(128, 12)) return;
+#undef TP_SUM
+    }
     int lp = CC_SUM(6, 100);                                      /* the parchment: about 520 when bright (260 greyed under Patty's last question) */
     {   uint32_t c = px[100 * 256 + 6];
         int r = (c >> 16) & 255, b = c & 255;
@@ -4713,30 +4722,31 @@ static int xmenu_detect(int a_on_top) {
          * first gap of 10 columns empty in all its lines after the text), over its letters' rows (but the
          * accents': 3 letter pixels a row) with 4 pixels round; the chosen line's letters may be yellow */
         int ly0 = (sep ? sep : top) + 2, ly1 = bot - 2, end = X1 - 2, seen = 0, gap = 0;
-        #define XM_INK(c) XM_INK2(c)
+        const uint8_t* hm = g_hdtext_on ? g_hdtext_mask[0] : NULL;   /* (the HD text on: its letters not in the screen's picture; where they are, its mask) */
+        #define XM_INK(i) (XM_INK2(px[i]) || (hm && hm[i]))
         for (int x = hx1 + 2; x < X1 - 1; x++) {
             int any = 0;
-            for (int y = ly0; y <= ly1 && !any; y++) any = XM_INK(px[y * 256 + x]);
-            if (any) { seen = 1; gap = 0; } else if (seen && ++gap >= 10) { end = x - 5; break; }
+            for (int y = ly0; y <= ly1 && !any; y++) any = XM_INK(y * 256 + x);
+            if (any) { seen = 1; gap = 0; } else if (seen && ++gap >= (hm ? 6 : 10)) { end = x - gap + 5; break; }   /* (the HD letters' boxes: wider, the gap between the columns narrower) */
         }
         int t0 = -1, t1 = -1;                                      /* its letters' rows: the run round the hand's middle */
         for (int y = hy - 9, c0 = -1, c1 = -1; y <= hy + 10; y++) {   /* (the runs of rows apart by 3 or more; the nearest the hand's middle) */
             int k = 0;
-            if (y >= ly0 && y <= ly1 && y <= hy + 9) for (int x = hx1 + 1; x < end; x++) k += XM_INK(px[y * 256 + x]);
+            if (y >= ly0 && y <= ly1 && y <= hy + 9) for (int x = hx1 + 1; x < end; x++) k += XM_INK(y * 256 + x);
             if (k >= 3) { if (c0 < 0 || y > c1 + 2) c0 = y; c1 = y; continue; }
             if (c0 >= 0 && y > c1 + 2) {
                 if (t0 < 0 || abs((c0 + c1) - 2 * hy) < abs((t0 + t1) - 2 * hy)) { t0 = c0; t1 = c1; }
                 c0 = -1;
             }
         }
-        #undef XM_INK
         if (t0 < 0) { t0 = hy - 3; t1 = hy + 3; }
         int tx = hx1 + 1;                                         /* (from 2 before its letters: the hand stays out, the band still while the hand moves) */
         for (int found = 0; tx < end && !found; tx++)
-            for (int y = t0; y <= t1 && !found; y++) found = XM_INK2(px[y * 256 + tx]);
+            for (int y = t0; y <= t1 && !found; y++) found = XM_INK(y * 256 + tx);
         g_xm_band[0] = tx - 3; g_xm_band[2] = end;
         g_xm_band[1] = t0 - 4; g_xm_band[3] = t1 + 5;
         if (g_xm_band[1] < ly0 - 1) g_xm_band[1] = ly0 - 1;
+        #undef XM_INK
         if (g_xm_band[3] > ly1 + 1) g_xm_band[3] = ly1 + 1;
     }
     g_xm_nword = 0;                                               /* the path: the greyed menus' names above it (one a line), then its own */
@@ -4787,7 +4797,7 @@ static void xmenu_update(int a_on_top) {
             while (x0 > 0 && MGREY(x0 - 1, y0)) x0--;
             while (x1 < 255 && MGREY(x1 + 1, y0)) x1++;
             while (y1 < 191 && !MGREY(128, y1)) y1++;                /* (its bottom line) */
-            if (y1 - y0 < 16) continue;
+            if (y1 - y0 < 16 || !MGREY(128, y1)) continue;          /* (a window's own bottom line over the 3D: no window under it) */
             int box[4];
             bag_word(px, x0 + 2, y0 + 2, x1 - 1, y1, box);         /* (its words) */
             if (!box[2]) { empty = 1; continue; }                  /* (opened, its words not out yet) */
@@ -4801,7 +4811,17 @@ static void xmenu_update(int a_on_top) {
         uint32_t c = px[g_xm_win[1] * 256 + g_xm_win[0] + 6] & 0xFFFFFF;
         ok = c == 0x828282 || c == 0xA2A2A2;
     }
-    if (ok) { g_xm_hand[2] = 0; g_xm_hold = 1; return; }
+    if (ok) {
+        g_xm_hand[2] = 0; g_xm_hold = 1;
+        for (int i = 0; i < g_xm_nf; ) {                          /* (a window round it closed meanwhile (the party's panel under a question): not drawn from what's there now) */
+            uint32_t c = px[g_xm_fwin[i][1] * 256 + g_xm_fwin[i][0] + 6] & 0xFFFFFF;
+            if (c == 0x828282 || c == 0xA2A2A2) { i++; continue; }
+            g_xm_nf--;
+            memmove(g_xm_fwin[i], g_xm_fwin[i + 1], sizeof g_xm_fwin[0] * (size_t)(g_xm_nf - i));
+            memmove(g_xm_fsep[i], g_xm_fsep[i + 1], sizeof g_xm_fsep[0] * (size_t)(g_xm_nf - i));
+        }
+        return;
+    }
     g_xmenu = 0;
     if (!g_bag && g_frame - seen > 60) g_bag_path_n = 0;         /* (out of the menus a second: the bag's path forgotten) */
 }
