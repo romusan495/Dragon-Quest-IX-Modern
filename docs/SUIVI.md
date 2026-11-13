@@ -38,7 +38,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | PNJ en 3D : ROM 3DS de DQVII/DQVIII | Graph | [Graph] Remplacer les PNJ en image par la 3D | — | fusionné | PR #138 | Dossier `rom/3DS` (README) pour les ROM 3DS de DQVII/DQVIII ; touche `tools/build-game.sh` (bloc townspeople) et `.gitignore` ; pas testé sous Windows ni avec une vraie ROM 3DS ; pour la v2.0 |
 | Corrections texte HD, insignes Prêtre/Artiste martial (Tsu) | Graph | — | `dev/hdtext-fixes-v66` | fusionné | PR #136 | Touche `runtime/frontend_sdl.c`, `runtime/hdtext.c`, images `tools/job_*` |
 | Création du personnage en écran large (Tsu) | Graph | — | `dev/creation-modern` | fusionné | PR #139 | Touche `runtime/frontend_sdl.c`, `runtime/gl_render.c` (mode 38), `runtime/gl_render.h` (`GL_LAYER_KEY3`) |
-| Création du personnage en anglais/italien/allemand (correctif) | — | — | — | fusionné | PR #142 (a62de35) | Touche `runtime/frontend_sdl.c` ; pour la v2.1 |
+| Création du personnage en anglais/italien/allemand (correctif) | — | — | — | fusionné | PR #142 (a62de35) | Touche `runtime/frontend_sdl.c` ; dans la v2.1 |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
