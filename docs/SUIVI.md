@@ -39,6 +39,7 @@ jour : 2026-10-28 (audit du cahier des charges, `main` = `19741c6`, v31.9).
 | Corrections texte HD, insignes Prêtre/Artiste martial (Tsu) | Graph | — | `dev/hdtext-fixes-v66` | fusionné | PR #136 | Touche `runtime/frontend_sdl.c`, `runtime/hdtext.c`, images `tools/job_*` |
 | Création du personnage en écran large (Tsu) | Graph | — | `dev/creation-modern` | fusionné | PR #139 | Touche `runtime/frontend_sdl.c`, `runtime/gl_render.c` (mode 38), `runtime/gl_render.h` (`GL_LAYER_KEY3`) |
 | Création du personnage en anglais/italien/allemand (correctif) | — | — | — | fusionné | PR #142 (a62de35) | Touche `runtime/frontend_sdl.c` ; dans la v2.1 |
+| Jeu sur Linux et Steam Deck | Dev | [Dev] Porter le jeu sur Linux et Steam Deck | `claude/project-thread-05j29v` | en cours | — | Touche `tools/build-game.sh` (bloc Linux de compilation) ; ajoute `BUILD.sh`, `tools/linux_tools.py`, `tools/build_nomake.py`, `docs/LINUX-STEAMDECK.md` ; modifie `recomplauncher.json`, `.github/workflows/release-zip.yml` (zip Linux-x64 en plus), `README.md` ; rien côté runtime |
 | Étoiles des points de collecte (correctif) | Dev | [Dev] Corriger les étoiles des points de collecte | `claude/project-thread-jpw0mf` | fusionné | PR #132 (5d8ce11) | — |
 
 ### Fichiers partagés touchés par les fils en cours (2026-10-28 soir)
@@ -54,8 +55,9 @@ une par une. Conflits probables signalés.
 | `build.mk` | Menus en français (`uitext.c`), Journal (`journal.c`) |
 | `runtime/gpu2d.c` | Cadre moderne |
 | `runtime/gpu3d.c` | PNJ en 3D (`submit_vertex`, `gpu3d_vblank`) |
-| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) ; PNJ en 3D (modèles si `rom/dq7-path.txt` / `rom/dq8-path.txt`) ; PNJ en 3D (`rom/3DS`, #138) |
+| `tools/build-game.sh`, `build-windows.sh` | Menus en français (copie de `lang/*.txt`) ; Trophées (`trophy_badges.py`, facultatif) ; RecompLauncher (`step()`/`DQIX_PROGRESS`, ROM `.zip`) ; PNJ en 3D (modèles si `rom/dq7-path.txt` / `rom/dq8-path.txt`) ; PNJ en 3D (`rom/3DS`, #138) ; Linux et Steam Deck (bloc Linux de compilation, `claude/project-thread-05j29v`) |
 | `runtime/mapmarks.c` | Boutons manette (légende), Journal (lecteurs de la ROM rendus publics) ; Étoiles des points de collecte |
+| `recomplauncher.json`, `.github/workflows/release-zip.yml`, `README.md` | Linux et Steam Deck (zip Linux-x64 en plus, `claude/project-thread-05j29v`) |
 
 Terminé depuis le 21/10 (détail dans `release-notes/v31.*.md`) : écran unique
 #2, réglages par défaut #15, mini-carte et suppression des dispositions #21 #23
