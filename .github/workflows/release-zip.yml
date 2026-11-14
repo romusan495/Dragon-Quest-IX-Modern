@@ -31,5 +31,5 @@ jobs:
           cp "$zip" "$name"
           linux="Dragon-Quest-IX-Modern-$TAG-Linux-x64.zip"
           cp "$zip" "$linux"
-          zip -q -d "$linux" 'DQIX-PC/*.bat' 'DQIX-PC/tools/*.ps1'
+          zip -q -d "$linux" 'DQIX-PC/*.bat' 'DQIX-PC/tools/*.ps1' || [ $? -eq 12 ]   # 12: nothing left to remove
           gh release upload "$TAG" "$name" "$linux" --clobber

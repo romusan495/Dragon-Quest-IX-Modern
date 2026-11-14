@@ -12,15 +12,17 @@
 # once into build/linux-tools, for this folder only: nothing is installed in
 # the system and no password is asked. The result goes in the "game" folder:
 # run game/play.sh (or game/dqix).
+HERE="$(pwd)"                                   # a ROM path given relative to where this was run from
 cd "$(dirname "$0")" || exit 1
+abs() { case "$1" in ""|/*) printf '%s' "$1" ;; *) printf '%s/%s' "$HERE" "$1" ;; esac; }
 
 ROM=
 if [ "$1" = "--prepare" ]; then
     export DQIX_PROGRESS=1
-    ROM="$2"
+    ROM="$(abs "$2")"
     [ -n "$ROM" ] && [ -f "$ROM" ] || { echo "No ROM given, or it doesn't exist: \"$2\""; exit 2; }
 elif [ -n "$1" ]; then
-    ROM="$1"
+    ROM="$(abs "$1")"
 else
     # the ROM: the first .nds in the "rom" folder, or the one chosen last time
     for f in rom/*.nds; do [ -f "$f" ] && { ROM="$f"; break; }; done
