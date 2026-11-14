@@ -9,18 +9,20 @@
   },
   "prepare": {
     "program": [
-      "BUILD.bat"
+      "BUILD.bat",
+      "BUILD.sh"
     ],
     "args": [
       "--prepare",
       "{game}"
     ],
-    "label": "Building the PC game from your ROM (the first time installs MSYS2 and takes 10-20 minutes)",
+    "label": "Building the PC game from your ROM (the first time downloads the build tools and takes 10-20 minutes)",
     "timeout": 3600
   },
   "start": {
     "program": [
-      "game/dqix.exe"
+      "game/dqix.exe",
+      "game/dqix"
     ]
   },
   "config": [

@@ -348,6 +348,9 @@ Install Dragon Quest IX.bat  the setup window (tools/setup-wizard.ps1): ROM vers
                        shortcuts, Apps entry (tools/uninstall.ps1), then BUILD.bat
 BUILD.bat              the one-click build: your ROM -> the game folder
 tools/build-game.sh    what BUILD.bat runs (inside MSYS2; also works on Linux)
+BUILD.sh               BUILD.bat for Linux / Steam Deck (docs/LINUX-STEAMDECK.md)
+tools/linux_tools.py   what BUILD.sh fetches when missing: Zig (C compiler), SDL2 headers, PyYAML
+tools/build_nomake.py  build.mk's Linux build without make (SteamOS): keep the two in step
 tools/extract_rom.py   takes the code out of a DS ROM (same output as dsd rom extract)
 config/usa/arm9        function names and relocations from the dqix-decomp project
 rom/, extras/          where your ROM and the optional extras go
