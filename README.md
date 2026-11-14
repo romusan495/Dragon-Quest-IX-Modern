@@ -5,19 +5,15 @@
 **Dragon Quest IX : Les Sentinelles du firmament, en vrai jeu PC.**
 *English version below: [jump to English](#english).*
 
-**Rejoignez la communauté sur Discord : https://discord.gg/Ja3nJGAjDA**
+**Rejoignez la communauté sur Discord :** [discord.gg/z9X9PH8AH4](https://discord.gg/z9X9PH8AH4)
 (aide, nouvelles versions, retours, captures).
 
-> **Où en est le projet ?** Une **décompilation complète** du jeu est en cours.
-> La version actuelle de ce dépôt est une **ébauche** : elle sert de base de
-> travail pour la **recompilation** du jeu et pour le **futur remake** (un vrai
-> jeu PC sous Godot, sur un seul écran, avec des graphismes modernisés). Tout
-> ce qui est fait ici sert de banc d'essai et de référence pour ce remake.
+> **Où en est le projet ?** Une **décompilation complète** du jeu est en cours. La version actuelle de ce dépôt est une **ébauche** : elle sert de base de travail pour la **recompilation** du jeu et pour le **futur remake** (un vrai jeu PC sous Godot, sur un seul écran, avec des graphismes modernisés). Tout ce qui est fait ici sert de banc d'essai et de référence pour ce remake.
 
 Ce projet transforme **votre propre** cartouche de Dragon Quest IX (DS, version
 européenne ou américaine) en un programme Windows natif, compilé sur votre PC à
-partir de la ROM que vous avez extraite de votre cartouche. **Ce dépôt ne
-contient aucune donnée du jeu** : ni code, ni graphismes, ni musique, ni ROM.
+partir de la ROM que vous avez extraite de votre cartouche.
+**Ce dépôt ne contient aucune donnée du jeu** : ni code, ni graphismes, ni musique, ni ROM.
 Ce n'est pas un émulateur : le code ARM du jeu est **recompilé en C**, puis lié
 à un runtime qui recrée le matériel de la DS (2D, 3D, son, cartouche, entrées)
 avec SDL2 et OpenGL.
@@ -25,14 +21,7 @@ avec SDL2 et OpenGL.
 Projet développé par **Romuald** ([romusan495](https://github.com/romusan495))
 et **TitanFr199**, avec l'aide de Claude.
 
-> **Droits et usage — à lire.** Ce projet est réalisé **à des fins éducatives
-> uniquement** (étude de la recompilation et de la préservation des jeux).
-> Dragon Quest IX et tout son contenu appartiennent à leurs ayants droit
-> (Square Enix, Level-5, Armor Project, Bird Studio, Koichi Sugiyama,
-> Nintendo). **Aucune ROM n'est fournie et aucune ne le sera.** Pour que le
-> projet fonctionne, vous devez utiliser **une ROM extraite de votre propre
-> cartouche** de Dragon Quest IX, que vous possédez légalement. Ne téléchargez
-> pas de ROM et ne partagez ni ROM, ni jeu compilé, ni fichiers du jeu.
+> **Droits et usage — à lire.** Ce projet est réalisé **à des fins éducatives uniquement** (étude de la recompilation et de la préservation des jeux). Dragon Quest IX et tout son contenu appartiennent à leurs ayants droit (Square Enix, Level-5, Armor Project, Bird Studio, Koichi Sugiyama, Nintendo). **Aucune ROM n'est fournie et aucune ne le sera.** Pour que le projet fonctionne, vous devez utiliser **une ROM extraite de votre propre cartouche** de Dragon Quest IX, que vous possédez légalement. Ne téléchargez pas de ROM et ne partagez ni ROM, ni jeu compilé, ni fichiers du jeu.
 
 ---
 
@@ -113,8 +102,8 @@ et **TitanFr199**, avec l'aide de Claude.
 - **Une version GitHub par semaine environ** : de v31.1 (22 octobre 2026) à
   **v40** aujourd'hui, avec notes de version dans [`release-notes/`](release-notes/).
   Le jeu propose lui-même la mise à jour.
-- Plus de 90 pull requests fusionnées, tests automatiques réparés, **test de
-  fumée** (EU et USA) avant chaque fusion.
+- Plus de 90 pull requests fusionnées, tests automatiques réparés,
+  **test de fumée** (EU et USA) avant chaque fusion.
 - Récapitulatif complet : [docs/RECAP.md](docs/RECAP.md) ; suivi des tâches :
   [docs/SUIVI.md](docs/SUIVI.md) ; carte technique :
   [docs/TECHNICAL.md](docs/TECHNICAL.md).
@@ -166,7 +155,7 @@ change dans **Jeu > Contrôles**.
 
 Appuyez sur **F10** dans le jeu : un rapport est enregistré dans
 `game\reports\`. Posez vos questions sur le
-**[Discord](https://discord.gg/Ja3nJGAjDA)**.
+[Discord](https://discord.gg/z9X9PH8AH4).
 
 ---
 
@@ -176,13 +165,9 @@ Appuyez sur **F10** dans le jeu : un rapport est enregistré dans
 
 **Dragon Quest IX: Sentinels of the Starry Skies, as a native PC game.**
 
-**Join us on Discord: https://discord.gg/Ja3nJGAjDA**
+**Join us on Discord:** [discord.gg/z9X9PH8AH4](https://discord.gg/z9X9PH8AH4)
 
-> **Project status:** a **full decompilation** of the game is in progress. The
-> current version of this repository is a **draft**: a working base for the
-> **recompilation** and for the **upcoming remake** (a real PC game in Godot,
-> on one screen, with modernised graphics). Everything done here is a test bed
-> and a reference for that remake.
+> **Project status:** a **full decompilation** of the game is in progress. The current version of this repository is a **draft**: a working base for the **recompilation** and for the **upcoming remake** (a real PC game in Godot, on one screen, with modernised graphics). Everything done here is a test bed and a reference for that remake.
 
 This project turns **your own** Dragon Quest IX cartridge (DS, European or USA
 version) into a native Windows program, built on your PC from the ROM you
@@ -193,13 +178,7 @@ with SDL2 and OpenGL. Developed by **Romuald**
 ([romusan495](https://github.com/romusan495)) and **TitanFr199**, helped by
 Claude.
 
-> **Rights and use, please read.** This project is for **educational purposes
-> only** (studying recompilation and game preservation). Dragon Quest IX and
-> all its content belong to their rights holders (Square Enix, Level-5, Armor
-> Project, Bird Studio, Koichi Sugiyama, Nintendo). **No ROM is provided, and
-> none ever will be.** To make it work, you must use **a ROM dumped from your
-> own cartridge** of Dragon Quest IX, which you legally own. Don't download
-> ROMs, and don't share ROMs, the built game or any game files.
+> **Rights and use, please read.** This project is for **educational purposes only** (studying recompilation and game preservation). Dragon Quest IX and all its content belong to their rights holders (Square Enix, Level-5, Armor Project, Bird Studio, Koichi Sugiyama, Nintendo). **No ROM is provided, and none ever will be.** To make it work, you must use **a ROM dumped from your own cartridge** of Dragon Quest IX, which you legally own. Don't download ROMs, and don't share ROMs, the built game or any game files.
 
 **Done so far**
 - **European ROM support** (16-byte ARM9 shift fixed) and a **Language menu**
