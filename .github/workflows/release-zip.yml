@@ -1,8 +1,11 @@
 # When a release is published: attach the project as a zip named for
-# RecompLauncher (one file per system, "Windows-x64" in its name), with
+# RecompLauncher (one file per system, "Windows-x64" / "Linux-x64" in its name), with
 # recomplauncher.json at its top. It is the same zip as tools/make-release.py
 # makes: the project as committed, no game code and no ROM. The player's
-# RecompLauncher then builds the game from their own ROM (BUILD.bat --prepare).
+# RecompLauncher then builds the game from their own ROM (BUILD.bat --prepare,
+# or BUILD.sh --prepare on Linux and the Steam Deck: the Linux zip leaves out
+# the .bat files, so the launcher, trying recomplauncher.json's programs in
+# order, finds BUILD.sh and game/dqix there).
 name: Release zip
 on:
   release:
@@ -26,4 +29,7 @@ jobs:
           zip=$(ls out/*/DQIX-PC-*.zip | grep -v -- -extras.zip)
           name="Dragon-Quest-IX-Modern-$TAG-Windows-x64.zip"
           cp "$zip" "$name"
-          gh release upload "$TAG" "$name" --clobber
+          linux="Dragon-Quest-IX-Modern-$TAG-Linux-x64.zip"
+          cp "$zip" "$linux"
+          zip -q -d "$linux" 'DQIX-PC/*.bat' 'DQIX-PC/tools/*.ps1' || [ $? -eq 12 ]   # 12: nothing left to remove
+          gh release upload "$TAG" "$name" "$linux" --clobber

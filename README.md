@@ -132,6 +132,10 @@ La sauvegarde (`dqix.sav`) et les réglages (`settings.ini`) sont dans le
 dossier `game`. **Ne partagez jamais les dossiers `game` et `build`** : ils
 contiennent le jeu.
 
+**Linux et Steam Deck** : le jeu tourne aussi sous Linux et sur Steam Deck
+(avec RecompLauncher, ou `sh BUILD.sh` dans un terminal). Le tuto pas à pas est
+dans **[docs/LINUX-STEAMDECK.md](docs/LINUX-STEAMDECK.md)**.
+
 **Mises à jour** : le jeu propose la nouvelle version au démarrage (ou
 Aide > Rechercher des mises à jour). Sauvegardes et réglages sont conservés,
 et la version précédente reste dans `update` (`update\rollback.bat`).
@@ -208,6 +212,9 @@ Claude.
 (*Source code (zip)*), unzip it, double-click `Install Dragon Quest IX.bat` and
 choose your own ROM (Windows 10/11 64-bit, about 3 GB free). Or put your ROM in
 `rom` and run `BUILD.bat`. The game then updates itself and keeps your saves.
+
+**Linux and Steam Deck**: through RecompLauncher, or `sh BUILD.sh` in a
+terminal. Step by step: **[docs/LINUX-STEAMDECK.md](docs/LINUX-STEAMDECK.md)**.
 
 ---
 

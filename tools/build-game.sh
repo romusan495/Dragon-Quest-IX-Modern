@@ -115,7 +115,10 @@ MINGW*|MSYS*)
     cp /ucrt64/bin/SDL2.dll game/ ;;
 *)
     EXE=game/dqix
-    make -j"$(nproc)" -f build.mk GEN=build/recomp GEN7=build/recomp7 OBJ=build/obj FRONTEND=sdl OUT="$EXE" CORE=game/dqixcore.so PIC=-fPIC \
+    # no make (SteamOS on the Steam Deck): tools/build_nomake.py does build.mk's work
+    MK="make -j$(nproc) -f build.mk"
+    command -v make >/dev/null 2>&1 || MK="$PY tools/build_nomake.py"
+    $MK GEN=build/recomp GEN7=build/recomp7 OBJ=build/obj FRONTEND=sdl OUT="$EXE" CORE=game/dqixcore.so PIC=-fPIC \
          CFLAGS="-O1 -w" DEFS=-DRECOMP_TRACE SDL_CFLAGS="${SDL_CFLAGS:-$(sdl2-config --cflags)}" SDL_LIBS="${SDL_LIBS:-$(sdl2-config --libs)}" "$EXE" core ;;
 esac
 
