@@ -153,6 +153,48 @@ check "log written" 'grep -q "installed" "$G/hd-pack.log"'
 check "sentinel byte-identical" '[ "$(snapshot)" = "$before" ]'
 check "nothing changed next to the game folder" '[ "$(around)" = "$before_up" ]'
 check "source pack unchanged" '(cd "$T/pack" && grep "^zip" hd-pack.txt | while read -r k n s h; do echo "$h  $n"; done | sha256sum -c --quiet)'
+
+echo "== end to end: pack 2 changes only the movies; the textures zips are not fetched again"
+mkdir -p "$T/src/mov2"
+python3 -c 'import sys; open(sys.argv[1], "wb").write(b"N" * 300); open(sys.argv[2], "wb").write(b"T" * 20)' "$T/src/mov2/a.1.mpg" "$T/src/mov2/a.sig"
+python3 "$ROOT/tools/make_hd_pack.py" "$T/src/tex" "$T/src/mov2" "$T/pack2" --version 2 --max-gb "$(python3 -c 'print(2400/1024**3)')"
+check "pack 2 textures zips are byte-identical to pack 1's" '(cd "$T/pack2" && for z in hd-pack-textures-*.zip; do cmp -s "$z" "$T/pack/$z" || exit 1; done)'
+mkdir -p "$T/pack2-movies-only"
+cp "$T/pack2/hd-pack.txt" "$T/pack2/hd-pack-movies.zip" "$T/pack2-movies-only/"   # textures zips missing: fetching one would fail
+tex_before=$(cd "$G/textures/hd-pack" && ls | grep -v '^hd-pack.txt$' | xargs sha256sum)
+rc=0
+HDPACK_SOURCE="$(wine_path "$T/pack2-movies-only")" wine "$G/hd-pack.exe" || rc=$?
+check "pack 2: exit 0" '[ $rc -eq 0 ]'
+check "pack 2: marker is version 2" 'head -1 "$G/textures/hd-pack/hd-pack.txt" | grep -qx "hd-pack 2"'
+check "pack 2: textures kept as they were" '[ "$(cd "$G/textures/hd-pack" && ls | grep -v "^hd-pack.txt$" | xargs sha256sum)" = "$tex_before" ] && [ ! -e "$G/hd-pack-ancien/hd-pack" ]'
+check "pack 2: old marker set aside" 'head -1 "$G/hd-pack-ancien/hd-pack.txt" | grep -qx "hd-pack 1"'
+check "pack 2: new movies in" '[ "$(cat "$G/movies/a.1.mpg")" = "$(cat "$T/src/mov2/a.1.mpg")" ] && [ "$(cat "$G/movies/a.sig")" = "$(cat "$T/src/mov2/a.sig")" ]'
+check "pack 2: pack 1 movies kept aside" '[ "$(cat "$G/movies-avant-hd-pack/a.1.mpg")" = "$(cat "$T/src/mov/a.1.mpg")" ]'
+check "pack 2: log says the textures zips were already installed" 'grep -q "hd-pack-textures-1.zip: already installed" "$G/hd-pack.log"'
+check "pack 2: work folder removed" '[ ! -e "$G/hd-pack-tmp" ]'
+check "pack 2: sentinel byte-identical" '[ "$(snapshot)" = "$before" ]'
+rc=0
+HDPACK_SOURCE="$(wine_path "$T/pack2-movies-only")" wine "$G/hd-pack.exe" || rc=$?
+check "pack 2 again: nothing to do" '[ $rc -eq 0 ] && [ "$(grep -c "^hd-pack 2:" "$G/hd-pack.log")" = 1 ]'
+
+echo "== end to end: pack 3 changes one texture; the textures zips go together, the movies zip is kept"
+cp -r "$T/src/tex" "$T/src/tex3"
+python3 -c 'import sys; open(sys.argv[1], "wb").write(bytes([9]) * 600)' "$T/src/tex3/000000000000abc4.png"
+python3 "$ROOT/tools/make_hd_pack.py" "$T/src/tex3" "$T/src/mov2" "$T/pack3" --version 3 --max-gb "$(python3 -c 'print(2400/1024**3)')"
+check "pack 3: 2 textures zips, only the second one changed" '[ "$(ls "$T/pack3" | grep -c "^hd-pack-textures-")" = 2 ] && cmp -s "$T/pack3/hd-pack-textures-1.zip" "$T/pack/hd-pack-textures-1.zip" && ! cmp -s "$T/pack3/hd-pack-textures-2.zip" "$T/pack/hd-pack-textures-2.zip"'
+mkdir -p "$T/pack3-textures-only"
+cp "$T/pack3/hd-pack.txt" "$T/pack3/"hd-pack-textures-*.zip "$T/pack3-textures-only/"   # movies zip missing: fetching it would fail
+log_at=$(wc -l < "$G/hd-pack.log")
+rc=0
+HDPACK_SOURCE="$(wine_path "$T/pack3-textures-only")" wine "$G/hd-pack.exe" || rc=$?
+new_log() { tail -n +"$((log_at + 1))" "$G/hd-pack.log"; }
+check "pack 3: exit 0" '[ $rc -eq 0 ]'
+check "pack 3: the unchanged textures zip is fetched too (all together)" 'new_log | grep -q "hd-pack-textures-1.zip: here and checked"'
+check "pack 3: movies zip already installed" 'new_log | grep -q "hd-pack-movies.zip: already installed"'
+check "pack 3: new textures in, all 5" '[ "$(od -An -tx1 -N1 "$G/textures/hd-pack/000000000000abc4.png" | tr -d " ")" = 09 ] && [ "$(ls "$G/textures/hd-pack" | grep -c "^000000000000abc[0-4]\.png$")" = 5 ]'
+check "pack 3: old textures set aside" '[ -f "$G/hd-pack-ancien/hd-pack/000000000000abc4.png" ] && head -1 "$G/hd-pack-ancien/hd-pack/hd-pack.txt" | grep -qx "hd-pack 2"'
+check "pack 3: movies untouched" '[ "$(cat "$G/movies/a.1.mpg")" = "$(cat "$T/src/mov2/a.1.mpg")" ]'
+check "pack 3: marker is version 3, work folder removed" 'head -1 "$G/textures/hd-pack/hd-pack.txt" | grep -qx "hd-pack 3" && [ ! -e "$G/hd-pack-tmp" ]'
 [ $e2e_ok -eq 1 ] || status=1
 
 echo "== t_download.py: download with resume, local HTTP server"

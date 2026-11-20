@@ -313,6 +313,42 @@ static void t_install(void) {
           && is(P(L"%ls\\textures\\hd-pack.txt", st), "in the way") && is(P(L"%ls\\movies\\a.sig", st), "new a sig")
           && !exists(P(L"%ls\\hd-pack-ancien", g)) && !exists(P(L"%ls\\movies-avant-hd-pack", g)));
 
+    /* install_keeps_textures: a stage without textures (the pack's textures
+     * zips were already installed): textures/hd-pack stays, only the movies
+     * and the marker change; the old marker goes to hd-pack-ancien */
+    wcscpy(g, P(L"%ls\\in-keep\\game", W)); wcscpy(st, P(L"%ls\\hd-pack-tmp\\stage", g));
+    make_install_case(g, st);
+    DeleteFileW(P(L"%ls\\textures\\0000000000000001.png", st)); RemoveDirectoryW(P(L"%ls\\textures", st));
+    r = hp_install(U(g), U(st));
+    CHECK("install_keeps_textures: returns 0", r == 0);
+    CHECK("install_keeps_textures: textures/hd-pack kept, new marker", is(P(L"%ls\\textures\\hd-pack\\old.png", g), "old pack")
+          && is(P(L"%ls\\textures\\hd-pack\\hd-pack.txt", g), "hd-pack 1\n") && count(P(L"%ls\\textures\\hd-pack", g)) == 2
+          && !exists(P(L"%ls\\hd-pack-ancien\\hd-pack", g)));
+    CHECK("install_keeps_textures: the old marker set aside, not deleted", is(P(L"%ls\\hd-pack-ancien\\hd-pack.txt", g), "hd-pack 0\n"));
+    CHECK("install_keeps_textures: movies in, the old one kept aside", is(P(L"%ls\\movies\\a.1.mpg", g), "new a part 1")
+          && is(P(L"%ls\\movies-avant-hd-pack\\a.mpg", g), "old a") && is(P(L"%ls\\movies\\other.mpg", g), "other"));
+
+    /* install_keeps_textures fails cleanly after the movies went in (hd-pack-ancien
+     * is a file: the old marker can't be set aside): every move undone */
+    wcscpy(g, P(L"%ls\\in-keep-fail\\game", W)); wcscpy(st, P(L"%ls\\hd-pack-tmp\\stage", g));
+    make_install_case(g, st);
+    DeleteFileW(P(L"%ls\\textures\\0000000000000001.png", st)); RemoveDirectoryW(P(L"%ls\\textures", st));
+    puts_(P(L"%ls\\hd-pack-ancien", g), "a file");
+    r = hp_install(U(g), U(st));
+    CHECK("install_keeps_textures: a late failure undoes all, old marker in place", r == -1
+          && is(P(L"%ls\\textures\\hd-pack\\hd-pack.txt", g), "hd-pack 0\n") && is(P(L"%ls\\textures\\hd-pack\\old.png", g), "old pack")
+          && is(P(L"%ls\\movies\\a.mpg", g), "old a") && !exists(P(L"%ls\\movies\\a.1.mpg", g))
+          && is(P(L"%ls\\movies\\a.1.mpg", st), "new a part 1") && is(P(L"%ls\\hd-pack.txt", st), "hd-pack 1\n")
+          && is(P(L"%ls\\hd-pack-ancien", g), "a file") && !exists(P(L"%ls\\movies-avant-hd-pack", g)));
+
+    /* no stage textures and no pack installed to keep: refused */
+    wcscpy(g, P(L"%ls\\in-keep-none\\game", W)); wcscpy(st, P(L"%ls\\hd-pack-tmp\\stage", g));
+    mk(P(L"%ls\\movies", g)); mk(P(L"%ls\\movies", st));
+    puts_(P(L"%ls\\movies\\a.mpg", st), "new a"); puts_(P(L"%ls\\hd-pack.txt", st), "hd-pack 1\n");
+    r = hp_install(U(g), U(st));
+    CHECK("install: no stage textures and nothing installed is refused", r != 0 && is(P(L"%ls\\movies\\a.mpg", st), "new a")
+          && !exists(P(L"%ls\\textures\\hd-pack", g)));
+
     /* something unexpected in the stage is refused */
     wcscpy(g, P(L"%ls\\in-odd\\game", W)); wcscpy(st, P(L"%ls\\hd-pack-tmp\\stage", g));
     make_install_case(g, st);

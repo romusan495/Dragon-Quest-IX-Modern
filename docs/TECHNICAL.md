@@ -415,9 +415,12 @@ Generated C is derived from the game: never share it. The project itself contain
   (`hd_pack_download`, default 1; never in a scripted run, `DQIX_INPUT_FILE`;
   `DQIX_HD_PACK=0/1` for tests). It works alone, one at a time
   (`hd-pack.lock` held open, a named mutex the game looks for):
-  manifest `hd-pack.txt` from the release `hd-pack-1` (`HDPACK_URL` = another
-  base URL, `HDPACK_SOURCE` = a local folder, for tests); nothing more if
-  `textures/hd-pack/hd-pack.txt` has the same version; each zip into
+  manifest `hd-pack.txt` from the release `hd-pack-2` (older games: `hd-pack-1`;
+  `HDPACK_URL` = another base URL, `HDPACK_SOURCE` = a local folder, for
+  tests); nothing more if `textures/hd-pack/hd-pack.txt` has the same version;
+  else the zips already installed as they are (same name, size and SHA-256)
+  are skipped, the textures zips only all together (then `textures/hd-pack/`
+  stays and only its manifest is replaced, the old one set aside); each zip into
   `hd-pack-tmp/<zip>.part` with WinHTTP (`Range` resumes a cut download),
   size and SHA-256 checked; then the stored zips unpacked into
   `hd-pack-tmp/stage/` and installed with renames only, all undone on an error:

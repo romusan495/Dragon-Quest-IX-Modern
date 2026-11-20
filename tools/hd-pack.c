@@ -8,6 +8,8 @@
  *     manifest and zips from a local folder, for tests); offline: stops
  *     quietly, no bar;
  *   - nothing to do if textures/hd-pack/hd-pack.txt has the same version;
+ *     else the zips installed as they are (same name, size, SHA-256) are
+ *     skipped: a pack that only changes the movies downloads only them;
  *   - each zip downloaded into hd-pack-tmp/<zip>.part (WinHTTP; a cut
  *     download goes on from where it stopped next time, with Range), renamed
  *     <zip> when whole, size and SHA-256 checked (a bad one is deleted);
@@ -31,7 +33,7 @@
 #include <winhttp.h>
 
 /* a new pack = a new release and a new address in a new version of the game */
-#define HD_PACK_URL L"https://github.com/romusan495/Dragon-Quest-IX-Modern/releases/download/hd-pack-1/"
+#define HD_PACK_URL L"https://github.com/romusan495/Dragon-Quest-IX-Modern/releases/download/hd-pack-2/"
 
 #define MAX_ZIPS 64
 #define MANIFEST_MAX (64 * 1024)
@@ -229,6 +231,9 @@ static int zip_ok(const wchar_t* path, const HpZip* z) {
     return !strcmp(sha, z->sha);
 }
 
+/* hd-pack-textures-N.zip (tools/make_hd_pack.py): it unpacks into textures/ */
+static int is_textures_zip(const char* name) { return !strncmp(name, "hd-pack-textures-", 17); }
+
 static void open_log(void) {
     if (hp_logfile) return;
     wchar_t logp[HP_WMAX];
@@ -330,13 +335,29 @@ int wmain(void) {
 
     /* installed already? Then nothing is touched, except what an earlier run
      * could not finish: a bar left saying "working", folders not yet set aside */
+    /* ...else the zips already installed as they are (same name, size and
+     * SHA-256) are neither fetched nor unpacked: a new pack that changes only
+     * the movies downloads only them. The textures zips go together (the
+     * install replaces textures\hd-pack whole): kept only if all are the same. */
+    static int kept[MAX_ZIPS];
     {
-        static char have[MANIFEST_MAX]; static HpZip hz[MAX_ZIPS]; int hv = -1;
-        if (!hp_join(path, G, L"textures\\hd-pack\\hd-pack.txt") && read_small(path, have, sizeof have) >= 0
-            && hp_parse_manifest(have, &hv, hz, MAX_ZIPS) >= 0 && hv == version) {
+        static char have[MANIFEST_MAX]; static HpZip hz[MAX_ZIPS]; int hv = -1, nh = -1;
+        if (!hp_join(path, G, L"textures\\hd-pack\\hd-pack.txt") && read_small(path, have, sizeof have) >= 0)
+            nh = hp_parse_manifest(have, &hv, hz, MAX_ZIPS);
+        if (nh >= 0 && hv == version) {
             if (hp_realesrgan_packW(G) && aside_pending()) { open_log(); set_aside(); }
             CloseHandle(lh); return 0;
         }
+        int tex_new = 0, tex_had = 0, tex_same = 0;
+        for (int k = 0; k < nh; k++) tex_had += is_textures_zip(hz[k].name);
+        for (int i = 0; i < nz; i++) {
+            kept[i] = 0;
+            for (int k = 0; k < nh && !kept[i]; k++)
+                kept[i] = !strcmp(zips[i].name, hz[k].name) && zips[i].size == hz[k].size && !strcmp(zips[i].sha, hz[k].sha);
+            if (is_textures_zip(zips[i].name)) { tex_new++; tex_same += kept[i]; }
+        }
+        if (tex_same != tex_new || tex_new != tex_had)
+            for (int i = 0; i < nz; i++) if (is_textures_zip(zips[i].name)) kept[i] = 0;
     }
 
     open_log();
@@ -351,10 +372,11 @@ int wmain(void) {
     /* 1. every zip here and checked (downloads first: nothing is unpacked
      *    before all of them are whole) */
     g_total = 0;
-    for (int i = 0; i < nz; i++) g_total += zips[i].size;
+    for (int i = 0; i < nz; i++) if (!kept[i]) g_total += zips[i].size;
     g_before = 0;
     for (int i = 0; i < nz; i++) {
         wchar_t zname[128], from[HP_WMAX], zpath[HP_WMAX];
+        if (kept[i]) { hp_log("  %s: already installed\n", zips[i].name); continue; }
         if (hp_wide(zips[i].name, zname) || hp_join(zpath, tmp, zname)) { hp_log("  path too long\n"); goto fail; }
         if (!hp_safe_path(G, zpath)) { hp_log("  refused (unsafe path): %s\n", hp_u8(zpath)); goto fail; }
         if (hp_exists(zpath) && !zip_ok(zpath, &zips[i])) {   /* ours from an earlier run, not the right one */
@@ -395,6 +417,7 @@ int wmain(void) {
     if (hp_mkdir(G, stage)) { hp_log("  can't make %s\n", hp_u8(stage)); goto fail; }
     for (int i = 0; i < nz; i++) {
         wchar_t zname[128], zpath[HP_WMAX];
+        if (kept[i]) continue;
         if (hp_wide(zips[i].name, zname) || hp_join(zpath, tmp, zname)) goto fail;
         if (hp_unzip_storedW(zpath, stage)) { hp_log("  %s: can't unpack\n", zips[i].name); goto fail; }
         progress("working", 85 + (i + 1) * 10 / nz);

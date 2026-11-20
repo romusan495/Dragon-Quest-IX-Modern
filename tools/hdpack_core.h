@@ -609,7 +609,8 @@ static int hp_list_files(const wchar_t* dir, HpList* out) {
 /* Returns 0 ok, -1 failed with everything put back, -2 failed and some move
  * could not be undone (the log says where each file is).
  * Put stage/textures in place as game/textures/hd-pack (the old one, if any,
- * set aside), the stage movies into game/movies (older files of the same
+ * set aside; no stage/textures: the installed one is kept, its old marker set
+ * aside), the stage movies into game/movies (older files of the same
  * movies kept in game/movies-avant-hd-pack/), and stage/hd-pack.txt last as
  * game/textures/hd-pack/hd-pack.txt. All renames, all checked first; on any
  * error every move done is undone, so nothing is half moved. 0 ok. */
@@ -619,12 +620,17 @@ static int hp_installW(const wchar_t* game, const wchar_t* stage) {
         || hp_join(tex, game, L"textures") || hp_join(dtex, game, L"textures\\hd-pack") || hp_join(dmov, game, L"movies")
         || hp_join(bak, game, L"movies-avant-hd-pack") || hp_join(dmark, dtex, L"hd-pack.txt")) return -1;
     HpList newmov = { 0 }, oldmov = { 0 };
-    HpMove* done = NULL; int ndone = 0, cap = 0, rc = -1;
+    HpMove* done = NULL; int ndone = 0, cap = 0, rc = -1, keep;
     int mark = hp_made_dirs.n;
 
     /* ---- checks, nothing changed yet */
     if (!hp_safe_path(game, stage) || !hp_isdir(stage)) { hp_log("  install: stage refused: %s\n", hp_u8(stage)); goto out; }
-    if (!hp_safe_path(game, stex) || !hp_isdir(stex)) { hp_log("  install: no stage textures folder\n"); goto out; }
+    /* no stage textures: the pack's textures zips are those already installed
+     * (hd-pack.exe skipped them), so textures/hd-pack stays as it is */
+    keep = hp_safe_path(game, stex) && !hp_exists(stex);
+    if (keep ? !(hp_safe_path(game, dtex) && hp_isdir(dtex) && hp_isfile(dmark)) : !(hp_safe_path(game, stex) && hp_isdir(stex))) {
+        hp_log("  install: no stage textures folder%s\n", keep ? ", and no installed pack to keep" : ""); goto out;
+    }
     if (!hp_safe_path(game, smark) || !hp_isfile(smark)) { hp_log("  install: no stage hd-pack.txt\n"); goto out; }
     {   /* the stage holds textures/, movies/, hd-pack.txt and nothing else (nothing left behind) */
         wchar_t pat[HP_WMAX]; WIN32_FIND_DATAW fd; int bad = 0;
@@ -681,14 +687,16 @@ static int hp_installW(const wchar_t* game, const wchar_t* stage) {
     /* ---- the moves, each one noted to be undone */
 #define HP_DO(F, T) do { if (ndone >= cap || hp_move(game, (F), (T))) goto undo; \
         wcscpy(done[ndone].from, (F)); wcscpy(done[ndone].to, (T)); ndone++; } while (0)
-    if (!hp_isdir(tex) && hp_mkdir(game, tex)) goto undo;
-    if (hp_isdir(dtex)) {
-        wchar_t anc[HP_WMAX], to[HP_WMAX];
-        if (hp_join(anc, game, HP_ANCIEN) || hp_mkdir(game, anc) || hp_free_name(anc, L"hd-pack", to)) goto undo;
-        HP_DO(dtex, to);
-        hp_log("  old pack set aside: %s\n", hp_u8(to));
+    if (!keep) {
+        if (!hp_isdir(tex) && hp_mkdir(game, tex)) goto undo;
+        if (hp_isdir(dtex)) {
+            wchar_t anc[HP_WMAX], to[HP_WMAX];
+            if (hp_join(anc, game, HP_ANCIEN) || hp_mkdir(game, anc) || hp_free_name(anc, L"hd-pack", to)) goto undo;
+            HP_DO(dtex, to);
+            hp_log("  old pack set aside: %s\n", hp_u8(to));
+        }
+        HP_DO(stex, dtex);
     }
-    HP_DO(stex, dtex);
     if (newmov.n) {
         if (!hp_isdir(dmov) && hp_mkdir(game, dmov)) goto undo;
         if (oldmov.n && !hp_isdir(bak) && hp_mkdir(game, bak)) goto undo;
@@ -704,9 +712,14 @@ static int hp_installW(const wchar_t* game, const wchar_t* stage) {
             HP_DO(from, to);
         }
     }
+    if (keep) {                                                /* the old marker set aside, not deleted */
+        wchar_t anc[HP_WMAX], to[HP_WMAX];
+        if (hp_join(anc, game, HP_ANCIEN) || hp_mkdir(game, anc) || hp_free_name(anc, L"hd-pack.txt", to)) goto undo;
+        HP_DO(dmark, to);
+    }
     HP_DO(smark, dmark);                                       /* last: the pack counts as installed */
 #undef HP_DO
-    hp_log("  installed: textures\\hd-pack, %d movie file(s) (%d older kept in movies-avant-hd-pack)\n", newmov.n, oldmov.n);
+    hp_log("  installed: textures\\hd-pack%s, %d movie file(s) (%d older kept in movies-avant-hd-pack)\n", keep ? " (kept)" : "", newmov.n, oldmov.n);
     rc = 0;
     goto out;
 undo:

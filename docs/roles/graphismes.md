@@ -47,7 +47,7 @@ l'un après l'autre, pas en parallèle.
   dans n'importe quel dossier du pack (`hd\`, `rom\`...) et ne tourne qu'une fois
   à la fois (`textures\hd-auto.lock`).
 - Pack HD (`hd-pack.exe`, construit à chaque build sous Windows) : le jeu le
-  lance en arrière-plan ; il télécharge la release `hd-pack-1`, vérifie,
+  lance en arrière-plan ; il télécharge la release `hd-pack-2` (les versions plus anciennes : `hd-pack-1`), vérifie,
   installe dans `textures\hd-pack\` et `movies\`, puis met les dossiers
   Real-ESRGAN de côté dans `game\hd-pack-ancien\`. Il ne supprime jamais un
   dossier (incident du 2026-11-14). Tout changement de `tools/hd-pack.c` ou
