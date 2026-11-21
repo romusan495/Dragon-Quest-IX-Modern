@@ -162,6 +162,26 @@ static void sprite_type(uint32_t spr, char* out, int n) {
     if (name[k] != '.') out[0] = 0;                                /* not "<type>.spr": not what was expected */
 }
 
+/* The way the picture the game draws faces, in eighths of a turn from facing
+ * the camera (func_0203cbe8's order: 0 down, 1 r_down, 2 right ... 4 up), or
+ * -1. The picture is the sprite's animation +0x44 in its sheet (+0x2c: 0x14
+ * bytes each, the name first; +0x28: how many), named "<what>_<way>"
+ * (stand_down, walk_l_up...); +0x50 & 2: drawn mirrored, left and right
+ * swapped. */
+static int shown_way(uint32_t spr) {
+    static const char* const way[8] = { "down", "r_down", "right", "r_up", "up", "l_up", "left", "l_down" };
+    uint32_t bank = rd32(spr), idx = rd32(spr + 0x28) & 0xFFFF;
+    if (!is_ram(bank) || idx >= 256 || !is_ram(rd32(bank + 8))) return -1;
+    uint32_t sheet = rd32(bank + 8) + idx * SHEET_SIZE, anim = rd32(spr + 0x44), tab = rd32(sheet + 0x2c);
+    if (!is_ram(tab) || anim >= rd32(sheet + 0x28) || !is_ram(rd32(tab + anim * 0x14))) return -1;
+    char name[24];
+    memcpy(name, ram(rd32(tab + anim * 0x14)), sizeof name - 1); name[sizeof name - 1] = 0;
+    const char* w = strchr(name, '_');
+    for (int k = 0; w && k < 8; k++)
+        if (!strcmp(w + 1, way[k])) return rd32(spr + 0x50) & 2 ? (8 - k) & 7 : k;
+    return -1;
+}
+
 /* ---------------------------------------------------------------- per frame */
 typedef struct {
     const Npc3dModel* model;
@@ -219,6 +239,14 @@ void hook_DrawSprite(Cpu* c, void (*orig)(Cpu*)) {
     s->model = m; s->spr = spr;
     s->x0 = s->y0 = 1e9f; s->x1 = s->y1 = -1e9f;
     int32_t face = (int32_t)rd32(spr + 0x60);                     /* the way it faces now (+0x64: where it is turning to) */
+    /* +0x5c bits 0x10/0x20: the game doesn't pick the picture from +0x60
+     * (DrawSprite skips func_0203cbe8): the town's script set it, e.g. a
+     * shopkeeper behind a counter facing the camera whatever +0x60 says. Then
+     * face the way the picture does, undoing func_0203cbe8's angle from the
+     * camera (+0x60 - camera (+0x70 of the 2nd argument) + (+0x50 & 8 ? +0x90 : 0)). */
+    int shown = rd32(spr + 0x5c) & 0x30 && is_ram(c->r[1]) ? shown_way(spr) : -1;
+    if (shown >= 0)
+        face = (int32_t)rd32(c->r[1] + 0x70) - (rd32(spr + 0x50) & 8 ? (int32_t)rd32(spr + 0x90) : 0) + shown * ANGLE_FULL / 8;
     static float sign = 0, off = 0;
     if (sign == 0) { const char* e = getenv("DQIX_NPC3D_ROT"); sign = -1; if (e) sscanf(e, "%f,%f", &sign, &off); }   /* tests: "sign,offset degrees" */
     s->angle = sign * (float)face * 6.2831853f / (float)ANGLE_FULL + off * 0.017453293f;
