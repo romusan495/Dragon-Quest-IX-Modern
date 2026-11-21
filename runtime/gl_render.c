@@ -1198,8 +1198,30 @@ static void pack_load_list(void) {
     hdsprite_update();
 }
 
-/* The HD texture for this picture, loaded into the GPU the first time (0 if none). */
-static GLuint pack_texture(uint64_t key) {
+/* The HD pack's pictures often lose their outermost row or column of pixels
+ * to transparency (its upscaler, as if the picture wrapped round into its
+ * see-through side) where the DS's own texels are solid: on the map's cliffs
+ * and slopes every polygon edge then showed what is behind, a thin green or
+ * teal line. Those pixels take the colour just inside them, solid.
+ * org: the DS's picture (ow x oh); px: the HD one (w x h, a multiple of it). */
+static void pack_fix_edges(uint8_t* px, int w, int h, const uint8_t* org, int ow, int oh) {
+    if (!org || w < 2 || h < 2 || w % ow || h % oh) return;
+    int fx = w / ow, fy = h / oh;
+    for (int side = 0; side < 4; side++) {                     /* top, bottom, left, right */
+        int n = side < 2 ? w : h;
+        for (int i = 0; i < n; i++) {
+            int x = side < 2 ? i : side == 2 ? 0 : w - 1, y = side >= 2 ? i : side == 0 ? 0 : h - 1;
+            int ix = x < 1 ? 1 : x > w - 2 ? w - 2 : x, iy = y < 1 ? 1 : y > h - 2 ? h - 2 : y;   /* the pixel just inside (a corner: diagonally) */
+            uint8_t* p = px + ((size_t)y * w + x) * 4;
+            if (p[3] == 255 || org[((size_t)(y / fy) * ow + (size_t)(x / fx)) * 4 + 3] != 255) continue;
+            memcpy(p, px + ((size_t)iy * w + ix) * 4, 3); p[3] = 255;
+        }
+    }
+}
+
+/* The HD texture for this picture, loaded into the GPU the first time (0 if
+ * none). org: the DS's picture it stands for (ow x oh), NULL for a sprite. */
+static GLuint pack_texture(uint64_t key, const uint8_t* org, int ow, int oh) {
     PackTex* t = pack_find(key, 0);
     if (!t) return 0;
     t->used = g_frameno;
@@ -1216,6 +1238,7 @@ static GLuint pack_texture(uint64_t key) {
             p_glDeleteTextures(1, &lru->tex); lru->tex = 0; g_pack_live--;
         }
     }
+    pack_fix_edges(px, w, h, org, ow, oh);
     p_glGenTextures(1, &t->tex);
     p_glBindTexture(GL_TEXTURE_2D, t->tex);
     p_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
@@ -1330,7 +1353,7 @@ static GLuint texture_for(uint32_t ti, uint32_t pl, int* w, int* h, int* hd) {
                     if (g_pack_on) pack_load_list();
                     uint64_t key = tex_key(g_decode, *w, *h);
                     if (g_dump_on) dump_texture(key, g_decode, *w, *h);
-                    if (g_pack_on && g_pack_n && !piece && *w * *h > PACK_MIN_TEXELS) e->hd = pack_texture(key);
+                    if (g_pack_on && g_pack_n && !piece && *w * *h > PACK_MIN_TEXELS) e->hd = pack_texture(key, g_decode, *w, *h);
                 }
                 static int pxbr = -1; if (pxbr < 0) pxbr = !getenv("DQIX_PIECE_XBR") || atoi(getenv("DQIX_PIECE_XBR")) != 0;   /* tests */
                 if (!e->hd && g_texup && *w * *h <= 256 * 256 && (!piece || pxbr)) {   /* upscaled: 4x (2x for the big ones) */
@@ -2194,7 +2217,7 @@ static void draw_sprites(int eng, int top, float W, float wside) {
     for (int i = 0; i < g_hdsprite_n[eng]; i++) {
         const HdSprite* sp = &g_hdsprites[eng][i];
         if (!sp->shown) continue;                                 /* (hidden on the DS: by a window, a layer...) */
-        GLuint t = pack_texture(sp->key);
+        GLuint t = pack_texture(sp->key, NULL, 0, 0);
         if (!t) continue;
         p_glBindTexture(GL_TEXTURE_2D, t);
         p_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
